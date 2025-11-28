@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -9,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ConnextLogo } from "@/components/ui/connext-logo"
-import { useAuth } from "@/lib/auth-context"
+import { createClient } from "@/lib/supabase/client"
 import {
   Mail,
   Lock,
@@ -25,6 +24,7 @@ import {
   Sparkles,
 } from "lucide-react"
 import Link from "next/link"
+import { OAuthButtons } from "./oauth-buttons"
 
 const industries = [
   "Tecnologia",
@@ -88,7 +88,6 @@ export function RegisterForm() {
   })
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const { register } = useAuth()
   const router = useRouter()
 
   const updateField = (field: string, value: string | string[]) => {
@@ -106,11 +105,9 @@ export function RegisterForm() {
     setError("")
 
     if (step === 1) {
-      const freeEmails = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com"]
-      const domain = formData.email.split("@")[1]?.toLowerCase()
-
-      if (domain && freeEmails.includes(domain)) {
-        setError("Por favor, use seu email profissional (corporativo). Emails pessoais não são aceitos.")
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(formData.email)) {
+        setError("Por favor, insira um email válido.")
         return false
       }
 
@@ -165,15 +162,57 @@ export function RegisterForm() {
 
     setIsLoading(true)
 
-    const success = await register(formData)
+    try {
+      const supabase = createClient()
 
-    if (success) {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/dashboard`,
+          data: {
+            full_name: formData.name,
+            phone: formData.phone,
+            company: formData.company,
+            position: formData.position,
+            industry: formData.industry,
+            city: formData.city,
+            country: formData.country,
+            interests: formData.interests,
+            looking_for: formData.lookingFor,
+            bio: formData.bio,
+          },
+        },
+      })
+
+      if (authError) {
+        if (authError.message.includes("already registered")) {
+          setError("Este email já está cadastrado. Faça login ou use outro email.")
+        } else {
+          setError(authError.message)
+        }
+        setIsLoading(false)
+        return
+      }
+
+      if (!authData.user) {
+        setError("Erro ao criar usuário")
+        setIsLoading(false)
+        return
+      }
+
+      if (!authData.session) {
+        router.push("/register/success")
+        return
+      }
+
       router.push("/dashboard")
-    } else {
+      router.refresh()
+    } catch (err) {
       setError("Erro ao criar conta. Tente novamente.")
+    } finally {
+      setIsLoading(false)
     }
-
-    setIsLoading(false)
   }
 
   return (
@@ -192,7 +231,11 @@ export function RegisterForm() {
               <Sparkles className="w-5 h-5 text-primary" />
               <span className="text-sm text-muted-foreground">Junte-se à comunidade</span>
             </div>
-            <img src="/professional-team-networking-futuristic-neon-colla.jpg" alt="Networking" className="rounded-2xl mb-6 w-full" />
+            <img
+              src="/professional-team-networking-futuristic-neon-colla.jpg"
+              alt="Networking"
+              className="rounded-2xl mb-6 w-full"
+            />
             <h2 className="text-2xl font-bold text-foreground mb-4">
               Junte-se à maior rede de <span className="gradient-text">networking profissional</span>
             </h2>
@@ -227,7 +270,7 @@ export function RegisterForm() {
             {step === 4 && "O que você busca?"}
           </h1>
           <p className="text-muted-foreground mb-8">
-            {step === 1 && "Use seu email profissional para começar."}
+            {step === 1 && "Insira seu email para começar."}
             {step === 2 && "Conte-nos mais sobre você."}
             {step === 3 && "Selecione suas áreas de interesse."}
             {step === 4 && "Defina seus objetivos de networking."}
@@ -246,21 +289,20 @@ export function RegisterForm() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-foreground">
-                    Email Profissional
+                    Email
                   </Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <Input
                       id="email"
                       type="email"
-                      placeholder="seu.nome@empresa.com.br"
+                      placeholder="seu.email@exemplo.com"
                       value={formData.email}
                       onChange={(e) => updateField("email", e.target.value)}
                       className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
                       required
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">Apenas emails corporativos são aceitos</p>
                 </div>
 
                 <div className="space-y-2">
@@ -297,6 +339,10 @@ export function RegisterForm() {
                       required
                     />
                   </div>
+                </div>
+
+                <div className="pt-2">
+                  <OAuthButtons />
                 </div>
               </>
             )}
@@ -480,36 +526,29 @@ export function RegisterForm() {
                 </div>
 
                 <div className="gradient-border rounded-lg p-4 bg-card/50 backdrop-blur-sm">
-                  <h3 className="font-semibold text-foreground mb-2">Resumo do seu perfil</h3>
-                  <div className="space-y-1 text-sm text-muted-foreground">
+                  <h3 className="font-semibold text-foreground mb-2">Resumo do perfil</h3>
+                  <div className="text-sm text-muted-foreground space-y-1">
                     <p>
-                      <span className="text-foreground">Nome:</span> {formData.name}
+                      <span className="text-foreground">{formData.name}</span> - {formData.position}
                     </p>
+                    <p>{formData.company}</p>
                     <p>
-                      <span className="text-foreground">Empresa:</span> {formData.company}
+                      {formData.city}, {formData.country}
                     </p>
-                    <p>
-                      <span className="text-foreground">Cargo:</span> {formData.position}
-                    </p>
-                    <p>
-                      <span className="text-foreground">Indústria:</span> {formData.industry}
-                    </p>
-                    <p>
-                      <span className="text-foreground">Localização:</span> {formData.city}, {formData.country}
-                    </p>
+                    <p className="text-primary">{formData.interests.join(", ")}</p>
                   </div>
                 </div>
               </>
             )}
 
-            {/* Navigation */}
-            <div className="flex gap-4">
+            {/* Navigation Buttons */}
+            <div className="flex gap-3">
               {step > 1 && (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={prevStep}
-                  className="flex-1 border-border/50 text-foreground hover:bg-card/50 bg-transparent backdrop-blur-sm"
+                  className="flex-1 border-border/50 text-foreground hover:bg-card backdrop-blur-sm bg-transparent"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Voltar
@@ -519,9 +558,9 @@ export function RegisterForm() {
                 <Button
                   type="button"
                   onClick={nextStep}
-                  className="flex-1 gradient-bg text-primary-foreground hover:opacity-90"
+                  className="flex-1 gradient-bg text-primary-foreground hover:opacity-90 glow-orange"
                 >
-                  Continuar
+                  Próximo
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
@@ -530,7 +569,7 @@ export function RegisterForm() {
                   className="flex-1 gradient-bg text-primary-foreground hover:opacity-90 glow-orange"
                   disabled={isLoading}
                 >
-                  {isLoading ? "Criando conta..." : "Criar Conta"}
+                  {isLoading ? "Criando conta..." : "Criar conta"}
                 </Button>
               )}
             </div>
@@ -539,7 +578,7 @@ export function RegisterForm() {
           <p className="text-center text-muted-foreground mt-6">
             Já tem uma conta?{" "}
             <Link href="/login" className="gradient-text font-semibold hover:underline">
-              Fazer login
+              Entrar
             </Link>
           </p>
         </div>

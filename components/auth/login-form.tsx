@@ -1,23 +1,22 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ConnextLogo } from "@/components/ui/connext-logo"
-import { useAuth } from "@/lib/auth-context"
+import { createClient } from "@/lib/supabase/client"
 import { Mail, Lock, AlertCircle, Sparkles } from "lucide-react"
 import Link from "next/link"
+import { OAuthButtons } from "./oauth-buttons"
 
 export function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,24 +24,21 @@ export function LoginForm() {
     setError("")
     setIsLoading(true)
 
-    const freeEmails = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com"]
-    const domain = email.split("@")[1]?.toLowerCase()
+    const supabase = createClient()
 
-    if (domain && freeEmails.includes(domain)) {
-      setError("Por favor, use seu email profissional (corporativo). Emails pessoais não são aceitos.")
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (authError) {
+      setError(authError.message === "Invalid login credentials" ? "Email ou senha incorretos" : authError.message)
       setIsLoading(false)
       return
     }
 
-    const success = await login(email, password)
-
-    if (success) {
-      router.push("/dashboard")
-    } else {
-      setError("Email ou senha incorretos. Verifique suas credenciais.")
-    }
-
-    setIsLoading(false)
+    router.push("/dashboard")
+    router.refresh()
   }
 
   return (
@@ -61,7 +57,7 @@ export function LoginForm() {
           </Link>
 
           <h1 className="text-3xl font-bold text-foreground mb-2">Bem-vindo de volta</h1>
-          <p className="text-muted-foreground mb-8">Entre com seu email profissional para continuar.</p>
+          <p className="text-muted-foreground mb-8">Entre com seu email para continuar.</p>
 
           {error && (
             <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/30 rounded-lg p-4 mb-6 backdrop-blur-sm">
@@ -73,23 +69,20 @@ export function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-foreground">
-                Email Profissional
+                Email
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="seu.nome@empresa.com.br"
+                  placeholder="seu.email@exemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary focus:ring-primary/20"
                   required
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Apenas emails corporativos são aceitos (ex: @suaempresa.com.br)
-              </p>
             </div>
 
             <div className="space-y-2">
@@ -119,6 +112,10 @@ export function LoginForm() {
             </Button>
           </form>
 
+          <div className="mt-6">
+            <OAuthButtons />
+          </div>
+
           <p className="text-center text-muted-foreground mt-6">
             Não tem uma conta?{" "}
             <Link href="/register" className="gradient-text font-semibold hover:underline">
@@ -136,13 +133,16 @@ export function LoginForm() {
               <Sparkles className="w-5 h-5 text-primary" />
               <span className="text-sm text-muted-foreground">Profissionais verificados</span>
             </div>
-            <img src="/professional-networking-video-call-futuristic-neon.jpg" alt="Networking" className="rounded-2xl mb-6 w-full" />
+            <img
+              src="/professional-networking-video-call-futuristic-neon.jpg"
+              alt="Networking"
+              className="rounded-2xl mb-6 w-full"
+            />
             <h2 className="text-2xl font-bold text-foreground mb-4">
               Conecte-se com <span className="gradient-text">profissionais verificados</span>
             </h2>
             <p className="text-muted-foreground">
-              O Connext exige email corporativo para garantir que você está conectando com profissionais reais e
-              verificados.
+              O Connext conecta você com profissionais reais através de videochamadas e networking inteligente.
             </p>
           </div>
         </div>

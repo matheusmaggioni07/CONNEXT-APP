@@ -1,7 +1,7 @@
 "use client"
 
 import { useAuth } from "@/lib/auth-context"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { User, LogOut, Compass, Heart, Video, Bell } from "lucide-react"
@@ -15,8 +15,21 @@ const navItems = [
 ]
 
 export function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, signOut } = useAuth()
   const pathname = usePathname()
+  const router = useRouter()
+
+  // Get user metadata from Supabase user object
+  const userMetadata = user?.user_metadata || {}
+  const userName = userMetadata.full_name || user?.email?.split("@")[0] || "Usuário"
+  const userPosition = userMetadata.position || "Profissional"
+  const userAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${userName}`
+
+  const handleLogout = async () => {
+    await signOut()
+    router.push("/login")
+    router.refresh()
+  }
 
   return (
     <aside className="w-64 bg-card/50 backdrop-blur-xl border-r border-border/50 h-screen flex flex-col">
@@ -31,15 +44,11 @@ export function Sidebar() {
       <div className="p-4 border-b border-border/50">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full bg-muted overflow-hidden ring-2 ring-primary/50">
-            <img
-              src={user?.avatar || "/placeholder.svg?height=48&width=48&query=professional"}
-              alt={user?.name}
-              className="w-full h-full object-cover"
-            />
+            <img src={userAvatar || "/placeholder.svg"} alt={userName} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-foreground truncate">{user?.name}</p>
-            <p className="text-sm text-muted-foreground truncate">{user?.position}</p>
+            <p className="font-semibold text-foreground truncate">{userName}</p>
+            <p className="text-sm text-muted-foreground truncate">{userPosition}</p>
           </div>
           <div className="relative">
             <Bell className="w-5 h-5 text-muted-foreground cursor-pointer hover:text-foreground transition-colors" />
@@ -77,7 +86,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-card"
-          onClick={logout}
+          onClick={handleLogout}
         >
           <LogOut className="w-5 h-5 mr-3" />
           Sair

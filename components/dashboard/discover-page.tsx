@@ -1,57 +1,91 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useAuth } from "@/lib/auth-context"
-import { mockUsers } from "@/lib/mock-users"
-import type { User } from "@/lib/types"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { X, Heart, Video, MapPin, Building2, Sparkles, MessageCircle } from "lucide-react"
+import { X, Heart, Video, MapPin, Building2, Sparkles, MessageCircle, Crown } from "lucide-react"
+import { likeUser, checkLikeLimit } from "@/app/actions/likes"
+import { getProfilesToDiscover } from "@/app/actions/profile"
+import { getOnlineUserIds, updatePresence } from "@/app/actions/presence"
+import type { Profile } from "@/lib/types"
+import Link from "next/link"
 
 export function DiscoverPage() {
-  const { user } = useAuth()
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [users, setUsers] = useState<User[]>([])
-  const [matches, setMatches] = useState<string[]>([])
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   const [showMatchModal, setShowMatchModal] = useState(false)
-  const [matchedUser, setMatchedUser] = useState<User | null>(null)
+  const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [likeStatus, setLikeStatus] = useState<{ canLike: boolean; remaining: number; isPro?: boolean }>({
+    canLike: true,
+    remaining: 5,
+  })
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const [fetchedProfiles, online, limitStatus] = await Promise.all([
+        getProfilesToDiscover(),
+        getOnlineUserIds(),
+        checkLikeLimit(),
+      ])
+      setProfiles(fetchedProfiles)
+      setOnlineUsers(online)
+      setLikeStatus(limitStatus as { canLike: boolean; remaining: number; isPro?: boolean })
+    } catch (error) {
+      console.error("Error fetching data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    // Filter out current user and already matched users
-    const filtered = mockUsers.filter((u) => u.id !== user?.id && !matches.includes(u.id))
-    setUsers(filtered)
-  }, [user, matches])
+    fetchData()
 
-  const currentUser = users[currentIndex]
+    // Update presence every 30 seconds
+    const presenceInterval = setInterval(() => {
+      updatePresence()
+    }, 30000)
 
-  const handleLike = () => {
-    if (!currentUser) return
+    // Initial presence update
+    updatePresence()
 
-    // Simulate match (50% chance)
-    if (Math.random() > 0.5) {
-      setMatchedUser(currentUser)
-      setShowMatchModal(true)
-      setMatches((prev) => [...prev, currentUser.id])
+    return () => clearInterval(presenceInterval)
+  }, [fetchData])
 
-      // Save match to localStorage
-      const storedMatches = JSON.parse(localStorage.getItem("proconnect_matches") || "[]")
-      storedMatches.push({
-        id: crypto.randomUUID(),
-        users: [user?.id, currentUser.id],
-        matchedUser: currentUser,
-        createdAt: new Date().toISOString(),
-      })
-      localStorage.setItem("proconnect_matches", JSON.stringify(storedMatches))
+  const currentProfile = profiles[currentIndex]
+
+  const handleLike = async () => {
+    if (!currentProfile) return
+    if (!likeStatus.canLike) {
+      return
     }
 
-    nextUser()
+    const result = await likeUser(currentProfile.id)
+
+    if (result.error) {
+      console.error(result.error)
+      return
+    }
+
+    if (result.isMatch && result.matchedProfile) {
+      setMatchedProfile(result.matchedProfile)
+      setShowMatchModal(true)
+    }
+
+    // Update like status
+    const newStatus = await checkLikeLimit()
+    setLikeStatus(newStatus as { canLike: boolean; remaining: number; isPro?: boolean })
+
+    nextProfile()
   }
 
   const handleSkip = () => {
-    nextUser()
+    nextProfile()
   }
 
-  const nextUser = () => {
-    if (currentIndex < users.length - 1) {
+  const nextProfile = () => {
+    if (currentIndex < profiles.length - 1) {
       setCurrentIndex((prev) => prev + 1)
     } else {
       setCurrentIndex(0)
@@ -64,13 +98,26 @@ export function DiscoverPage() {
     setShowMatchModal(false)
   }
 
-  if (!currentUser) {
+  const isOnline = (userId: string) => onlineUsers.includes(userId)
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Carregando perfis...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentProfile || profiles.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <Sparkles className="w-16 h-16 text-primary mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">Você viu todos os perfis!</h2>
-          <p className="text-muted-foreground">Volte mais tarde para encontrar novos profissionais.</p>
+          <h2 className="text-2xl font-bold text-foreground mb-2">Nenhum perfil encontrado</h2>
+          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos profissionais.</p>
         </div>
       </div>
     )
@@ -85,25 +132,45 @@ export function DiscoverPage() {
             <h1 className="text-2xl font-bold text-foreground">Descobrir</h1>
             <p className="text-muted-foreground">Encontre profissionais compatíveis com você</p>
           </div>
-          <div className="flex items-center gap-2 bg-secondary px-4 py-2 rounded-full">
-            <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-            <span className="text-sm text-foreground">{users.filter((u) => u.isOnline).length} online</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-secondary px-4 py-2 rounded-full">
+              <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              <span className="text-sm text-foreground">{onlineUsers.length} online</span>
+            </div>
           </div>
         </div>
+
+        {/* Like Limit Warning */}
+        {!likeStatus.isPro && (
+          <div className="bg-secondary/50 border border-border rounded-xl p-4 mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Heart className="w-5 h-5 text-primary" />
+              <span className="text-sm text-foreground">
+                {likeStatus.canLike ? `${likeStatus.remaining} likes restantes hoje` : "Limite diário atingido"}
+              </span>
+            </div>
+            <Link href="/dashboard/upgrade">
+              <Button size="sm" className="gradient-bg text-primary-foreground">
+                <Crown className="w-4 h-4 mr-2" />
+                Upgrade Pro
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Profile Card */}
         <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-xl">
           {/* Cover Image */}
           <div className="relative h-72">
             <img
-              src={currentUser.avatar || "/placeholder.svg"}
-              alt={currentUser.name}
+              src={currentProfile.avatar_url || "/placeholder.svg?height=300&width=400&query=professional headshot"}
+              alt={currentProfile.full_name}
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
 
             {/* Online Status */}
-            {currentUser.isOnline && (
+            {isOnline(currentProfile.id) && (
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-primary/90 px-3 py-1 rounded-full">
                 <span className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse" />
                 <span className="text-sm text-primary-foreground font-medium">Online</span>
@@ -112,9 +179,9 @@ export function DiscoverPage() {
 
             {/* Basic Info */}
             <div className="absolute bottom-4 left-4 right-4">
-              <h2 className="text-2xl font-bold text-foreground">{currentUser.name}</h2>
+              <h2 className="text-2xl font-bold text-foreground">{currentProfile.full_name}</h2>
               <p className="text-foreground/80">
-                {currentUser.position} • {currentUser.company}
+                {currentProfile.position} • {currentProfile.company}
               </p>
             </div>
           </div>
@@ -126,41 +193,45 @@ export function DiscoverPage() {
               <div className="flex items-center gap-2 text-muted-foreground">
                 <MapPin className="w-4 h-4" />
                 <span>
-                  {currentUser.location.city}, {currentUser.location.country}
+                  {currentProfile.city}, {currentProfile.country}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Building2 className="w-4 h-4" />
-                <span>{currentUser.industry}</span>
+                <span>{currentProfile.industry}</span>
               </div>
             </div>
 
             {/* Bio */}
-            <p className="text-foreground leading-relaxed">{currentUser.bio}</p>
+            {currentProfile.bio && <p className="text-foreground leading-relaxed">{currentProfile.bio}</p>}
 
             {/* Interests */}
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-2">Interesses</h3>
-              <div className="flex flex-wrap gap-2">
-                {currentUser.interests.map((interest) => (
-                  <span key={interest} className="px-3 py-1 bg-secondary text-foreground rounded-full text-sm">
-                    {interest}
-                  </span>
-                ))}
+            {currentProfile.interests && currentProfile.interests.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-2">Interesses</h3>
+                <div className="flex flex-wrap gap-2">
+                  {currentProfile.interests.map((interest) => (
+                    <span key={interest} className="px-3 py-1 bg-secondary text-foreground rounded-full text-sm">
+                      {interest}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Looking For */}
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-2">Buscando</h3>
-              <div className="flex flex-wrap gap-2">
-                {currentUser.lookingFor.map((item) => (
-                  <span key={item} className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm">
-                    {item}
-                  </span>
-                ))}
+            {currentProfile.looking_for && currentProfile.looking_for.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-2">Buscando</h3>
+                <div className="flex flex-wrap gap-2">
+                  {currentProfile.looking_for.map((item) => (
+                    <span key={item} className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm">
+                      {item}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Actions */}
@@ -175,47 +246,49 @@ export function DiscoverPage() {
             </Button>
             <Button
               size="lg"
-              className="w-20 h-20 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              className={`w-20 h-20 rounded-full ${
+                likeStatus.canLike
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              }`}
               onClick={handleLike}
+              disabled={!likeStatus.canLike}
             >
               <Heart className="w-10 h-10" />
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-16 h-16 rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground bg-transparent"
-              onClick={() => {}}
-            >
-              <Video className="w-8 h-8" />
-            </Button>
+            <Link href="/dashboard/video">
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-16 h-16 rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground bg-transparent"
+              >
+                <Video className="w-8 h-8" />
+              </Button>
+            </Link>
           </div>
         </div>
 
         {/* Navigation */}
         <div className="flex items-center justify-center gap-4 mt-4">
           <span className="text-sm text-muted-foreground">
-            {currentIndex + 1} de {users.length}
+            {currentIndex + 1} de {profiles.length}
           </span>
         </div>
       </div>
 
       {/* Match Modal */}
-      {showMatchModal && matchedUser && (
+      {showMatchModal && matchedProfile && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-2xl border border-border p-8 max-w-md w-full text-center">
             <div className="relative mb-6">
               <div className="flex justify-center gap-4">
                 <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden">
-                  <img
-                    src={user?.avatar || "/placeholder.svg"}
-                    alt={user?.name}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src="/my-profile.png" alt="Você" className="w-full h-full object-cover" />
                 </div>
                 <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden">
                   <img
-                    src={matchedUser.avatar || "/placeholder.svg"}
-                    alt={matchedUser.name}
+                    src={matchedProfile.avatar_url || "/placeholder.svg?height=96&width=96&query=professional"}
+                    alt={matchedProfile.full_name}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -227,13 +300,13 @@ export function DiscoverPage() {
 
             <h2 className="text-3xl font-bold text-primary mb-2">É um Match!</h2>
             <p className="text-muted-foreground mb-6">
-              Você e {matchedUser.name} têm interesse mútuo. Conecte-se agora!
+              Você e {matchedProfile.full_name} têm interesse mútuo. Conecte-se agora!
             </p>
 
             <div className="space-y-3">
               <Button
                 className="w-full bg-[#25D366] hover:bg-[#25D366]/90 text-white"
-                onClick={() => openWhatsApp(matchedUser.phone)}
+                onClick={() => openWhatsApp(matchedProfile.phone || "")}
               >
                 <MessageCircle className="w-5 h-5 mr-2" />
                 Conversar no WhatsApp
