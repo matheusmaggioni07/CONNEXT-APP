@@ -242,7 +242,7 @@ export function RegisterForm() {
         options: {
           emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || window.location.origin,
           data: {
-            name: formData.name,
+            full_name: formData.name, // Use full_name instead of name
             phone: formData.phone,
             city: formData.city,
             country: formData.country,
@@ -285,30 +285,41 @@ export function RegisterForm() {
         }
       }
 
-      // 3. Wait a moment for trigger to create profile
+      // 3. Wait a moment for trigger to create profile, then UPSERT to ensure it's saved
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
-      // Company and position are now optional
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          name: formData.name,
-          phone: formData.phone,
-          company: formData.company || formData.situation, // Use situation if no company
-          position: formData.position || formData.situation, // Use situation if no position
-          industry: formData.industry,
-          city: formData.city,
-          country: formData.country,
-          bio: formData.bio,
-          interests: formData.interests,
-          looking_for: formData.lookingFor,
-          avatar_url: avatarUrl,
-          onboarding_completed: true, // Mark as completed!
-        })
-        .eq("id", authData.user.id)
+      const profileData = {
+        id: authData.user.id,
+        email: formData.email,
+        full_name: formData.name, // Use full_name (table column name)
+        phone: formData.phone,
+        company: formData.company || null,
+        position: formData.position || null,
+        situation: formData.situation,
+        industry: formData.industry,
+        city: formData.city,
+        country: formData.country,
+        bio: formData.bio || null,
+        interests: formData.interests,
+        looking_for: formData.lookingFor,
+        avatar_url: avatarUrl,
+        onboarding_completed: true,
+      }
+
+      const { error: profileError } = await supabase.from("profiles").upsert(profileData, {
+        onConflict: "id",
+      })
 
       if (profileError) {
-        console.error("Profile error:", profileError)
+        console.error("[v0] Profile upsert error:", profileError)
+        // Try one more time with a longer wait
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        const { error: retryError } = await supabase.from("profiles").upsert(profileData, {
+          onConflict: "id",
+        })
+        if (retryError) {
+          console.error("[v0] Profile retry error:", retryError)
+        }
       }
 
       // 4. Redirect to dashboard
