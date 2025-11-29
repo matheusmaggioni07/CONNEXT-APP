@@ -60,13 +60,12 @@ export async function likeUser(toUserId: string) {
     return { error: "Você atingiu o limite diário de likes. Faça upgrade para o Pro!" }
   }
 
-  // Check if already liked
   const { data: existingLike } = await supabase
     .from("likes")
     .select("id")
     .eq("from_user_id", user.id)
     .eq("to_user_id", toUserId)
-    .single()
+    .maybeSingle()
 
   if (existingLike) {
     return { error: "Você já curtiu este perfil" }
@@ -85,12 +84,11 @@ export async function likeUser(toUserId: string) {
 
   await supabase.rpc("increment_daily_likes", { p_user_id: user.id })
 
-  // But we still need to check if a match was created to return the correct response
   const { data: match } = await supabase
     .from("matches")
     .select("id")
     .or(`and(user1_id.eq.${user.id},user2_id.eq.${toUserId}),and(user1_id.eq.${toUserId},user2_id.eq.${user.id})`)
-    .single()
+    .maybeSingle()
 
   if (match) {
     // Get matched user profile

@@ -17,6 +17,7 @@ import {
   Loader2,
   Wifi,
   WifiOff,
+  AlertCircle,
 } from "lucide-react"
 import { createVideoRoom, findVideoPartner, checkCallLimit, endVideoRoom } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/likes"
@@ -26,6 +27,8 @@ import { useWebRTC } from "@/hooks/use-webrtc"
 import { createClient } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types"
 import Link from "next/link"
+
+const MAX_WAIT_TIME = 60000 // 1 minute timeout for waiting
 
 export function VideoPage() {
   const [isInCall, setIsInCall] = useState(false)
@@ -47,10 +50,13 @@ export function VideoPage() {
   const [isWaiting, setIsWaiting] = useState(false)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+  const [waitTime, setWaitTime] = useState(0)
   const localVideoElementRef = useRef<HTMLVideoElement>(null)
   const remoteVideoElementRef = useRef<HTMLVideoElement>(null)
   const timerRef = useRef<NodeJS.Timeout>()
   const pollIntervalRef = useRef<NodeJS.Timeout>()
+  const waitTimerRef = useRef<NodeJS.Timeout>()
+  const waitStartTimeRef = useRef<number>(0)
 
   const supabase = createClient()
 
@@ -125,6 +131,9 @@ export function VideoPage() {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
       }
+      if (waitTimerRef.current) {
+        clearInterval(waitTimerRef.current)
+      }
     }
   }, [])
 
@@ -154,7 +163,7 @@ export function VideoPage() {
   }
 
   const getConnectionStatusText = () => {
-    if (isWaiting) return "Aguardando parceiro..."
+    if (isWaiting) return `Aguardando parceiro... (${formatDuration(waitTime)})`
     switch (connectionState) {
       case "connecting":
         return "Conectando vídeo..."
@@ -209,14 +218,31 @@ export function VideoPage() {
     else if (result.waiting && result.room) {
       setIsWaiting(true)
       setIsSearching(false)
+      setWaitTime(0)
+      waitStartTimeRef.current = Date.now()
+
+      waitTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - waitStartTimeRef.current) / 1000)
+        setWaitTime(elapsed)
+      }, 1000)
 
       // Start polling for partner
       pollIntervalRef.current = setInterval(async () => {
+        const elapsedTime = Date.now() - waitStartTimeRef.current
+        if (elapsedTime > MAX_WAIT_TIME) {
+          clearInterval(pollIntervalRef.current!)
+          clearInterval(waitTimerRef.current!)
+          setNoUsersMessage("Tempo limite de espera excedido. Tente novamente mais tarde ou convide amigos!")
+          endCall()
+          return
+        }
+
         const pollResult = await findVideoPartner(result.room.id)
 
         if (pollResult.partnerId) {
           // Partner found!
           clearInterval(pollIntervalRef.current!)
+          clearInterval(waitTimerRef.current!)
 
           const partnerProfile = await getProfileById(pollResult.partnerId)
           if (partnerProfile) {
@@ -240,6 +266,9 @@ export function VideoPage() {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current)
     }
+    if (waitTimerRef.current) {
+      clearInterval(waitTimerRef.current)
+    }
 
     // End WebRTC connection
     endConnection()
@@ -258,6 +287,7 @@ export function VideoPage() {
     setWebrtcStatus("idle")
     setLocalStream(null)
     setRemoteStream(null)
+    setWaitTime(0)
 
     // Refresh call status
     const status = await checkCallLimit()
@@ -300,6 +330,17 @@ export function VideoPage() {
     await webrtcSwitchCamera(newMode)
   }
 
+  const retryConnection = async () => {
+    if (!currentPartner || !currentRoomId) return
+
+    setWebrtcStatus("reconnecting")
+    endConnection()
+
+    setTimeout(async () => {
+      await startConnection()
+    }, 1000)
+  }
+
   return (
     <div className="flex-1 p-6">
       {/* Header */}
@@ -314,6 +355,8 @@ export function VideoPage() {
             <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/50 rounded-full">
               {connectionState === "connected" ? (
                 <Wifi className="w-4 h-4 text-green-500" />
+              ) : connectionState === "failed" ? (
+                <AlertCircle className="w-4 h-4 text-red-500" />
               ) : (
                 <WifiOff className="w-4 h-4 text-yellow-500" />
               )}
@@ -347,7 +390,7 @@ export function VideoPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-foreground">Limite de chamadas atingido</h3>
-                <p className="text-sm text-muted-foreground">Faça upgrade para Pro e tenha chamadas ilimitadas</p>
+                <p className="text-sm text-muted-foreground">Faca upgrade para Pro e tenha chamadas ilimitadas</p>
               </div>
             </div>
             <Link href="/dashboard/upgrade">
@@ -364,7 +407,7 @@ export function VideoPage() {
       {noUsersMessage && !isSearching && !isInCall && (
         <div className="bg-secondary/50 border border-border rounded-xl p-6 mb-6 text-center">
           <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-foreground mb-2">Nenhum profissional disponível</h2>
+          <h2 className="text-xl font-bold text-foreground mb-2">Nenhum profissional disponivel</h2>
           <p className="text-muted-foreground mb-4">{noUsersMessage}</p>
           <Button variant="outline" onClick={() => setNoUsersMessage(null)} className="border-border text-foreground">
             Tentar novamente
@@ -382,7 +425,7 @@ export function VideoPage() {
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Pronto para conectar?</h2>
             <p className="text-muted-foreground mb-6 text-center max-w-md">
-              Clique no botão abaixo para iniciar uma videochamada real com um profissional.
+              Clique no botao abaixo para iniciar uma videochamada real com um profissional.
             </p>
             <Button
               size="lg"
@@ -402,7 +445,7 @@ export function VideoPage() {
               <Users className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-primary" />
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Procurando profissionais...</h2>
-            <p className="text-muted-foreground mb-6">Buscando um usuário real disponível</p>
+            <p className="text-muted-foreground mb-6">Buscando um usuario real disponivel</p>
             <Button
               variant="outline"
               className="border-border text-foreground bg-transparent"
@@ -421,11 +464,19 @@ export function VideoPage() {
               <div className="w-24 h-24 rounded-full border-4 border-primary border-t-transparent animate-spin" />
               <Users className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Aguardando outro usuário...</h2>
-            <p className="text-muted-foreground mb-2">Você está na fila de espera</p>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Aguardando outro usuario...</h2>
+            <p className="text-muted-foreground mb-2">Voce esta na fila de espera</p>
+            <p className="text-sm text-primary font-medium mb-2">Tempo de espera: {formatDuration(waitTime)}</p>
             <p className="text-sm text-muted-foreground mb-6">
-              Assim que outro usuário entrar, vocês serão conectados automaticamente
+              Assim que outro usuario entrar, voces serao conectados automaticamente
             </p>
+            <div className="w-64 h-2 bg-secondary rounded-full mb-4 overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-1000"
+                style={{ width: `${Math.min((waitTime / 60) * 100, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Timeout em {formatDuration(60 - waitTime)}</p>
             <Button variant="outline" className="border-border text-foreground bg-transparent" onClick={endCall}>
               Cancelar
             </Button>
@@ -445,18 +496,35 @@ export function VideoPage() {
               {/* Show connecting state or fallback */}
               {connectionState !== "connected" && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
-                  <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-                  <p className="text-white">
-                    {connectionState === "connecting" ? "Conectando vídeo..." : "Aguardando conexão do parceiro..."}
-                  </p>
-                  <p className="text-white/60 text-sm mt-2">Estado: {connectionState}</p>
+                  {connectionState === "failed" ? (
+                    <>
+                      <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+                      <p className="text-white mb-2">Falha na conexao</p>
+                      <p className="text-white/60 text-sm mb-4">Nao foi possivel conectar com o parceiro</p>
+                      <Button
+                        onClick={retryConnection}
+                        variant="outline"
+                        className="text-white border-white bg-transparent"
+                      >
+                        Tentar novamente
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+                      <p className="text-white">
+                        {connectionState === "connecting" ? "Conectando video..." : "Aguardando conexao do parceiro..."}
+                      </p>
+                      <p className="text-white/60 text-sm mt-2">Estado: {connectionState}</p>
+                    </>
+                  )}
                 </div>
               )}
               {/* Show when connected but no remote stream yet */}
               {connectionState === "connected" && !remoteStream && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
                   <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-                  <p className="text-white">Recebendo vídeo do parceiro...</p>
+                  <p className="text-white">Recebendo video do parceiro...</p>
                 </div>
               )}
             </div>
@@ -465,7 +533,7 @@ export function VideoPage() {
             <div className="absolute top-4 left-4 bg-background/80 backdrop-blur-sm rounded-xl p-4">
               <h3 className="font-semibold text-foreground">{currentPartner?.full_name}</h3>
               <p className="text-sm text-muted-foreground">
-                {currentPartner?.position} • {currentPartner?.company}
+                {currentPartner?.position} - {currentPartner?.company}
               </p>
               <div className="flex flex-wrap gap-1 mt-2">
                 {currentPartner?.interests?.slice(0, 2).map((interest) => (
@@ -579,7 +647,19 @@ export function VideoPage() {
       {/* WebRTC Error */}
       {webrtcError && (
         <div className="mt-4 p-4 bg-destructive/10 border border-destructive/30 rounded-xl text-center">
-          <p className="text-destructive">{webrtcError}</p>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            <p className="text-destructive font-medium">Erro de conexao</p>
+          </div>
+          <p className="text-destructive/80 text-sm">{webrtcError}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3 border-destructive text-destructive bg-transparent"
+            onClick={endCall}
+          >
+            Encerrar e tentar novamente
+          </Button>
         </div>
       )}
 
@@ -589,7 +669,7 @@ export function VideoPage() {
           {[
             {
               icon: Video,
-              title: "Vídeo em tempo real",
+              title: "Video em tempo real",
               description: "Videochamada real com WebRTC peer-to-peer",
             },
             {
@@ -599,8 +679,8 @@ export function VideoPage() {
             },
             {
               icon: Heart,
-              title: "Match mútuo",
-              description: "Curta para conectar no WhatsApp após a chamada",
+              title: "Match mutuo",
+              description: "Curta para conectar no WhatsApp apos a chamada",
             },
           ].map((tip, index) => (
             <div key={index} className="bg-card rounded-xl border border-border p-4 flex items-start gap-4">
@@ -625,7 +705,7 @@ export function VideoPage() {
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Match!</h2>
             <p className="text-muted-foreground mb-6">
-              Você e {currentPartner.full_name} deram match! Agora vocês podem se conectar no WhatsApp.
+              Voce e {currentPartner.full_name} deram match! Agora voces podem se conectar no WhatsApp.
             </p>
             <div className="flex gap-3">
               <Button
