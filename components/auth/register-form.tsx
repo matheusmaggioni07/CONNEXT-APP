@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,9 @@ import {
   AlertCircle,
   Check,
   Sparkles,
+  Camera,
+  Upload,
+  Loader2,
 } from "lucide-react"
 import Link from "next/link"
 import { OAuthButtons } from "./oauth-buttons"
@@ -86,6 +89,11 @@ export function RegisterForm() {
     country: "Brasil",
     lookingFor: [] as string[],
   })
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -99,6 +107,27 @@ export function RegisterForm() {
       ...prev,
       [field]: prev[field].includes(item) ? prev[field].filter((i) => i !== item) : [...prev[field], item],
     }))
+  }
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError("A imagem deve ter no máximo 5MB")
+        return
+      }
+      if (!file.type.startsWith("image/")) {
+        setError("Por favor, selecione uma imagem válida")
+        return
+      }
+      setAvatarFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+      setError("")
+    }
   }
 
   const validateStep = () => {
@@ -136,6 +165,20 @@ export function RegisterForm() {
       }
     }
 
+    if (step === 4) {
+      if (formData.lookingFor.length === 0) {
+        setError("Selecione pelo menos um objetivo.")
+        return false
+      }
+    }
+
+    if (step === 5) {
+      if (!avatarFile) {
+        setError("Por favor, adicione uma foto de perfil.")
+        return false
+      }
+    }
+
     return true
   }
 
@@ -155,8 +198,8 @@ export function RegisterForm() {
 
     if (!validateStep()) return
 
-    if (formData.lookingFor.length === 0) {
-      setError("Selecione pelo menos um objetivo.")
+    if (step < 5) {
+      setStep(step + 1)
       return
     }
 
@@ -199,6 +242,49 @@ export function RegisterForm() {
         setError("Erro ao criar usuário")
         setIsLoading(false)
         return
+      }
+
+      let avatarUrl = null
+      if (avatarFile) {
+        setIsUploadingAvatar(true)
+        const fileExt = avatarFile.name.split(".").pop()
+        const fileName = `${authData.user.id}-${Date.now()}.${fileExt}`
+
+        const { error: uploadError, data: uploadData } = await supabase.storage
+          .from("avatars")
+          .upload(fileName, avatarFile)
+
+        if (uploadError) {
+          console.error("Avatar upload error:", uploadError)
+        } else {
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("avatars").getPublicUrl(fileName)
+          avatarUrl = publicUrl
+        }
+        setIsUploadingAvatar(false)
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: formData.name,
+          phone: formData.phone,
+          company: formData.company,
+          position: formData.position,
+          industry: formData.industry,
+          city: formData.city,
+          country: formData.country,
+          interests: formData.interests,
+          looking_for: formData.lookingFor,
+          bio: formData.bio,
+          avatar_url: avatarUrl,
+          onboarding_completed: true,
+        })
+        .eq("id", authData.user.id)
+
+      if (profileError) {
+        console.error("Profile update error:", profileError)
       }
 
       if (!authData.session) {
@@ -253,9 +339,8 @@ export function RegisterForm() {
             <ConnextLogo size="lg" />
           </Link>
 
-          {/* Progress */}
           <div className="flex items-center gap-2 mb-8">
-            {[1, 2, 3, 4].map((s) => (
+            {[1, 2, 3, 4, 5].map((s) => (
               <div
                 key={s}
                 className={`h-2 flex-1 rounded-full transition-colors ${s <= step ? "gradient-bg" : "bg-muted"}`}
@@ -268,12 +353,14 @@ export function RegisterForm() {
             {step === 2 && "Informações profissionais"}
             {step === 3 && "Seus interesses"}
             {step === 4 && "O que você busca?"}
+            {step === 5 && "Foto de perfil"}
           </h1>
           <p className="text-muted-foreground mb-8">
             {step === 1 && "Insira seu email para começar."}
             {step === 2 && "Conte-nos mais sobre você."}
             {step === 3 && "Selecione suas áreas de interesse."}
             {step === 4 && "Defina seus objetivos de networking."}
+            {step === 5 && "Adicione uma foto para seu perfil."}
           </p>
 
           {error && (
@@ -541,46 +628,135 @@ export function RegisterForm() {
               </>
             )}
 
-            {/* Navigation Buttons */}
-            <div className="flex gap-3">
+            {step === 5 && (
+              <>
+                <div className="space-y-4">
+                  <Label className="text-foreground">Sua foto de perfil</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Uma boa foto de perfil aumenta suas chances de conexão em até 80%
+                  </p>
+
+                  <div className="flex flex-col items-center gap-6">
+                    {/* Avatar Preview */}
+                    <div
+                      className="relative w-40 h-40 rounded-full border-4 border-dashed border-border/50 flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors overflow-hidden group"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {avatarPreview ? (
+                        <>
+                          <img
+                            src={avatarPreview || "/placeholder.svg"}
+                            alt="Preview"
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Camera className="w-8 h-8 text-white" />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-center p-4">
+                          <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+                          <span className="text-sm text-muted-foreground">Clique para adicionar</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-border/50 text-foreground bg-card/50 hover:bg-card/80"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      {avatarPreview ? "Trocar foto" : "Escolher foto"}
+                    </Button>
+                  </div>
+
+                  <div className="gradient-border rounded-lg p-4 bg-card/50 backdrop-blur-sm mt-6">
+                    <h3 className="font-semibold text-foreground mb-2">Dicas para uma boa foto</h3>
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-primary" />
+                        Use uma foto profissional ou casual-profissional
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-primary" />
+                        Mostre seu rosto claramente
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-primary" />
+                        Boa iluminação faz diferença
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-primary" />
+                        Sorria! Transmite confiança
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Navigation */}
+            <div className="flex gap-4">
               {step > 1 && (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={prevStep}
-                  className="flex-1 border-border/50 text-foreground hover:bg-card backdrop-blur-sm bg-transparent"
+                  className="flex-1 border-border/50 text-foreground bg-card/50 hover:bg-card/80"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Voltar
                 </Button>
               )}
-              {step < 4 ? (
+              {step < 5 ? (
                 <Button
                   type="button"
                   onClick={nextStep}
-                  className="flex-1 gradient-bg text-primary-foreground hover:opacity-90 glow-orange"
+                  className="flex-1 gradient-bg text-primary-foreground glow-orange"
                 >
-                  Próximo
+                  Continuar
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
                 <Button
                   type="submit"
-                  className="flex-1 gradient-bg text-primary-foreground hover:opacity-90 glow-orange"
-                  disabled={isLoading}
+                  className="flex-1 gradient-bg text-primary-foreground glow-orange"
+                  disabled={isLoading || isUploadingAvatar}
                 >
-                  {isLoading ? "Criando conta..." : "Criar conta"}
+                  {isLoading || isUploadingAvatar ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {isUploadingAvatar ? "Enviando foto..." : "Criando conta..."}
+                    </>
+                  ) : (
+                    <>
+                      Criar Conta
+                      <Sparkles className="w-4 h-4 ml-2" />
+                    </>
+                  )}
                 </Button>
               )}
             </div>
-          </form>
 
-          <p className="text-center text-muted-foreground mt-6">
-            Já tem uma conta?{" "}
-            <Link href="/login" className="gradient-text font-semibold hover:underline">
-              Entrar
-            </Link>
-          </p>
+            {step === 1 && (
+              <p className="text-center text-sm text-muted-foreground">
+                Já tem uma conta?{" "}
+                <Link href="/login" className="text-primary hover:underline">
+                  Faça login
+                </Link>
+              </p>
+            )}
+          </form>
         </div>
       </div>
     </div>
