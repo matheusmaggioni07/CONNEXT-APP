@@ -197,3 +197,25 @@
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Adding mobile safe area styles for iOS notch and home indicator */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Mobile-specific scroll behavior */
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  /* Prevent pull-to-refresh on iOS */
+  body {
+    overscroll-behavior-y: contain;
+  }
+}
