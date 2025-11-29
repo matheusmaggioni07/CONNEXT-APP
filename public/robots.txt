@@ -3,4 +3,4 @@ Allow: /
 Disallow: /api/
 Disallow: /auth/
 
-Sitemap: https://connextapp.com.br/sitemap.xml
+Sitemap: https://www.connextapp.com.br/sitemap.xml

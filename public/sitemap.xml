@@ -1,55 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- All URLs now use www.connextapp.com.br to match Google's canonical selection -->
   <url>
-    <loc>https://connextapp.com.br</loc>
+    <loc>https://www.connextapp.com.br</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/login</loc>
+    <loc>https://www.connextapp.com.br/login</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/register</loc>
+    <loc>https://www.connextapp.com.br/register</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/dashboard</loc>
+    <loc>https://www.connextapp.com.br/dashboard</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/dashboard/discover</loc>
+    <loc>https://www.connextapp.com.br/dashboard/discover</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/dashboard/matches</loc>
+    <loc>https://www.connextapp.com.br/dashboard/matches</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/dashboard/video</loc>
+    <loc>https://www.connextapp.com.br/dashboard/video</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/dashboard/profile</loc>
+    <loc>https://www.connextapp.com.br/dashboard/profile</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://connextapp.com.br/upgrade</loc>
+    <loc>https://www.connextapp.com.br/upgrade</loc>
     <lastmod>2025-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
