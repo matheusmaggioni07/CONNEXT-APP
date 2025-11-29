@@ -37,14 +37,10 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && request.nextUrl.pathname.startsWith("/dashboard")) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("phone, company, position, industry, onboarding_completed")
-      .eq("id", user.id)
-      .single()
+    const { data: profile } = await supabase.from("profiles").select("onboarding_completed").eq("id", user.id).single()
 
-    const isOnboardingComplete =
-      profile?.onboarding_completed || (profile?.phone && profile?.company && profile?.position && profile?.industry)
+    // Only redirect to onboarding if explicitly NOT completed
+    const isOnboardingComplete = profile?.onboarding_completed === true
 
     if (!isOnboardingComplete && !request.nextUrl.pathname.startsWith("/dashboard/onboarding")) {
       const url = request.nextUrl.clone()

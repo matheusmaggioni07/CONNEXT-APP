@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { DemoModal } from "@/components/demo-modal"
@@ -29,6 +29,40 @@ import Link from "next/link"
 export function LandingPage() {
   const [demoOpen, setDemoOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const [onlineCount1, setOnlineCount1] = useState(2500)
+  const [onlineCount2, setOnlineCount2] = useState(847)
+
+  useEffect(() => {
+    // Randomize online count every 3-8 seconds for hero badge
+    const interval1 = setInterval(
+      () => {
+        setOnlineCount1((prev) => {
+          const change = Math.floor(Math.random() * 100) - 40 // -40 to +60
+          const newValue = prev + change
+          return Math.max(2200, Math.min(3100, newValue)) // Keep between 2200-3100
+        })
+      },
+      Math.random() * 5000 + 3000,
+    ) // 3-8 seconds
+
+    // Randomize online count every 2-5 seconds for floating badge
+    const interval2 = setInterval(
+      () => {
+        setOnlineCount2((prev) => {
+          const change = Math.floor(Math.random() * 30) - 12 // -12 to +18
+          const newValue = prev + change
+          return Math.max(650, Math.min(1200, newValue)) // Keep between 650-1200
+        })
+      },
+      Math.random() * 3000 + 2000,
+    ) // 2-5 seconds
+
+    return () => {
+      clearInterval(interval1)
+      clearInterval(interval2)
+    }
+  }, [])
 
   const socialProofAvatars = [
     "/professional-man-smiling-headshot.png",
@@ -155,7 +189,9 @@ export function LandingPage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
-                <span className="text-sm text-primary font-medium">+2.500 profissionais online agora</span>
+                <span className="text-sm text-primary font-medium">
+                  +{onlineCount1.toLocaleString("pt-BR")} profissionais online agora
+                </span>
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.1] mb-6 text-balance">
@@ -270,7 +306,7 @@ export function LandingPage() {
               >
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-secondary" />
-                  <span className="text-sm font-semibold">847 online</span>
+                  <span className="text-sm font-semibold">{onlineCount2.toLocaleString("pt-BR")} online</span>
                 </div>
               </div>
             </div>
