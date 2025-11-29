@@ -36,6 +36,8 @@ export function useWebRTC({
   const hasStartedRef = useRef(false)
   const channelReadyRef = useRef(false)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const partnerReadyRef = useRef(false)
+  const offerSentRef = useRef(false)
 
   const supabase = createClient()
 
@@ -57,14 +59,14 @@ export function useWebRTC({
 
         const stream = await navigator.mediaDevices.getUserMedia({
           video: video ? { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
-          audio: audio ? { echoCancellation: true, noiseSuppression: true } : false,
+          audio: audio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
         })
 
         console.log(
           "[WebRTC] Got local stream with tracks:",
           stream
             .getTracks()
-            .map((t) => t.kind)
+            .map((t) => `${t.kind}:${t.enabled}`)
             .join(", "),
         )
         localStreamRef.current = stream
@@ -89,8 +91,6 @@ export function useWebRTC({
           errorMsg = "Câmera ou microfone já está em uso por outro aplicativo."
         } else if (err.name === "OverconstrainedError") {
           errorMsg = "Sua câmera não suporta as configurações solicitadas."
-        } else if (err.name === "TypeError") {
-          errorMsg = "Erro de configuração. Tente novamente."
         }
 
         setError(errorMsg)
@@ -103,12 +103,12 @@ export function useWebRTC({
   // Create peer connection
   const createPeerConnection = useCallback(
     (stream: MediaStream) => {
-      console.log("[WebRTC] Creating peer connection with config:", rtcConfig)
+      console.log("[WebRTC] Creating peer connection")
       const pc = new RTCPeerConnection(rtcConfig)
 
       // Add local tracks to connection
       stream.getTracks().forEach((track) => {
-        console.log("[WebRTC] Adding local track:", track.kind)
+        console.log("[WebRTC] Adding local track:", track.kind, "enabled:", track.enabled)
         pc.addTrack(track, stream)
       })
 
@@ -128,6 +128,7 @@ export function useWebRTC({
 
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = remoteStreamObj
+            remoteVideoRef.current.play().catch((e) => console.log("[WebRTC] Remote video play error:", e))
           }
         }
       }
@@ -135,7 +136,7 @@ export function useWebRTC({
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && channelReadyRef.current) {
-          console.log("[WebRTC] Sending ICE candidate:", event.candidate.candidate?.substring(0, 50))
+          console.log("[WebRTC] Sending ICE candidate")
           channelRef.current?.send({
             type: "broadcast",
             event: "ice-candidate",
@@ -166,18 +167,50 @@ export function useWebRTC({
         }
       }
 
-      pc.onicegatheringstatechange = () => {
-        console.log("[WebRTC] ICE gathering state:", pc.iceGatheringState)
-      }
-
-      pc.onsignalingstatechange = () => {
-        console.log("[WebRTC] Signaling state:", pc.signalingState)
-      }
-
       peerConnectionRef.current = pc
       return pc
     },
     [userId, onConnectionStateChange, onPartnerDisconnected],
+  )
+
+  const createAndSendOffer = useCallback(
+    async (pc: RTCPeerConnection, channel: RealtimeChannel) => {
+      if (offerSentRef.current) {
+        console.log("[WebRTC] Offer already sent, skipping")
+        return
+      }
+
+      try {
+        if (pc.signalingState !== "stable") {
+          console.log("[WebRTC] Cannot create offer, signaling state:", pc.signalingState)
+          return
+        }
+
+        console.log("[WebRTC] Creating offer...")
+        offerSentRef.current = true
+
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        })
+        await pc.setLocalDescription(offer)
+        console.log("[WebRTC] Set local description (offer)")
+
+        channel.send({
+          type: "broadcast",
+          event: "offer",
+          payload: {
+            sdp: offer,
+            from: userId,
+          },
+        })
+        console.log("[WebRTC] Sent offer to partner")
+      } catch (err) {
+        console.error("[WebRTC] Error creating offer:", err)
+        offerSentRef.current = false
+      }
+    },
+    [userId],
   )
 
   // Handle incoming signaling messages
@@ -203,7 +236,6 @@ export function useWebRTC({
           console.log("[WebRTC] Set remote description (offer)")
 
           // Process pending candidates
-          console.log("[WebRTC] Processing", pendingCandidatesRef.current.length, "pending candidates")
           for (const candidate of pendingCandidatesRef.current) {
             try {
               await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -240,7 +272,6 @@ export function useWebRTC({
           console.log("[WebRTC] Set remote description (answer)")
 
           // Process pending candidates
-          console.log("[WebRTC] Processing", pendingCandidatesRef.current.length, "pending candidates")
           for (const candidate of pendingCandidatesRef.current) {
             try {
               await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -259,7 +290,6 @@ export function useWebRTC({
               console.warn("[WebRTC] Failed to add ICE candidate:", e)
             }
           } else {
-            // Queue the candidate for later
             pendingCandidatesRef.current.push(payload.candidate)
             console.log("[WebRTC] Queued ICE candidate for later")
           }
@@ -285,6 +315,8 @@ export function useWebRTC({
     hasRemoteDescriptionRef.current = false
     pendingCandidatesRef.current = []
     channelReadyRef.current = false
+    partnerReadyRef.current = false
+    offerSentRef.current = false
 
     try {
       // Get local stream
@@ -315,7 +347,6 @@ export function useWebRTC({
           handleSignalingMessage({ type: "answer", ...payload })
         })
         .on("broadcast", { event: "ice-candidate" }, ({ payload }) => {
-          console.log("[WebRTC] Received ice-candidate broadcast")
           handleSignalingMessage(payload)
         })
         .on("broadcast", { event: "end-call" }, ({ payload }) => {
@@ -326,28 +357,39 @@ export function useWebRTC({
         })
         .on("broadcast", { event: "ready" }, ({ payload }) => {
           console.log("[WebRTC] Received ready from:", payload.from)
-          if (payload.from === partnerId && isInitiatorRef.current) {
-            // Partner is ready, now create offer
-            createAndSendOffer(pc, channel)
+          if (payload.from === partnerId) {
+            partnerReadyRef.current = true
+            if (isInitiatorRef.current && channelReadyRef.current && !offerSentRef.current) {
+              console.log("[WebRTC] Partner ready, creating offer...")
+              createAndSendOffer(pc, channel)
+            }
           }
         })
         .subscribe(async (status) => {
           console.log("[WebRTC] Channel subscription status:", status)
           if (status === "SUBSCRIBED") {
             channelReadyRef.current = true
-            console.log("[WebRTC] Channel subscribed, isInitiator:", isInitiatorRef.current)
 
+            // Send ready signal
             channel.send({
               type: "broadcast",
               event: "ready",
               payload: { from: userId },
             })
 
-            // Only the initiator creates the offer after a small delay
             if (isInitiatorRef.current) {
-              setTimeout(async () => {
+              if (partnerReadyRef.current) {
+                console.log("[WebRTC] Partner already ready, creating offer immediately")
                 await createAndSendOffer(pc, channel)
-              }, 1000)
+              } else {
+                // Wait for partner ready signal, but also try after timeout
+                setTimeout(async () => {
+                  if (!offerSentRef.current && peerConnectionRef.current) {
+                    console.log("[WebRTC] Timeout: creating offer anyway")
+                    await createAndSendOffer(pc, channel)
+                  }
+                }, 2000)
+              }
             }
           }
         })
@@ -369,35 +411,10 @@ export function useWebRTC({
     getLocalStream,
     createPeerConnection,
     handleSignalingMessage,
+    createAndSendOffer,
     supabase,
     onPartnerDisconnected,
   ])
-
-  const createAndSendOffer = async (pc: RTCPeerConnection, channel: RealtimeChannel) => {
-    try {
-      if (pc.signalingState !== "stable") {
-        console.log("[WebRTC] Cannot create offer, signaling state:", pc.signalingState)
-        return
-      }
-
-      console.log("[WebRTC] Creating offer...")
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      console.log("[WebRTC] Set local description (offer)")
-
-      channel.send({
-        type: "broadcast",
-        event: "offer",
-        payload: {
-          sdp: offer,
-          from: userId,
-        },
-      })
-      console.log("[WebRTC] Sent offer to partner")
-    } catch (err) {
-      console.error("[WebRTC] Error creating offer:", err)
-    }
-  }
 
   // End the connection
   const endConnection = useCallback(() => {
@@ -412,22 +429,19 @@ export function useWebRTC({
       })
     }
 
-    // Cleanup local stream using ref to ensure we have latest value
+    // Cleanup local stream using ref
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         track.stop()
-        console.log("[WebRTC] Stopped local track:", track.kind)
       })
       localStreamRef.current = null
     }
 
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
-      console.log("[WebRTC] Closed peer connection")
     }
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
-      console.log("[WebRTC] Removed channel")
     }
 
     setLocalStream(null)
@@ -439,6 +453,8 @@ export function useWebRTC({
     pendingCandidatesRef.current = []
     hasStartedRef.current = false
     channelReadyRef.current = false
+    partnerReadyRef.current = false
+    offerSentRef.current = false
   }, [supabase, userId])
 
   // Toggle camera
@@ -446,7 +462,6 @@ export function useWebRTC({
     if (localStreamRef.current) {
       localStreamRef.current.getVideoTracks().forEach((track) => {
         track.enabled = enabled
-        console.log("[WebRTC] Camera track enabled:", enabled)
       })
     }
   }, [])
@@ -456,7 +471,6 @@ export function useWebRTC({
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach((track) => {
         track.enabled = enabled
-        console.log("[WebRTC] Mic track enabled:", enabled)
       })
     }
   }, [])
@@ -466,30 +480,24 @@ export function useWebRTC({
     if (!localStreamRef.current || !peerConnectionRef.current) return
 
     try {
-      console.log("[WebRTC] Switching camera to:", facingMode)
-      // Get new stream with different camera
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false, // Keep existing audio track
+        audio: false,
       })
 
       const newVideoTrack = newStream.getVideoTracks()[0]
       const oldVideoTrack = localStreamRef.current.getVideoTracks()[0]
 
-      // Replace track in peer connection
       const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === "video")
 
       if (sender) {
         await sender.replaceTrack(newVideoTrack)
-        console.log("[WebRTC] Replaced video track in sender")
       }
 
-      // Update local stream
       oldVideoTrack.stop()
       localStreamRef.current.removeTrack(oldVideoTrack)
       localStreamRef.current.addTrack(newVideoTrack)
 
-      // Update local stream state to trigger re-render
       const updatedStream = new MediaStream(localStreamRef.current.getTracks())
       localStreamRef.current = updatedStream
       setLocalStream(updatedStream)
@@ -499,13 +507,12 @@ export function useWebRTC({
       }
     } catch (err) {
       console.error("[WebRTC] Error switching camera:", err)
-      setError("Erro ao trocar câmera. Verifique se seu dispositivo suporta câmera traseira.")
+      setError("Erro ao trocar câmera.")
     }
   }, [])
 
   useEffect(() => {
     return () => {
-      console.log("[WebRTC] Cleanup on unmount")
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop())
       }

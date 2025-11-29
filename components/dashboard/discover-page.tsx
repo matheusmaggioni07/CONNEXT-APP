@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { X, Heart, Video, MapPin, Building2, Sparkles, MessageCircle, Crown } from "lucide-react"
+import { X, Heart, Video, MapPin, Building2, Sparkles, MessageCircle, Crown, Loader2 } from "lucide-react"
 import { likeUser, checkLikeLimit } from "@/app/actions/likes"
 import { getProfilesToDiscover } from "@/app/actions/profile"
 import { getOnlineUserIds, updatePresence } from "@/app/actions/presence"
@@ -16,6 +16,7 @@ export function DiscoverPage() {
   const [showMatchModal, setShowMatchModal] = useState(false)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLiking, setIsLiking] = useState(false)
   const [likeStatus, setLikeStatus] = useState<{ canLike: boolean; remaining: number; isPro?: boolean }>({
     canLike: true,
     remaining: 5,
@@ -56,28 +57,34 @@ export function DiscoverPage() {
   const currentProfile = profiles[currentIndex]
 
   const handleLike = async () => {
-    if (!currentProfile) return
-    if (!likeStatus.canLike) {
-      return
+    if (!currentProfile || isLiking) return
+    if (!likeStatus.canLike) return
+
+    setIsLiking(true)
+
+    try {
+      const result = await likeUser(currentProfile.id)
+
+      if (result.error) {
+        console.error(result.error)
+        setIsLiking(false)
+        return
+      }
+
+      if (result.isMatch && result.matchedProfile) {
+        setMatchedProfile(result.matchedProfile)
+        setShowMatchModal(true)
+      }
+
+      const newStatus = await checkLikeLimit()
+      setLikeStatus(newStatus as { canLike: boolean; remaining: number; isPro?: boolean })
+
+      nextProfile()
+    } catch (error) {
+      console.error("Like error:", error)
+    } finally {
+      setIsLiking(false)
     }
-
-    const result = await likeUser(currentProfile.id)
-
-    if (result.error) {
-      console.error(result.error)
-      return
-    }
-
-    if (result.isMatch && result.matchedProfile) {
-      setMatchedProfile(result.matchedProfile)
-      setShowMatchModal(true)
-    }
-
-    // Update like status
-    const newStatus = await checkLikeLimit()
-    setLikeStatus(newStatus as { canLike: boolean; remaining: number; isPro?: boolean })
-
-    nextProfile()
   }
 
   const handleSkip = () => {
@@ -241,20 +248,21 @@ export function DiscoverPage() {
               variant="outline"
               className="w-16 h-16 rounded-full border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground bg-transparent"
               onClick={handleSkip}
+              disabled={isLiking}
             >
               <X className="w-8 h-8" />
             </Button>
             <Button
               size="lg"
-              className={`w-20 h-20 rounded-full ${
-                likeStatus.canLike
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              className={`w-20 h-20 rounded-full transition-all duration-200 ${
+                likeStatus.canLike && !isLiking
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-110 active:scale-95"
                   : "bg-muted text-muted-foreground cursor-not-allowed"
               }`}
               onClick={handleLike}
-              disabled={!likeStatus.canLike}
+              disabled={!likeStatus.canLike || isLiking}
             >
-              <Heart className="w-10 h-10" />
+              {isLiking ? <Loader2 className="w-10 h-10 animate-spin" /> : <Heart className="w-10 h-10" />}
             </Button>
             <Link href="/dashboard/video">
               <Button
