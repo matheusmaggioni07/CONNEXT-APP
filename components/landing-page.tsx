@@ -21,12 +21,45 @@ import {
   Play,
   Menu,
   X,
+  Instagram,
+  Linkedin,
 } from "lucide-react"
 import Link from "next/link"
 
 export function LandingPage() {
   const [demoOpen, setDemoOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const socialProofAvatars = [
+    "/professional-man-smiling-headshot.png",
+    "/testimonial-person-3.png",
+    "/young-professional-man-tech-headshot.jpg",
+    "/professional-woman-executive-headshot.png",
+    "/professional-man-entrepreneur-headshot.jpg",
+  ]
+
+  const testimonials = [
+    {
+      name: "Ricardo Silva",
+      role: "CEO @ TechStart",
+      quote:
+        "Encontrei meu co-founder pelo Connext. Em 2 semanas de uso, fiz mais conexões valiosas do que em 2 anos no LinkedIn.",
+      avatar: "/brazilian-man-ceo-tech-professional-headshot-smili.jpg",
+    },
+    {
+      name: "Mariana Costa",
+      role: "Head of Sales @ SaaS Corp",
+      quote: "A integração com WhatsApp é genial. Fechei 3 deals no primeiro mês usando a plataforma. ROI absurdo.",
+      avatar: "/brazilian-woman-sales-professional-headshot-smilin.jpg",
+    },
+    {
+      name: "Fernando Lima",
+      role: "Investor @ Venture Capital",
+      quote:
+        "Como investidor, uso o Connext para descobrir startups promissoras. A qualidade dos profissionais é impressionante.",
+      avatar: "/brazilian-man-investor-suit-professional-headshot.jpg",
+    },
+  ]
 
   return (
     <div className="min-h-screen bg-background">
@@ -158,13 +191,9 @@ export function LandingPage() {
               {/* Social Proof */}
               <div className="flex items-center gap-6 flex-wrap">
                 <div className="flex -space-x-3">
-                  {[1, 2, 3, 4, 5].map((i) => (
+                  {socialProofAvatars.map((src, i) => (
                     <div key={i} className="w-10 h-10 rounded-full border-2 border-background bg-muted overflow-hidden">
-                      <img
-                        src={`/professional-headshot.png?height=40&width=40&query=professional headshot ${i}`}
-                        alt="User"
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={src || "/placeholder.svg"} alt="User" className="w-full h-full object-cover" />
                     </div>
                   ))}
                 </div>
@@ -485,29 +514,7 @@ export function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                name: "Ricardo Silva",
-                role: "CEO @ TechStart",
-                quote:
-                  "Encontrei meu co-founder pelo Connext. Em 2 semanas de uso, fiz mais conexões valiosas do que em 2 anos no LinkedIn.",
-                avatar: "tech ceo man",
-              },
-              {
-                name: "Mariana Costa",
-                role: "Head of Sales @ SaaS Corp",
-                quote:
-                  "A integração com WhatsApp é genial. Fechei 3 deals no primeiro mês usando a plataforma. ROI absurdo.",
-                avatar: "sales woman professional",
-              },
-              {
-                name: "Fernando Lima",
-                role: "Investor @ Venture Capital",
-                quote:
-                  "Como investidor, uso o Connext para descobrir startups promissoras. A qualidade dos profissionais é impressionante.",
-                avatar: "investor man suit",
-              },
-            ].map((testimonial, i) => (
+            {testimonials.map((testimonial, i) => (
               <div key={i} className="rounded-2xl border border-border/50 bg-card p-6">
                 <div className="flex items-center gap-1 mb-4">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -518,7 +525,7 @@ export function LandingPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-muted overflow-hidden">
                     <img
-                      src={`/.jpg?height=40&width=40&query=${testimonial.avatar}`}
+                      src={testimonial.avatar || "/placeholder.svg"}
                       alt={testimonial.name}
                       className="w-full h-full object-cover"
                     />
@@ -633,16 +640,24 @@ export function LandingPage() {
                 A plataforma de networking profissional via vídeo. Conecte-se, faça match e feche negócios.
               </p>
               <div className="flex gap-4">
-                {["linkedin", "twitter", "instagram"].map((social) => (
-                  <a
-                    key={social}
-                    href="#"
-                    className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary/10 hover:text-primary transition-colors"
-                  >
-                    <span className="sr-only">{social}</span>
-                    <Globe className="w-5 h-5" />
-                  </a>
-                ))}
+                <a
+                  href="https://www.instagram.com/matheusmaggioni_/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary/10 hover:text-primary transition-colors"
+                >
+                  <span className="sr-only">Instagram</span>
+                  <Instagram className="w-5 h-5" />
+                </a>
+                <a
+                  href="https://www.linkedin.com/in/matheus-maggioni-2592b5333"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary/10 hover:text-primary transition-colors"
+                >
+                  <span className="sr-only">LinkedIn</span>
+                  <Linkedin className="w-5 h-5" />
+                </a>
               </div>
             </div>
             <div>
