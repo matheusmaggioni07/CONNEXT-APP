@@ -38,6 +38,8 @@ export function useWebRTC({
   const localStreamRef = useRef<MediaStream | null>(null)
   const partnerReadyRef = useRef(false)
   const offerSentRef = useRef(false)
+  const reconnectAttemptsRef = useRef(0)
+  const maxReconnectAttempts = 3
 
   const supabase = createClient()
 
@@ -58,8 +60,23 @@ export function useWebRTC({
         console.log("[WebRTC] Requesting media with video:", video, "audio:", audio)
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: video ? { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
-          audio: audio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
+          video: video
+            ? {
+                facingMode,
+                width: { ideal: 1280, min: 640 },
+                height: { ideal: 720, min: 480 },
+                frameRate: { ideal: 30, min: 15 },
+              }
+            : false,
+          audio: audio
+            ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000,
+                channelCount: 1,
+              }
+            : false,
         })
 
         console.log(
@@ -90,7 +107,17 @@ export function useWebRTC({
         } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
           errorMsg = "Câmera ou microfone já está em uso por outro aplicativo."
         } else if (err.name === "OverconstrainedError") {
-          errorMsg = "Sua câmera não suporta as configurações solicitadas."
+          try {
+            const fallbackStream = await navigator.mediaDevices.getUserMedia({
+              video: video ? { facingMode } : false,
+              audio: audio ? { echoCancellation: true, noiseSuppression: true } : false,
+            })
+            localStreamRef.current = fallbackStream
+            setLocalStream(fallbackStream)
+            return fallbackStream
+          } catch {
+            errorMsg = "Sua câmera não suporta as configurações solicitadas."
+          }
         }
 
         setError(errorMsg)
@@ -121,7 +148,7 @@ export function useWebRTC({
             "[WebRTC] Setting remote stream with tracks:",
             remoteStreamObj
               .getTracks()
-              .map((t) => t.kind)
+              .map((t) => `${t.kind}:${t.enabled}`)
               .join(", "),
           )
           setRemoteStream(remoteStreamObj)
@@ -136,7 +163,7 @@ export function useWebRTC({
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && channelReadyRef.current) {
-          console.log("[WebRTC] Sending ICE candidate")
+          console.log("[WebRTC] Sending ICE candidate:", event.candidate.type)
           channelRef.current?.send({
             type: "broadcast",
             event: "ice-candidate",
@@ -148,14 +175,33 @@ export function useWebRTC({
         }
       }
 
-      // Connection state changes
       pc.onconnectionstatechange = () => {
         console.log("[WebRTC] Connection state changed to:", pc.connectionState)
         setConnectionState(pc.connectionState)
         onConnectionStateChange?.(pc.connectionState)
 
-        if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-          onPartnerDisconnected?.()
+        if (pc.connectionState === "connected") {
+          reconnectAttemptsRef.current = 0 // Reset on successful connection
+        }
+
+        if (pc.connectionState === "disconnected") {
+          // Try to reconnect automatically
+          setTimeout(() => {
+            if (peerConnectionRef.current?.connectionState === "disconnected") {
+              console.log("[WebRTC] Still disconnected, notifying partner disconnected")
+              onPartnerDisconnected?.()
+            }
+          }, 5000) // Wait 5 seconds before considering disconnected
+        }
+
+        if (pc.connectionState === "failed") {
+          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+            reconnectAttemptsRef.current++
+            console.log("[WebRTC] Connection failed, attempting restart ICE", reconnectAttemptsRef.current)
+            pc.restartIce()
+          } else {
+            onPartnerDisconnected?.()
+          }
         }
       }
 
@@ -165,6 +211,10 @@ export function useWebRTC({
           console.log("[WebRTC] ICE connection failed, attempting restart")
           pc.restartIce()
         }
+      }
+
+      pc.onicegatheringstatechange = () => {
+        console.log("[WebRTC] ICE gathering state:", pc.iceGatheringState)
       }
 
       peerConnectionRef.current = pc
@@ -317,6 +367,7 @@ export function useWebRTC({
     channelReadyRef.current = false
     partnerReadyRef.current = false
     offerSentRef.current = false
+    reconnectAttemptsRef.current = 0
 
     try {
       // Get local stream
@@ -455,6 +506,7 @@ export function useWebRTC({
     channelReadyRef.current = false
     partnerReadyRef.current = false
     offerSentRef.current = false
+    reconnectAttemptsRef.current = 0
   }, [supabase, userId])
 
   // Toggle camera

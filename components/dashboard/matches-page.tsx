@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, Video, MapPin, Clock, Heart } from "lucide-react"
+import { MessageCircle, Video, MapPin, Clock, Heart, AlertCircle } from "lucide-react"
 import { getMatches } from "@/app/actions/likes"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
@@ -30,9 +30,24 @@ export function MatchesPage() {
     fetchData()
   }, [])
 
-  const openWhatsApp = (phone: string) => {
-    const cleanPhone = phone.replace(/\D/g, "")
-    window.open(`https://wa.me/${cleanPhone}`, "_blank")
+  const openWhatsApp = (phone: string | undefined | null, name: string) => {
+    if (!phone) {
+      alert(`${name} ainda não adicionou o número de WhatsApp ao perfil.`)
+      return
+    }
+
+    // Clean phone number - remove all non-digits
+    let cleanPhone = phone.replace(/\D/g, "")
+
+    // Add Brazil country code if not present
+    if (cleanPhone.length === 11 || cleanPhone.length === 10) {
+      cleanPhone = "55" + cleanPhone
+    }
+
+    // Create message
+    const message = encodeURIComponent(`Olá ${name}! Nos conectamos pelo Connext e gostaria de conversar com você.`)
+
+    window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
   }
 
   const formatDate = (dateStr: string) => {
@@ -88,6 +103,8 @@ export function MatchesPage() {
               const profile = match.matched_profile as Profile | undefined
               if (!profile) return null
 
+              const hasPhone = !!profile.phone
+
               return (
                 <div
                   key={match.id}
@@ -104,7 +121,7 @@ export function MatchesPage() {
                         />
                       </div>
                       {isOnline(profile.id) && (
-                        <div className="absolute bottom-0 right-0 w-4 h-4 bg-primary border-2 border-card rounded-full" />
+                        <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-card rounded-full" />
                       )}
                     </div>
 
@@ -112,12 +129,13 @@ export function MatchesPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-foreground truncate">{profile.full_name}</h3>
                       <p className="text-sm text-muted-foreground truncate">
-                        {profile.position} • {profile.company}
+                        {profile.position || profile.situation || "Profissional"}{" "}
+                        {profile.company ? `• ${profile.company}` : ""}
                       </p>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
-                          {profile.city}
+                          {profile.city || "Brasil"}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
@@ -147,11 +165,12 @@ export function MatchesPage() {
                   <div className="flex gap-2 mt-4">
                     <Button
                       size="sm"
-                      className="flex-1 bg-[#25D366] hover:bg-[#25D366]/90 text-white"
-                      onClick={() => openWhatsApp(profile.phone || "")}
+                      className={`flex-1 ${hasPhone ? "bg-[#25D366] hover:bg-[#25D366]/90" : "bg-gray-500 hover:bg-gray-600"} text-white`}
+                      onClick={() => openWhatsApp(profile.phone, profile.full_name)}
                     >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       WhatsApp
+                      {!hasPhone && <AlertCircle className="w-3 h-3 ml-1" />}
                     </Button>
                     <Link href="/dashboard/video">
                       <Button
@@ -163,6 +182,14 @@ export function MatchesPage() {
                       </Button>
                     </Link>
                   </div>
+
+                  {/* Phone warning */}
+                  {!hasPhone && (
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      Este usuário ainda não adicionou WhatsApp
+                    </p>
+                  )}
                 </div>
               )
             })}
