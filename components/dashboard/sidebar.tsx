@@ -4,9 +4,10 @@ import { useAuth } from "@/lib/auth-context"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ConnextLogo } from "@/components/ui/connext-logo"
-import { User, LogOut, Compass, Heart, Video, Bell, Menu, X } from "lucide-react"
+import { User, LogOut, Compass, Heart, Video, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { NotificationsDropdown } from "@/components/notifications-dropdown"
 
 const navItems = [
   { href: "/dashboard", icon: Compass, label: "Descobrir" },
@@ -62,11 +63,8 @@ export function MobileHeader() {
         <Link href="/dashboard">
           <ConnextLogo size="sm" />
         </Link>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Bell className="w-5 h-5 text-muted-foreground" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 gradient-bg rounded-full animate-pulse" />
-          </div>
+        <div className="flex items-center gap-2">
+          <NotificationsDropdown />
           <button onClick={() => setMenuOpen(!menuOpen)} className="p-1">
             {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -131,10 +129,7 @@ export function Sidebar() {
             <p className="font-semibold text-foreground truncate">{userName}</p>
             <p className="text-sm text-muted-foreground truncate">{userPosition}</p>
           </div>
-          <div className="relative">
-            <Bell className="w-5 h-5 text-muted-foreground cursor-pointer hover:text-foreground transition-colors" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 gradient-bg rounded-full animate-pulse" />
-          </div>
+          <NotificationsDropdown />
         </div>
       </div>
 
@@ -149,12 +144,12 @@ export function Sidebar() {
                   href={item.href}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                     isActive
-                      ? "gradient-bg text-primary-foreground glow-orange"
-                      : "text-muted-foreground hover:bg-card hover:text-foreground"
+                      ? "gradient-bg text-white shadow-lg"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   <item.icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <span className="font-medium">{item.label}</span>
                 </Link>
               </li>
             )
@@ -166,7 +161,7 @@ export function Sidebar() {
       <div className="p-4 border-t border-border/50">
         <Button
           variant="ghost"
-          className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-card"
+          className="w-full justify-start text-muted-foreground hover:text-foreground"
           onClick={handleLogout}
         >
           <LogOut className="w-5 h-5 mr-3" />

@@ -34,29 +34,25 @@ export function LandingPage() {
   const [onlineCount2, setOnlineCount2] = useState(847)
 
   useEffect(() => {
-    // Randomize online count every 3-8 seconds for hero badge
-    const interval1 = setInterval(
-      () => {
-        setOnlineCount1((prev) => {
-          const change = Math.floor(Math.random() * 100) - 40 // -40 to +60
-          const newValue = prev + change
-          return Math.max(2200, Math.min(3100, newValue)) // Keep between 2200-3100
-        })
-      },
-      Math.random() * 5000 + 3000,
-    ) // 3-8 seconds
+    const updateCount1 = () => {
+      setOnlineCount1((prev) => {
+        const change = Math.floor(Math.random() * 80) - 30 // -30 to +50
+        const newValue = prev + change
+        return Math.max(2200, Math.min(3100, newValue))
+      })
+    }
 
-    // Randomize online count every 2-5 seconds for floating badge
-    const interval2 = setInterval(
-      () => {
-        setOnlineCount2((prev) => {
-          const change = Math.floor(Math.random() * 30) - 12 // -12 to +18
-          const newValue = prev + change
-          return Math.max(650, Math.min(1200, newValue)) // Keep between 650-1200
-        })
-      },
-      Math.random() * 3000 + 2000,
-    ) // 2-5 seconds
+    const updateCount2 = () => {
+      setOnlineCount2((prev) => {
+        const change = Math.floor(Math.random() * 40) - 15 // -15 to +25
+        const newValue = prev + change
+        return Math.max(650, Math.min(1200, newValue))
+      })
+    }
+
+    // Initial faster intervals
+    const interval1 = setInterval(updateCount1, 1200) // Every 1.2 seconds
+    const interval2 = setInterval(updateCount2, 800) // Every 0.8 seconds
 
     return () => {
       clearInterval(interval1)
