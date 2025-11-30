@@ -29,31 +29,11 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect dashboard routes
+  // Protect dashboard routes - redirect to login if not authenticated
   if (request.nextUrl.pathname.startsWith("/dashboard") && !user) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     return NextResponse.redirect(url)
-  }
-
-  if (user && request.nextUrl.pathname.startsWith("/dashboard")) {
-    const { data: profile } = await supabase.from("profiles").select("onboarding_completed").eq("id", user.id).single()
-
-    // Only redirect to onboarding if explicitly NOT completed
-    const isOnboardingComplete = profile?.onboarding_completed === true
-
-    if (!isOnboardingComplete && !request.nextUrl.pathname.startsWith("/dashboard/onboarding")) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/dashboard/onboarding"
-      return NextResponse.redirect(url)
-    }
-
-    // If onboarding is complete and user tries to access onboarding page, redirect to dashboard
-    if (isOnboardingComplete && request.nextUrl.pathname.startsWith("/dashboard/onboarding")) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/dashboard"
-      return NextResponse.redirect(url)
-    }
   }
 
   // Redirect logged in users away from auth pages

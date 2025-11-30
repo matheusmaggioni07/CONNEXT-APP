@@ -754,15 +754,15 @@ export function LandingPage() {
               <span className="text-foreground font-medium">Matheus Maggioni</span>
             </p>
             <div className="flex gap-6 text-sm text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">
+              <Link href="/termos" className="hover:text-foreground transition-colors">
                 Termos de Uso
-              </a>
-              <a href="#" className="hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/privacidade" className="hover:text-foreground transition-colors">
                 Privacidade
-              </a>
-              <a href="#" className="hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/cookies" className="hover:text-foreground transition-colors">
                 Cookies
-              </a>
+              </Link>
             </div>
           </div>
         </div>

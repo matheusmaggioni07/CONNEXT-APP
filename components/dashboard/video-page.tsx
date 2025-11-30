@@ -18,6 +18,7 @@ import {
   Wifi,
   WifiOff,
   AlertCircle,
+  Flag,
 } from "lucide-react"
 import { createVideoRoom, findVideoPartner, checkCallLimit, endVideoRoom } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/likes"
@@ -28,7 +29,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types"
 import Link from "next/link"
 
-const MAX_WAIT_TIME = 60000 // 1 minute timeout for waiting
+const MAX_WAIT_TIME = 60000
 
 export function VideoPage() {
   const [isInCall, setIsInCall] = useState(false)
@@ -51,6 +52,7 @@ export function VideoPage() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [waitTime, setWaitTime] = useState(0)
+  const [likeLoading, setLikeLoading] = useState(false)
   const localVideoElementRef = useRef<HTMLVideoElement>(null)
   const remoteVideoElementRef = useRef<HTMLVideoElement>(null)
   const timerRef = useRef<NodeJS.Timeout>()
@@ -60,7 +62,6 @@ export function VideoPage() {
 
   const supabase = createClient()
 
-  // Get current user ID
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) {
@@ -69,7 +70,6 @@ export function VideoPage() {
     })
   }, [supabase])
 
-  // WebRTC hook - only active when in a call with a partner
   const {
     localVideoRef,
     remoteVideoRef,
@@ -88,7 +88,6 @@ export function VideoPage() {
     partnerId: currentPartner?.id || "",
     onConnectionStateChange: (state) => {
       setWebrtcStatus(state)
-      console.log("[v0] WebRTC connection state changed:", state)
     },
     onPartnerDisconnected: () => {
       handlePartnerDisconnected()
@@ -97,7 +96,6 @@ export function VideoPage() {
 
   useEffect(() => {
     if (webrtcLocalStream && localVideoElementRef.current) {
-      console.log("[v0] Setting local stream to video element")
       localVideoElementRef.current.srcObject = webrtcLocalStream
       setLocalStream(webrtcLocalStream)
     }
@@ -105,7 +103,6 @@ export function VideoPage() {
 
   useEffect(() => {
     if (webrtcRemoteStream && remoteVideoElementRef.current) {
-      console.log("[v0] Setting remote stream to video element")
       remoteVideoElementRef.current.srcObject = webrtcRemoteStream
       setRemoteStream(webrtcRemoteStream)
     }
@@ -128,12 +125,8 @@ export function VideoPage() {
 
     return () => {
       clearInterval(presenceInterval)
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
-      if (waitTimerRef.current) {
-        clearInterval(waitTimerRef.current)
-      }
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+      if (waitTimerRef.current) clearInterval(waitTimerRef.current)
     }
   }, [])
 
@@ -143,16 +136,11 @@ export function VideoPage() {
         setCallDuration((prev) => prev + 1)
       }, 1000)
     } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-      }
+      if (timerRef.current) clearInterval(timerRef.current)
       setCallDuration(0)
     }
-
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-      }
+      if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [isInCall])
 
@@ -163,16 +151,16 @@ export function VideoPage() {
   }
 
   const getConnectionStatusText = () => {
-    if (isWaiting) return `Aguardando parceiro... (${formatDuration(waitTime)})`
+    if (isWaiting) return `Aguardando...`
     switch (connectionState) {
       case "connecting":
-        return "Conectando vídeo..."
+        return "Conectando..."
       case "connected":
         return "Conectado"
       case "disconnected":
         return "Desconectado"
       case "failed":
-        return "Falha na conexão"
+        return "Falha"
       default:
         return webrtcStatus
     }
@@ -185,7 +173,6 @@ export function VideoPage() {
     setNoUsersMessage(null)
     setWebrtcStatus("searching")
 
-    // Create or join a video room using the queue system
     const result = await createVideoRoom()
 
     if (result.error) {
@@ -194,11 +181,8 @@ export function VideoPage() {
       return
     }
 
-    if (result.room) {
-      setCurrentRoomId(result.room.id)
-    }
+    if (result.room) setCurrentRoomId(result.room.id)
 
-    // If we joined an existing room, we have a partner immediately
     if (result.joined && result.partnerId) {
       const partnerProfile = await getProfileById(result.partnerId)
       if (partnerProfile) {
@@ -206,16 +190,11 @@ export function VideoPage() {
         setIsSearching(false)
         setIsInCall(true)
         setIsWaiting(false)
-
-        // Start WebRTC connection
         setTimeout(async () => {
-          console.log("[v0] Starting WebRTC connection (joined existing room)")
           await startConnection()
         }, 500)
       }
-    }
-    // If we created a waiting room, poll for a partner
-    else if (result.waiting && result.room) {
+    } else if (result.waiting && result.room) {
       setIsWaiting(true)
       setIsSearching(false)
       setWaitTime(0)
@@ -226,13 +205,12 @@ export function VideoPage() {
         setWaitTime(elapsed)
       }, 1000)
 
-      // Start polling for partner
       pollIntervalRef.current = setInterval(async () => {
         const elapsedTime = Date.now() - waitStartTimeRef.current
         if (elapsedTime > MAX_WAIT_TIME) {
           clearInterval(pollIntervalRef.current!)
           clearInterval(waitTimerRef.current!)
-          setNoUsersMessage("Tempo limite de espera excedido. Tente novamente mais tarde ou convide amigos!")
+          setNoUsersMessage("Tempo limite excedido. Tente novamente!")
           endCall()
           return
         }
@@ -240,7 +218,6 @@ export function VideoPage() {
         const pollResult = await findVideoPartner(result.room.id)
 
         if (pollResult.partnerId) {
-          // Partner found!
           clearInterval(pollIntervalRef.current!)
           clearInterval(waitTimerRef.current!)
 
@@ -249,36 +226,20 @@ export function VideoPage() {
             setCurrentPartner(partnerProfile)
             setIsWaiting(false)
             setIsInCall(true)
-
-            // Start WebRTC connection
             setTimeout(async () => {
-              console.log("[v0] Starting WebRTC connection (partner joined our room)")
               await startConnection()
             }, 500)
           }
         }
-      }, 2000) // Poll every 2 seconds
+      }, 2000)
     }
   }
 
   const endCall = async () => {
-    // Clear polling
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
-    }
-    if (waitTimerRef.current) {
-      clearInterval(waitTimerRef.current)
-    }
-
-    // End WebRTC connection
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+    if (waitTimerRef.current) clearInterval(waitTimerRef.current)
     endConnection()
-
-    // End room in database
-    if (currentRoomId) {
-      await endVideoRoom(currentRoomId)
-    }
-
-    // Reset state
+    if (currentRoomId) await endVideoRoom(currentRoomId)
     setIsInCall(false)
     setIsSearching(false)
     setIsWaiting(false)
@@ -288,27 +249,23 @@ export function VideoPage() {
     setLocalStream(null)
     setRemoteStream(null)
     setWaitTime(0)
-
-    // Refresh call status
     const status = await checkCallLimit()
     setCallStatus(status as { canCall: boolean; remaining: number; isPro?: boolean })
   }
 
   const skipPartner = async () => {
     await endCall()
-    // Automatically start searching again
-    setTimeout(() => {
-      startSearching()
-    }, 500)
+    setTimeout(() => startSearching(), 500)
   }
 
   const likePartner = async () => {
-    if (!currentPartner) return
-
-    const result = await likeUser(currentPartner.id)
-
-    if (result?.match) {
-      setShowMatchModal(true)
+    if (!currentPartner || likeLoading) return
+    setLikeLoading(true)
+    try {
+      const result = await likeUser(currentPartner.id)
+      if (result?.match) setShowMatchModal(true)
+    } finally {
+      setLikeLoading(false)
     }
   }
 
@@ -332,394 +289,296 @@ export function VideoPage() {
 
   const retryConnection = async () => {
     if (!currentPartner || !currentRoomId) return
-
     setWebrtcStatus("reconnecting")
     endConnection()
-
-    setTimeout(async () => {
-      await startConnection()
-    }, 1000)
+    setTimeout(async () => await startConnection(), 1000)
   }
 
   return (
-    <div className="flex-1 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Videochamada</h1>
-          <p className="text-muted-foreground">Conecte-se com profissionais em tempo real</p>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* Connection Status */}
-          {(isInCall || isWaiting) && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/50 rounded-full">
+    <div className="flex-1 flex flex-col h-full bg-black">
+      {/* Top bar with connection info */}
+      {(isInCall || isWaiting || isSearching) && (
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-3 bg-gradient-to-b from-black/80 to-transparent">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur rounded-full">
               {connectionState === "connected" ? (
                 <Wifi className="w-4 h-4 text-green-500" />
-              ) : connectionState === "failed" ? (
-                <AlertCircle className="w-4 h-4 text-red-500" />
               ) : (
                 <WifiOff className="w-4 h-4 text-yellow-500" />
               )}
-              <span className="text-sm text-muted-foreground">{getConnectionStatusText()}</span>
+              <span className="text-sm text-white">{getConnectionStatusText()}</span>
             </div>
-          )}
-          {/* Call Timer */}
-          {isInCall && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 text-destructive rounded-full">
-              <div className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
-              <span className="text-sm font-medium">{formatDuration(callDuration)}</span>
-            </div>
-          )}
-          {/* Call Limit */}
+            {isInCall && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/80 backdrop-blur rounded-full">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                <span className="text-sm text-white font-medium">{formatDuration(callDuration)}</span>
+              </div>
+            )}
+          </div>
           {!callStatus.isPro && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/50 rounded-full">
-              <Video className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">{callStatus.remaining} chamadas restantes</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur rounded-full">
+              <Video className="w-4 h-4 text-white/70" />
+              <span className="text-sm text-white/70">{callStatus.remaining} restantes</span>
             </div>
           )}
         </div>
-      </div>
-
-      {/* Upgrade Banner */}
-      {!callStatus.canCall && !callStatus.isPro && (
-        <div className="bg-gradient-to-r from-primary/20 to-primary/5 border border-primary/30 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
-                <Crown className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">Limite de chamadas atingido</h3>
-                <p className="text-sm text-muted-foreground">Faca upgrade para Pro e tenha chamadas ilimitadas</p>
-              </div>
-            </div>
-            <Link href="/dashboard/upgrade">
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                <Crown className="w-4 h-4 mr-2" />
-                Upgrade Pro
-              </Button>
-            </Link>
-          </div>
-        </div>
       )}
 
-      {/* No Users Message */}
-      {noUsersMessage && !isSearching && !isInCall && (
-        <div className="bg-secondary/50 border border-border rounded-xl p-6 mb-6 text-center">
-          <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-foreground mb-2">Nenhum profissional disponivel</h2>
-          <p className="text-muted-foreground mb-4">{noUsersMessage}</p>
-          <Button variant="outline" onClick={() => setNoUsersMessage(null)} className="border-border text-foreground">
-            Tentar novamente
-          </Button>
-        </div>
-      )}
-
-      {/* Video Area */}
-      <div className="relative bg-card rounded-2xl border border-border overflow-hidden aspect-video">
-        {!isInCall && !isSearching && !isWaiting ? (
-          /* Idle State */
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-              <Video className="w-12 h-12 text-primary" />
+      {!isInCall && !isSearching && !isWaiting ? (
+        /* Idle State */
+        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-background">
+          {noUsersMessage ? (
+            <div className="text-center">
+              <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-foreground mb-2">Nenhum usuario disponivel</h2>
+              <p className="text-muted-foreground mb-6">{noUsersMessage}</p>
+              <Button onClick={() => setNoUsersMessage(null)}>Tentar novamente</Button>
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Pronto para conectar?</h2>
-            <p className="text-muted-foreground mb-6 text-center max-w-md">
-              Clique no botao abaixo para iniciar uma videochamada real com um profissional.
-            </p>
-            <Button
-              size="lg"
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-              onClick={startSearching}
-              disabled={!callStatus.canCall || !currentUserId}
-            >
-              <Video className="w-5 h-5 mr-2" />
-              Iniciar Videochamada
-            </Button>
-          </div>
-        ) : isSearching ? (
-          /* Searching State */
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="relative mb-6">
-              <div className="w-24 h-24 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-              <Users className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-primary" />
+          ) : !callStatus.canCall && !callStatus.isPro ? (
+            <div className="text-center max-w-md">
+              <Crown className="w-16 h-16 text-primary mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-foreground mb-2">Limite atingido</h2>
+              <p className="text-muted-foreground mb-6">Faca upgrade para Pro e tenha chamadas ilimitadas</p>
+              <Link href="/dashboard/upgrade">
+                <Button className="bg-gradient-to-r from-primary to-pink-500">
+                  <Crown className="w-4 h-4 mr-2" />
+                  Upgrade Pro
+                </Button>
+              </Link>
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Procurando profissionais...</h2>
-            <p className="text-muted-foreground mb-6">Buscando um usuario real disponivel</p>
-            <Button
-              variant="outline"
-              className="border-border text-foreground bg-transparent"
-              onClick={() => {
-                setIsSearching(false)
-                endCall()
-              }}
-            >
-              Cancelar
-            </Button>
-          </div>
-        ) : isWaiting ? (
-          /* Waiting for Partner State */
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="relative mb-6">
-              <div className="w-24 h-24 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-              <Users className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Aguardando outro usuario...</h2>
-            <p className="text-muted-foreground mb-2">Voce esta na fila de espera</p>
-            <p className="text-sm text-primary font-medium mb-2">Tempo de espera: {formatDuration(waitTime)}</p>
-            <p className="text-sm text-muted-foreground mb-6">
-              Assim que outro usuario entrar, voces serao conectados automaticamente
-            </p>
-            <div className="w-64 h-2 bg-secondary rounded-full mb-4 overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-1000"
-                style={{ width: `${Math.min((waitTime / 60) * 100, 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">Timeout em {formatDuration(60 - waitTime)}</p>
-            <Button variant="outline" className="border-border text-foreground bg-transparent" onClick={endCall}>
-              Cancelar
-            </Button>
-          </div>
-        ) : (
-          /* In Call State - Real WebRTC Video */
-          <>
-            {/* Remote Video (Partner) - Real video stream */}
-            <div className="w-full h-full bg-black relative">
-              <video
-                ref={remoteVideoElementRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-                style={{ backgroundColor: "black" }}
-              />
-              {/* Show connecting state or fallback */}
-              {connectionState !== "connected" && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
-                  {connectionState === "failed" ? (
-                    <>
-                      <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-                      <p className="text-white mb-2">Falha na conexao</p>
-                      <p className="text-white/60 text-sm mb-4">Nao foi possivel conectar com o parceiro</p>
-                      <Button
-                        onClick={retryConnection}
-                        variant="outline"
-                        className="text-white border-white bg-transparent"
-                      >
-                        Tentar novamente
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-                      <p className="text-white">
-                        {connectionState === "connecting" ? "Conectando video..." : "Aguardando conexao do parceiro..."}
-                      </p>
-                      <p className="text-white/60 text-sm mt-2">Estado: {connectionState}</p>
-                    </>
-                  )}
-                </div>
-              )}
-              {/* Show when connected but no remote stream yet */}
-              {connectionState === "connected" && !remoteStream && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
-                  <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-                  <p className="text-white">Recebendo video do parceiro...</p>
-                </div>
-              )}
-            </div>
-
-            {/* Partner Info */}
-            <div className="absolute top-4 left-4 bg-background/80 backdrop-blur-sm rounded-xl p-4">
-              <h3 className="font-semibold text-foreground">{currentPartner?.full_name}</h3>
-              <p className="text-sm text-muted-foreground">
-                {currentPartner?.position} - {currentPartner?.company}
+          ) : (
+            <div className="text-center max-w-md">
+              <div className="w-24 h-24 bg-gradient-to-r from-primary to-pink-500 rounded-full flex items-center justify-center mb-6 mx-auto">
+                <Video className="w-12 h-12 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Pronto para conectar?</h2>
+              <p className="text-muted-foreground mb-6">
+                Inicie uma videochamada e conheca profissionais em tempo real
               </p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {currentPartner?.interests?.slice(0, 2).map((interest) => (
-                  <span key={interest} className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs">
-                    {interest}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Local Video (Self) - Real video stream */}
-            <div className="absolute bottom-20 right-4 w-48 h-36 bg-black rounded-xl overflow-hidden border-2 border-border shadow-lg">
-              <video
-                ref={localVideoElementRef}
-                autoPlay
-                muted
-                playsInline
-                className={`w-full h-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""} ${!isCameraOn ? "hidden" : ""}`}
-                style={{ backgroundColor: "black" }}
-              />
-              {!isCameraOn && (
-                <div className="w-full h-full flex items-center justify-center bg-muted">
-                  <VideoOff className="w-8 h-8 text-muted-foreground" />
-                </div>
-              )}
-              {/* Show loading if no local stream */}
-              {isCameraOn && !localStream && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black">
-                  <Loader2 className="w-6 h-6 text-primary animate-spin" />
-                </div>
-              )}
-              <Button
-                size="sm"
-                variant="secondary"
-                className="absolute bottom-2 right-2 w-8 h-8 p-0 rounded-full bg-background/80"
-                onClick={switchCamera}
-              >
-                <SwitchCamera className="w-4 h-4" />
-              </Button>
-            </div>
-
-            {/* Controls */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3">
               <Button
                 size="lg"
-                variant="outline"
+                className="bg-gradient-to-r from-primary to-pink-500 text-white px-8"
+                onClick={startSearching}
+                disabled={!currentUserId}
+              >
+                <Video className="w-5 h-5 mr-2" />
+                Iniciar Videochamada
+              </Button>
+
+              <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <Sparkles className="w-6 h-6 text-primary mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Video HD</p>
+                </div>
+                <div>
+                  <Users className="w-6 h-6 text-primary mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Profissionais reais</p>
+                </div>
+                <div>
+                  <Heart className="w-6 h-6 text-primary mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Match e WhatsApp</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : isSearching || isWaiting ? (
+        /* Searching/Waiting State */
+        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-background">
+          <div className="relative mb-6">
+            <div className="w-32 h-32 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+            <Users className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 text-primary" />
+          </div>
+          <h2 className="text-2xl font-bold text-foreground mb-2">{isSearching ? "Procurando..." : "Aguardando..."}</h2>
+          <p className="text-muted-foreground mb-2">
+            {isSearching ? "Buscando usuarios disponiveis" : "Esperando outro usuario entrar"}
+          </p>
+          {isWaiting && (
+            <>
+              <p className="text-primary font-medium mb-4">{formatDuration(waitTime)}</p>
+              <div className="w-48 h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-pink-500 transition-all"
+                  style={{ width: `${Math.min((waitTime / 60) * 100, 100)}%` }}
+                />
+              </div>
+            </>
+          )}
+          <Button variant="outline" className="mt-6 bg-transparent" onClick={endCall}>
+            Cancelar
+          </Button>
+        </div>
+      ) : (
+        /* In Call - Ome.tv Style Layout */
+        <div className="flex-1 flex flex-col relative">
+          {/* Partner Video (Large - Top) */}
+          <div className="flex-1 relative bg-black min-h-0">
+            <video ref={remoteVideoElementRef} autoPlay playsInline className="w-full h-full object-cover" />
+
+            {/* Partner Info Overlay */}
+            {currentPartner && connectionState === "connected" && (
+              <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm rounded-xl p-3 max-w-[200px]">
+                <p className="font-semibold text-white text-sm truncate">{currentPartner.full_name}</p>
+                <p className="text-white/70 text-xs truncate">{currentPartner.position || currentPartner.situation}</p>
+                {currentPartner.location && <p className="text-white/50 text-xs mt-1">📍 {currentPartner.location}</p>}
+              </div>
+            )}
+
+            {/* Connection States */}
+            {connectionState !== "connected" && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90">
+                {connectionState === "failed" ? (
+                  <>
+                    <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+                    <p className="text-white text-lg mb-2">Falha na conexao</p>
+                    <Button
+                      onClick={retryConnection}
+                      variant="outline"
+                      className="text-white border-white bg-transparent"
+                    >
+                      Tentar novamente
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
+                    <p className="text-white text-lg">Conectando video...</p>
+                    <p className="text-white/60 text-sm mt-2">Aguarde enquanto estabelecemos a conexao</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* No remote stream yet */}
+            {connectionState === "connected" && !remoteStream && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90">
+                <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+                <p className="text-white">Recebendo video do parceiro...</p>
+              </div>
+            )}
+          </div>
+
+          {/* Local Video (Small - Bottom Right) */}
+          <div className="absolute bottom-24 right-4 w-28 h-40 md:w-36 md:h-48 bg-black rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl">
+            <video
+              ref={localVideoElementRef}
+              autoPlay
+              muted
+              playsInline
+              className={`w-full h-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""} ${!isCameraOn ? "hidden" : ""}`}
+            />
+            {!isCameraOn && (
+              <div className="w-full h-full flex items-center justify-center bg-muted">
+                <VideoOff className="w-8 h-8 text-muted-foreground" />
+              </div>
+            )}
+            {isCameraOn && !localStream && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black">
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              </div>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              className="absolute bottom-2 right-2 w-7 h-7 p-0 rounded-full bg-black/60"
+              onClick={switchCamera}
+            >
+              <SwitchCamera className="w-3 h-3" />
+            </Button>
+          </div>
+
+          {/* Bottom Controls - Ome.tv Style */}
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent">
+            <div className="flex items-center justify-center gap-4">
+              {/* Mic Toggle */}
+              <Button
+                size="lg"
                 className={`w-14 h-14 rounded-full ${
-                  isMicOn
-                    ? "border-border text-foreground bg-background/80"
-                    : "bg-destructive text-destructive-foreground border-destructive"
+                  isMicOn ? "bg-white/20 hover:bg-white/30" : "bg-red-500 hover:bg-red-600"
                 }`}
                 onClick={toggleMic}
               >
-                {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
+                {isMicOn ? <Mic className="w-6 h-6 text-white" /> : <MicOff className="w-6 h-6 text-white" />}
               </Button>
 
+              {/* Camera Toggle */}
               <Button
                 size="lg"
-                variant="outline"
                 className={`w-14 h-14 rounded-full ${
-                  isCameraOn
-                    ? "border-border text-foreground bg-background/80"
-                    : "bg-destructive text-destructive-foreground border-destructive"
+                  isCameraOn ? "bg-white/20 hover:bg-white/30" : "bg-red-500 hover:bg-red-600"
                 }`}
                 onClick={toggleCamera}
               >
-                {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+                {isCameraOn ? <Video className="w-6 h-6 text-white" /> : <VideoOff className="w-6 h-6 text-white" />}
               </Button>
 
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-14 h-14 rounded-full border-border text-foreground bg-background/80"
-                onClick={switchCamera}
-              >
-                <SwitchCamera className="w-6 h-6" />
+              {/* End Call */}
+              <Button size="lg" className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600" onClick={endCall}>
+                <PhoneOff className="w-6 h-6 text-white" />
               </Button>
 
-              {/* End call */}
-              <Button
-                size="lg"
-                className="w-14 h-14 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={endCall}
-              >
-                <PhoneOff className="w-6 h-6" />
-              </Button>
-
-              {/* Skip */}
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-14 h-14 rounded-full border-border text-foreground hover:bg-secondary bg-background/80"
-                onClick={skipPartner}
-              >
-                <SkipForward className="w-6 h-6" />
+              {/* Skip / Next */}
+              <Button size="lg" className="w-14 h-14 rounded-full bg-blue-500 hover:bg-blue-600" onClick={skipPartner}>
+                <SkipForward className="w-6 h-6 text-white" />
               </Button>
 
               {/* Like */}
               <Button
                 size="lg"
-                className="w-14 h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                className="w-14 h-14 rounded-full bg-gradient-to-r from-pink-500 to-red-500 hover:opacity-90"
                 onClick={likePartner}
+                disabled={likeLoading}
               >
-                <Heart className="w-6 h-6" />
+                {likeLoading ? (
+                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                ) : (
+                  <Heart className="w-6 h-6 text-white" />
+                )}
+              </Button>
+
+              {/* Report */}
+              <Button
+                size="lg"
+                className="w-14 h-14 rounded-full bg-white/20 hover:bg-white/30"
+                onClick={() => alert("Denuncia enviada!")}
+              >
+                <Flag className="w-6 h-6 text-white" />
               </Button>
             </div>
-          </>
-        )}
-      </div>
-
-      {/* WebRTC Error */}
-      {webrtcError && (
-        <div className="mt-4 p-4 bg-destructive/10 border border-destructive/30 rounded-xl text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <AlertCircle className="w-5 h-5 text-destructive" />
-            <p className="text-destructive font-medium">Erro de conexao</p>
           </div>
-          <p className="text-destructive/80 text-sm">{webrtcError}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3 border-destructive text-destructive bg-transparent"
-            onClick={endCall}
-          >
-            Encerrar e tentar novamente
-          </Button>
-        </div>
-      )}
-
-      {/* Tips */}
-      {!isInCall && !isSearching && !isWaiting && callStatus.canCall && !noUsersMessage && (
-        <div className="mt-6 grid md:grid-cols-3 gap-4">
-          {[
-            {
-              icon: Video,
-              title: "Video em tempo real",
-              description: "Videochamada real com WebRTC peer-to-peer",
-            },
-            {
-              icon: Sparkles,
-              title: "Seja profissional",
-              description: "Apresente-se e fale sobre seus objetivos",
-            },
-            {
-              icon: Heart,
-              title: "Match mutuo",
-              description: "Curta para conectar no WhatsApp apos a chamada",
-            },
-          ].map((tip, index) => (
-            <div key={index} className="bg-card rounded-xl border border-border p-4 flex items-start gap-4">
-              <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                <tip.icon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">{tip.title}</h3>
-                <p className="text-sm text-muted-foreground">{tip.description}</p>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
       {/* Match Modal */}
       {showMatchModal && currentPartner && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-2xl p-8 max-w-md w-full text-center border border-border">
-            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Heart className="w-10 h-10 text-primary fill-primary" />
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl p-8 max-w-md w-full text-center border border-border animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-gradient-to-r from-pink-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Heart className="w-10 h-10 text-white fill-white" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Match!</h2>
+            <h2 className="text-3xl font-bold text-foreground mb-2">E um Match!</h2>
             <p className="text-muted-foreground mb-6">
-              Voce e {currentPartner.full_name} deram match! Agora voces podem se conectar no WhatsApp.
+              Voce e <strong>{currentPartner.full_name}</strong> deram match! Agora podem trocar WhatsApp.
             </p>
             <div className="flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1 border-border text-foreground bg-transparent"
-                onClick={() => setShowMatchModal(false)}
-              >
+              <Button variant="outline" className="flex-1 bg-transparent" onClick={() => setShowMatchModal(false)}>
                 Continuar
               </Button>
               <Link href="/dashboard/matches" className="flex-1">
-                <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">Ver Matches</Button>
+                <Button className="w-full bg-gradient-to-r from-primary to-pink-500">Ver Matches</Button>
               </Link>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* WebRTC Error */}
+      {webrtcError && (
+        <div className="absolute bottom-24 left-4 right-4 p-4 bg-red-500/90 rounded-xl text-center">
+          <p className="text-white font-medium">{webrtcError}</p>
+          <Button size="sm" variant="outline" className="mt-2 text-white border-white bg-transparent" onClick={endCall}>
+            Encerrar
+          </Button>
         </div>
       )}
     </div>
