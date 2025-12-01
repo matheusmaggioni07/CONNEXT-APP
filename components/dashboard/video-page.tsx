@@ -12,7 +12,6 @@ import {
   PhoneOff,
   SkipForward,
   Heart,
-  Flag,
   Loader2,
   Sparkles,
   Users,
@@ -802,46 +801,67 @@ function VideoPage() {
             </div>
 
             {/* Controls */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 md:gap-3 z-20">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={toggleMute}
-                className={`rounded-full ${isMuted ? "bg-destructive text-destructive-foreground" : "bg-background/80"}`}
-              >
-                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </Button>
+            <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 z-20">
+              <div className="flex items-center gap-4 md:gap-6 bg-black/60 backdrop-blur-xl px-6 md:px-8 py-4 md:py-5 rounded-full border border-white/10">
+                {/* Mute button - smaller, secondary */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleMute}
+                  className={`w-12 h-12 md:w-14 md:h-14 rounded-full transition-all ${
+                    isMuted
+                      ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  {isMuted ? <MicOff className="w-5 h-5 md:w-6 md:h-6" /> : <Mic className="w-5 h-5 md:w-6 md:h-6" />}
+                </Button>
 
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={toggleVideo}
-                className={`rounded-full ${isVideoOff ? "bg-destructive text-destructive-foreground" : "bg-background/80"}`}
-              >
-                {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
-              </Button>
+                {/* Camera button - smaller, secondary */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleVideo}
+                  className={`w-12 h-12 md:w-14 md:h-14 rounded-full transition-all ${
+                    isVideoOff
+                      ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  {isVideoOff ? (
+                    <VideoOff className="w-5 h-5 md:w-6 md:h-6" />
+                  ) : (
+                    <Video className="w-5 h-5 md:w-6 md:h-6" />
+                  )}
+                </Button>
 
-              <Button variant="destructive" size="icon" onClick={endCall} className="rounded-full">
-                <PhoneOff className="w-5 h-5" />
-              </Button>
+                {/* NEXT button - large, prominent */}
+                <Button
+                  onClick={skipToNext}
+                  className="h-14 md:h-16 px-6 md:px-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-base md:text-lg border border-white/20 transition-all hover:scale-105"
+                >
+                  <SkipForward className="w-5 h-5 md:w-6 md:h-6 mr-2" />
+                  Next
+                </Button>
 
-              <Button variant="outline" size="icon" onClick={skipToNext} className="rounded-full bg-background/80">
-                <SkipForward className="w-5 h-5" />
-              </Button>
+                {/* End call button - red, important */}
+                <Button
+                  onClick={endCall}
+                  className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-red-500 hover:bg-red-600 text-white transition-all hover:scale-105"
+                >
+                  <PhoneOff className="w-6 h-6 md:w-7 md:h-7" />
+                </Button>
 
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleLike}
-                disabled={!currentPartner}
-                className="rounded-full bg-pink-500/20 hover:bg-pink-500/30 text-pink-500"
-              >
-                <Heart className="w-5 h-5" />
-              </Button>
-
-              <Button variant="outline" size="icon" className="rounded-full bg-background/80">
-                <Flag className="w-5 h-5" />
-              </Button>
+                {/* CONNEXT/Match button - large, gradient, most prominent */}
+                <Button
+                  onClick={handleLike}
+                  disabled={!currentPartner}
+                  className="h-14 md:h-16 px-6 md:px-8 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-semibold text-base md:text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Sparkles className="w-5 h-5 md:w-6 md:h-6 mr-2" />
+                  Connext
+                </Button>
+              </div>
             </div>
           </div>
         )}
