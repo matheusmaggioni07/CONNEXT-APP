@@ -28,14 +28,12 @@ import type { Profile } from "@/lib/types"
 
 type VideoState = "idle" | "searching" | "connecting" | "connected" | "ended"
 
-// Simple STUN/TURN config
 const rtcConfig: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.stunprotocol.org:3478" },
     {
       urls: "turn:openrelay.metered.ca:80",
       username: "openrelayproject",
@@ -53,6 +51,9 @@ const rtcConfig: RTCConfiguration = {
     },
   ],
   iceCandidatePoolSize: 10,
+  iceTransportPolicy: "all",
+  bundlePolicy: "max-bundle",
+  rtcpMuxPolicy: "require",
 }
 
 function VideoPage() {
@@ -67,11 +68,13 @@ function VideoPage() {
   const [callsRemaining, setCallsRemaining] = useState<number | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<string>("")
   const [isLoading, setIsLoading] = useState(false)
-  const [debugInfo, setDebugInfo] = useState<string>("")
+  const [localVideoReady, setLocalVideoReady] = useState(false)
+  const [remoteVideoReady, setRemoteVideoReady] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const channelRef = useRef<any>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -130,13 +133,14 @@ function VideoPage() {
 
     hasRemoteDescRef.current = false
     pendingCandidatesRef.current = []
+    setLocalVideoReady(false)
+    setRemoteVideoReady(false)
   }, [supabase])
 
-  // Get camera and microphone
   const getLocalStream = async (): Promise<MediaStream | null> => {
     try {
       console.log("[v0] Requesting camera/mic...")
-      setDebugInfo("Solicitando câmera...")
+      setConnectionStatus("Solicitando câmera...")
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -152,15 +156,43 @@ function VideoPage() {
       })
 
       console.log("[v0] Got stream with", stream.getTracks().length, "tracks")
-      setDebugInfo("Câmera OK!")
+      console.log(
+        "[v0] Video tracks:",
+        stream.getVideoTracks().map((t) => t.label),
+      )
+      console.log(
+        "[v0] Audio tracks:",
+        stream.getAudioTracks().map((t) => t.label),
+      )
 
       localStreamRef.current = stream
 
-      // Show local video immediately
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
         localVideoRef.current.muted = true
-        await localVideoRef.current.play().catch((e) => console.log("[v0] Play error:", e))
+        localVideoRef.current.playsInline = true
+        localVideoRef.current.autoplay = true
+
+        // Wait for video to be ready
+        localVideoRef.current.onloadedmetadata = () => {
+          console.log("[v0] Local video metadata loaded")
+          localVideoRef.current
+            ?.play()
+            .then(() => {
+              console.log("[v0] Local video playing!")
+              setLocalVideoReady(true)
+            })
+            .catch((e) => console.log("[v0] Play error:", e))
+        }
+
+        // Also try to play immediately
+        try {
+          await localVideoRef.current.play()
+          setLocalVideoReady(true)
+          console.log("[v0] Local video playing immediately!")
+        } catch (e) {
+          console.log("[v0] Will play when metadata loads")
+        }
       }
 
       return stream
@@ -179,37 +211,75 @@ function VideoPage() {
     }
   }
 
-  // Setup WebRTC connection
   const setupPeerConnection = (stream: MediaStream, roomId: string, partnerId: string) => {
     console.log("[v0] Setting up peer connection for room:", roomId)
-    setDebugInfo("Configurando conexão...")
+    setConnectionStatus("Configurando conexão...")
+
+    // Close any existing connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+    }
 
     const pc = new RTCPeerConnection(rtcConfig)
     peerConnectionRef.current = pc
 
-    // Add local tracks
+    const remoteStream = new MediaStream()
+    remoteStreamRef.current = remoteStream
+
+    // Add local tracks to peer connection
     stream.getTracks().forEach((track) => {
-      console.log("[v0] Adding track:", track.kind)
+      console.log("[v0] Adding local track to PC:", track.kind, track.label)
       pc.addTrack(track, stream)
     })
 
-    // Handle remote tracks
     pc.ontrack = (event) => {
-      console.log("[v0] Received remote track:", event.track.kind)
-      setDebugInfo("Recebendo vídeo remoto...")
+      console.log("[v0] ========== RECEIVED REMOTE TRACK ==========")
+      console.log("[v0] Track kind:", event.track.kind)
+      console.log("[v0] Track id:", event.track.id)
+      console.log("[v0] Track enabled:", event.track.enabled)
+      console.log("[v0] Streams count:", event.streams.length)
 
-      if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0]
-        remoteVideoRef.current.play().catch((e) => console.log("[v0] Remote play error:", e))
-        setVideoState("connected")
-        setConnectionStatus("Conectado!")
+      // Add track to our remote stream
+      remoteStream.addTrack(event.track)
+
+      // Attach remote stream to video element
+      if (remoteVideoRef.current) {
+        console.log("[v0] Attaching remote stream to video element")
+        remoteVideoRef.current.srcObject = remoteStream
+        remoteVideoRef.current.muted = false // Important: don't mute remote audio!
+        remoteVideoRef.current.playsInline = true
+        remoteVideoRef.current.autoplay = true
+
+        remoteVideoRef.current.onloadedmetadata = () => {
+          console.log("[v0] Remote video metadata loaded")
+          remoteVideoRef.current
+            ?.play()
+            .then(() => {
+              console.log("[v0] Remote video playing!")
+              setRemoteVideoReady(true)
+              setVideoState("connected")
+              setConnectionStatus("Conectado!")
+            })
+            .catch((e) => console.error("[v0] Remote play error:", e))
+        }
+
+        // Try to play immediately
+        remoteVideoRef.current
+          .play()
+          .then(() => {
+            console.log("[v0] Remote video playing immediately!")
+            setRemoteVideoReady(true)
+            setVideoState("connected")
+            setConnectionStatus("Conectado!")
+          })
+          .catch((e) => console.log("[v0] Will play when metadata loads:", e))
       }
     }
 
     // ICE candidate handling
     pc.onicecandidate = (event) => {
       if (event.candidate && channelRef.current) {
-        console.log("[v0] Sending ICE candidate")
+        console.log("[v0] Sending ICE candidate:", event.candidate.candidate?.substring(0, 50))
         channelRef.current.send({
           type: "broadcast",
           event: "ice-candidate",
@@ -221,20 +291,35 @@ function VideoPage() {
       }
     }
 
+    pc.onicegatheringstatechange = () => {
+      console.log("[v0] ICE gathering state:", pc.iceGatheringState)
+    }
+
     pc.oniceconnectionstatechange = () => {
-      console.log("[v0] ICE state:", pc.iceConnectionState)
-      setDebugInfo("ICE: " + pc.iceConnectionState)
+      console.log("[v0] ICE connection state:", pc.iceConnectionState)
+      setConnectionStatus("ICE: " + pc.iceConnectionState)
 
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         setVideoState("connected")
         setConnectionStatus("Conectado!")
       } else if (pc.iceConnectionState === "failed") {
-        setErrorMessage("Falha na conexão. Tente novamente.")
+        console.log("[v0] ICE connection failed, trying restart")
+        pc.restartIce()
+      } else if (pc.iceConnectionState === "disconnected") {
+        setConnectionStatus("Reconectando...")
       }
     }
 
     pc.onconnectionstatechange = () => {
-      console.log("[v0] Connection state:", pc.connectionState)
+      console.log("[v0] Peer connection state:", pc.connectionState)
+      if (pc.connectionState === "connected") {
+        setVideoState("connected")
+        setConnectionStatus("Conectado!")
+      }
+    }
+
+    pc.onnegotiationneeded = async () => {
+      console.log("[v0] Negotiation needed, isInitiator:", isInitiatorRef.current)
     }
 
     // Setup signaling channel
@@ -245,26 +330,38 @@ function VideoPage() {
     channel
       .on("broadcast", { event: "offer" }, async ({ payload }) => {
         if (payload.from === currentUserId) return
-        console.log("[v0] Received offer")
-        setDebugInfo("Recebendo oferta...")
+        console.log("[v0] ========== RECEIVED OFFER ==========")
+        setConnectionStatus("Recebendo oferta...")
 
         try {
+          if (pc.signalingState !== "stable") {
+            console.log("[v0] Signaling state not stable, waiting...")
+            await new Promise((r) => setTimeout(r, 100))
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(payload.offer))
           hasRemoteDescRef.current = true
+          console.log("[v0] Remote description set from offer")
 
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
+          console.log("[v0] Local description set with answer")
 
           channel.send({
             type: "broadcast",
             event: "answer",
             payload: { answer, from: currentUserId },
           })
-          console.log("[v0] Answer sent")
+          console.log("[v0] Answer sent!")
 
           // Process pending candidates
+          console.log("[v0] Processing", pendingCandidatesRef.current.length, "pending candidates")
           for (const candidate of pendingCandidatesRef.current) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            } catch (e) {
+              console.log("[v0] Error adding pending candidate:", e)
+            }
           }
           pendingCandidatesRef.current = []
         } catch (err) {
@@ -273,15 +370,27 @@ function VideoPage() {
       })
       .on("broadcast", { event: "answer" }, async ({ payload }) => {
         if (payload.from === currentUserId) return
-        console.log("[v0] Received answer")
-        setDebugInfo("Recebendo resposta...")
+        console.log("[v0] ========== RECEIVED ANSWER ==========")
+        setConnectionStatus("Recebendo resposta...")
 
         try {
+          if (pc.signalingState !== "have-local-offer") {
+            console.log("[v0] Unexpected signaling state for answer:", pc.signalingState)
+            return
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(payload.answer))
           hasRemoteDescRef.current = true
+          console.log("[v0] Remote description set from answer")
 
+          // Process pending candidates
+          console.log("[v0] Processing", pendingCandidatesRef.current.length, "pending candidates")
           for (const candidate of pendingCandidatesRef.current) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            } catch (e) {
+              console.log("[v0] Error adding pending candidate:", e)
+            }
           }
           pendingCandidatesRef.current = []
         } catch (err) {
@@ -295,7 +404,9 @@ function VideoPage() {
         try {
           if (hasRemoteDescRef.current && pc.remoteDescription) {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
+            console.log("[v0] ICE candidate added immediately")
           } else {
+            console.log("[v0] Queuing ICE candidate (no remote desc yet)")
             pendingCandidatesRef.current.push(payload.candidate)
           }
         } catch (err) {
@@ -303,27 +414,35 @@ function VideoPage() {
         }
       })
       .subscribe(async (status) => {
-        console.log("[v0] Channel status:", status)
+        console.log("[v0] Signaling channel status:", status)
 
-        if (status === "SUBSCRIBED" && isInitiatorRef.current) {
-          // Wait a moment for the other peer to connect
-          await new Promise((r) => setTimeout(r, 1000))
+        if (status === "SUBSCRIBED") {
+          console.log("[v0] Channel subscribed, isInitiator:", isInitiatorRef.current)
 
-          console.log("[v0] Creating offer as initiator")
-          setDebugInfo("Criando oferta...")
+          if (isInitiatorRef.current) {
+            // Wait for the other peer to also subscribe
+            await new Promise((r) => setTimeout(r, 1500))
 
-          try {
-            const offer = await pc.createOffer()
-            await pc.setLocalDescription(offer)
+            console.log("[v0] ========== CREATING OFFER ==========")
+            setConnectionStatus("Criando oferta...")
 
-            channel.send({
-              type: "broadcast",
-              event: "offer",
-              payload: { offer, from: currentUserId },
-            })
-            console.log("[v0] Offer sent")
-          } catch (err) {
-            console.error("[v0] Offer creation error:", err)
+            try {
+              const offer = await pc.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true,
+              })
+              await pc.setLocalDescription(offer)
+              console.log("[v0] Local description set with offer")
+
+              channel.send({
+                type: "broadcast",
+                event: "offer",
+                payload: { offer, from: currentUserId },
+              })
+              console.log("[v0] Offer sent!")
+            } catch (err) {
+              console.error("[v0] Offer creation error:", err)
+            }
           }
         }
       })
@@ -334,7 +453,8 @@ function VideoPage() {
 
   // Connect to matched partner
   const connectToPartner = async (roomId: string, partnerId: string, stream: MediaStream) => {
-    console.log("[v0] Connecting to partner:", partnerId)
+    console.log("[v0] ========== CONNECTING TO PARTNER ==========")
+    console.log("[v0] Room:", roomId, "Partner:", partnerId)
     setVideoState("connecting")
     setConnectionStatus("Conectando com parceiro...")
     setCurrentRoomId(roomId)
@@ -351,7 +471,7 @@ function VideoPage() {
   }
 
   const startVideoCall = async () => {
-    console.log("[v0] === START VIDEO CALL ===")
+    console.log("[v0] ========== START VIDEO CALL ==========")
 
     if (!currentUserId) {
       setErrorMessage("Você precisa estar logado.")
@@ -362,9 +482,11 @@ function VideoPage() {
 
     setIsLoading(true)
     setErrorMessage(null)
-    setDebugInfo("")
+    setConnectionStatus("")
     setVideoState("searching")
     setWaitTime(0)
+    setLocalVideoReady(false)
+    setRemoteVideoReady(false)
     hasRemoteDescRef.current = false
     pendingCandidatesRef.current = []
 
@@ -379,7 +501,7 @@ function VideoPage() {
 
       // Step 2: Join queue and find/create room
       console.log("[v0] Joining video queue...")
-      setDebugInfo("Procurando parceiro...")
+      setConnectionStatus("Procurando parceiro...")
 
       const result = await joinVideoQueue()
       console.log("[v0] Queue result:", JSON.stringify(result))
@@ -402,15 +524,15 @@ function VideoPage() {
 
       // Step 3: Check if matched immediately
       if (result.matched && result.partnerId) {
-        console.log("[v0] Matched immediately!")
-        isInitiatorRef.current = false // We joined, so we're not initiator
+        console.log("[v0] Matched immediately with:", result.partnerId)
+        isInitiatorRef.current = false // We joined existing room, so we wait for offer
         await connectToPartner(result.roomId, result.partnerId, stream)
         setIsLoading(false)
         return
       }
 
-      // Step 4: Waiting for someone - we are initiator
-      console.log("[v0] Waiting for partner...")
+      // Step 4: Waiting for someone - we are initiator (created the room)
+      console.log("[v0] Room created, waiting for partner...")
       isInitiatorRef.current = true
       setConnectionStatus("Aguardando outro usuário...")
 
@@ -419,18 +541,17 @@ function VideoPage() {
         setWaitTime((prev) => prev + 1)
       }, 1000)
 
-      // Poll for partner every 1.5 seconds
+      // Poll for partner
       let pollCount = 0
       pollIntervalRef.current = setInterval(async () => {
         pollCount++
         console.log("[v0] Polling for partner... attempt", pollCount)
-        setDebugInfo(`Procurando... (${pollCount})`)
 
         const status = await checkRoomStatus(result.roomId!)
         console.log("[v0] Room status:", JSON.stringify(status))
 
         if (status.matched && status.partnerId) {
-          console.log("[v0] Partner found:", status.partnerId)
+          console.log("[v0] Partner found via polling:", status.partnerId)
 
           // Clear intervals
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -438,13 +559,11 @@ function VideoPage() {
           pollIntervalRef.current = null
           waitTimerRef.current = null
 
-          // Update room ID if switched
-          if (status.switchedRoom && status.roomId) {
-            setCurrentRoomId(status.roomId)
-          }
+          // Use the correct room ID
+          const finalRoomId = status.switchedRoom && status.roomId ? status.roomId : result.roomId!
 
           // Connect
-          await connectToPartner(status.roomId || result.roomId!, status.partnerId, stream)
+          await connectToPartner(finalRoomId, status.partnerId, stream)
         }
       }, 1500)
 
@@ -468,7 +587,6 @@ function VideoPage() {
     setVideoState("ended")
     setCurrentPartner(null)
     setCurrentRoomId(null)
-    setDebugInfo("")
   }
 
   const skipToNext = async () => {
@@ -583,100 +701,72 @@ function VideoPage() {
           </div>
         )}
 
-        {/* SEARCHING/CONNECTING STATE */}
-        {(videoState === "searching" || videoState === "connecting") && (
+        {/* ENDED STATE */}
+        {videoState === "ended" && (
+          <div className="text-center space-y-6">
+            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center">
+              <Heart className="w-12 h-12 text-primary" />
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">Chamada encerrada</h2>
+              <p className="text-muted-foreground mt-2">Deseja iniciar uma nova conversa?</p>
+            </div>
+
+            <Button
+              onClick={startVideoCall}
+              size="lg"
+              className="bg-gradient-to-r from-primary to-pink-500 hover:opacity-90"
+            >
+              <Video className="w-5 h-5 mr-2" />
+              Nova Videochamada
+            </Button>
+          </div>
+        )}
+
+        {/* SEARCHING/CONNECTING/CONNECTED STATES - Video UI */}
+        {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
           <div className="w-full h-full relative">
-            {/* Remote video (placeholder while searching) */}
-            <div className="absolute inset-0 flex items-center justify-center bg-muted/20 rounded-lg">
-              {videoState === "connecting" && currentPartner ? (
-                <div className="text-center">
-                  <Avatar className="w-24 h-24 mx-auto mb-4">
-                    <AvatarImage src={currentPartner.avatar_url || ""} />
-                    <AvatarFallback className="text-2xl bg-gradient-to-br from-primary to-pink-500">
-                      {currentPartner.full_name?.charAt(0) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <p className="text-lg font-medium">{currentPartner.full_name}</p>
-                  <p className="text-muted-foreground">{currentPartner.position}</p>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <Loader2 className="w-12 h-12 mx-auto animate-spin text-primary mb-4" />
-                  <p className="text-lg font-medium">
-                    {videoState === "connecting" ? "Conectando video..." : "Procurando..."}
-                  </p>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    {connectionStatus || "Aguarde enquanto estabelecemos a conexão"}
-                  </p>
-                  {debugInfo && <p className="text-xs text-muted-foreground mt-2 font-mono">{debugInfo}</p>}
-                </div>
-              )}
+            {/* Remote video area */}
+            <div className="absolute inset-0 bg-black rounded-lg overflow-hidden">
+              {/* Remote video element - always rendered */}
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className="absolute inset-0 w-full h-full object-cover rounded-lg opacity-0 transition-opacity"
-                style={{ opacity: videoState === "connected" ? 1 : 0 }}
+                className={`w-full h-full object-cover ${remoteVideoReady ? "opacity-100" : "opacity-0"}`}
               />
-            </div>
 
-            {/* Local video preview (bottom right) */}
-            <div className="absolute bottom-4 right-4 w-32 h-44 md:w-48 md:h-64 rounded-lg overflow-hidden border-2 border-primary shadow-xl bg-black">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover mirror"
-                style={{ transform: "scaleX(-1)" }}
-              />
-              {isVideoOff && (
-                <div className="absolute inset-0 bg-muted flex items-center justify-center">
-                  <VideoOff className="w-8 h-8 text-muted-foreground" />
+              {/* Placeholder when remote video not ready */}
+              {!remoteVideoReady && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {currentPartner ? (
+                    <div className="text-center">
+                      <Avatar className="w-24 h-24 mx-auto mb-4">
+                        <AvatarImage src={currentPartner.avatar_url || ""} />
+                        <AvatarFallback className="text-2xl bg-gradient-to-br from-primary to-pink-500 text-white">
+                          {currentPartner.full_name?.charAt(0) || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="text-lg font-medium text-white">{currentPartner.full_name}</p>
+                      <p className="text-white/70">{currentPartner.position}</p>
+                      <p className="text-sm text-white/50 mt-2">{connectionStatus}</p>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Loader2 className="w-12 h-12 mx-auto animate-spin text-primary mb-4" />
+                      <p className="text-lg font-medium text-white">
+                        {videoState === "searching" ? "Procurando..." : "Conectando..."}
+                      </p>
+                      <p className="text-white/70 text-sm mt-1">{connectionStatus}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Controls */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 md:gap-3">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={toggleMute}
-                className={`rounded-full ${isMuted ? "bg-destructive text-destructive-foreground" : ""}`}
-              >
-                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={toggleVideo}
-                className={`rounded-full ${isVideoOff ? "bg-destructive text-destructive-foreground" : ""}`}
-              >
-                {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
-              </Button>
-
-              <Button variant="destructive" size="icon" onClick={endCall} className="rounded-full">
-                <PhoneOff className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* CONNECTED STATE */}
-        {videoState === "connected" && (
-          <div className="w-full h-full relative">
-            {/* Remote video (full screen) */}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover rounded-lg bg-black"
-            />
-
-            {/* Partner info overlay */}
-            {currentPartner && (
+            {/* Partner info overlay (when connected) */}
+            {currentPartner && remoteVideoReady && (
               <div className="absolute top-4 left-4 z-10 flex items-center gap-3 bg-black/50 backdrop-blur rounded-full px-3 py-2">
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={currentPartner.avatar_url || ""} />
@@ -689,8 +779,8 @@ function VideoPage() {
               </div>
             )}
 
-            {/* Local video (bottom right) */}
-            <div className="absolute bottom-20 right-4 w-32 h-44 md:w-48 md:h-64 rounded-lg overflow-hidden border-2 border-primary shadow-xl bg-black">
+            {/* Local video (bottom right) - ALWAYS VISIBLE */}
+            <div className="absolute bottom-20 right-4 w-32 h-44 md:w-48 md:h-64 rounded-lg overflow-hidden border-2 border-primary shadow-xl bg-black z-20">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -699,6 +789,11 @@ function VideoPage() {
                 className="w-full h-full object-cover"
                 style={{ transform: "scaleX(-1)" }}
               />
+              {!localVideoReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              )}
               {isVideoOff && (
                 <div className="absolute inset-0 bg-muted flex items-center justify-center">
                   <VideoOff className="w-8 h-8 text-muted-foreground" />
@@ -707,21 +802,21 @@ function VideoPage() {
             </div>
 
             {/* Controls */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 md:gap-3 bg-black/30 backdrop-blur rounded-full px-4 py-2">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 md:gap-3 z-20">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 onClick={toggleMute}
-                className={`rounded-full text-white hover:bg-white/20 ${isMuted ? "bg-destructive" : ""}`}
+                className={`rounded-full ${isMuted ? "bg-destructive text-destructive-foreground" : "bg-background/80"}`}
               >
                 {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </Button>
 
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 onClick={toggleVideo}
-                className={`rounded-full text-white hover:bg-white/20 ${isVideoOff ? "bg-destructive" : ""}`}
+                className={`rounded-full ${isVideoOff ? "bg-destructive text-destructive-foreground" : "bg-background/80"}`}
               >
                 {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
               </Button>
@@ -730,52 +825,22 @@ function VideoPage() {
                 <PhoneOff className="w-5 h-5" />
               </Button>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={skipToNext}
-                className="rounded-full text-white hover:bg-white/20"
-              >
+              <Button variant="outline" size="icon" onClick={skipToNext} className="rounded-full bg-background/80">
                 <SkipForward className="w-5 h-5" />
               </Button>
 
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 onClick={handleLike}
-                className="rounded-full text-white hover:bg-pink-500/50"
+                disabled={!currentPartner}
+                className="rounded-full bg-pink-500/20 hover:bg-pink-500/30 text-pink-500"
               >
                 <Heart className="w-5 h-5" />
               </Button>
 
-              <Button variant="ghost" size="icon" className="rounded-full text-white hover:bg-white/20">
+              <Button variant="outline" size="icon" className="rounded-full bg-background/80">
                 <Flag className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* ENDED STATE */}
-        {videoState === "ended" && (
-          <div className="text-center space-y-6">
-            <div className="w-24 h-24 mx-auto rounded-full bg-muted flex items-center justify-center">
-              <PhoneOff className="w-12 h-12 text-muted-foreground" />
-            </div>
-
-            <div>
-              <h2 className="text-2xl font-bold">Chamada encerrada</h2>
-              <p className="text-muted-foreground mt-2">
-                {currentPartner ? `Você conversou com ${currentPartner.full_name}` : "A chamada foi encerrada"}
-              </p>
-            </div>
-
-            <div className="flex gap-3 justify-center">
-              <Button onClick={() => setVideoState("idle")} variant="outline">
-                Voltar
-              </Button>
-              <Button onClick={startVideoCall} className="bg-gradient-to-r from-primary to-pink-500">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Nova chamada
               </Button>
             </div>
           </div>
