@@ -194,3 +194,72 @@ export async function getProfilesToDiscover() {
 
   return data || []
 }
+
+export async function uploadAvatar(base64Data: string, mimeType: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  try {
+    // Extract base64 content (remove data:image/...;base64, prefix)
+    const base64Content = base64Data.split(",")[1]
+    if (!base64Content) {
+      return { error: "Dados da imagem inválidos" }
+    }
+
+    // Convert base64 to Uint8Array
+    const binaryString = atob(base64Content)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    // Determine file extension
+    const extension = mimeType.split("/")[1] || "jpg"
+    const fileName = `${user.id}/avatar-${Date.now()}.${extension}`
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage.from("avatars").upload(fileName, bytes, {
+      contentType: mimeType,
+      upsert: true,
+    })
+
+    if (uploadError) {
+      console.error("[v0] Upload error:", uploadError)
+      return { error: "Erro ao fazer upload da imagem" }
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(fileName)
+
+    const publicUrl = urlData.publicUrl
+
+    // Update profile with new avatar URL
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({
+        avatar_url: publicUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+
+    if (updateError) {
+      console.error("[v0] Update avatar URL error:", updateError)
+      return { error: "Erro ao atualizar perfil com a nova foto" }
+    }
+
+    revalidatePath("/dashboard/profile")
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/matches")
+
+    return { success: true, url: publicUrl }
+  } catch (error) {
+    console.error("[v0] Avatar upload error:", error)
+    return { error: "Erro ao processar a imagem" }
+  }
+}

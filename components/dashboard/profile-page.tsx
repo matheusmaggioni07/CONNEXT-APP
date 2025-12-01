@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { User, Building2, Briefcase, MapPin, Phone, Mail, Edit2, Save, X, Camera, Crown } from "lucide-react"
+import { User, MapPin, Phone, Mail, Edit2, Save, X, Camera, Crown, Loader2 } from "lucide-react"
 import { getProfile } from "@/app/actions/auth"
 import { updateProfile } from "@/app/actions/profile"
 import type { Profile } from "@/lib/types"
@@ -16,6 +18,8 @@ export function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
@@ -60,6 +64,53 @@ export function ProfilePage() {
     setIsSaving(false)
   }
 
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      alert("Por favor, selecione uma imagem válida.")
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("A imagem deve ter no máximo 5MB.")
+      return
+    }
+
+    setIsUploadingPhoto(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const response = await fetch("/api/upload-avatar", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.url) {
+        setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
+        alert("Foto atualizada com sucesso!")
+      } else {
+        alert(result.error || "Erro ao fazer upload da foto")
+      }
+    } catch (error) {
+      console.error("Error uploading photo:", error)
+      alert("Erro ao fazer upload da foto")
+    } finally {
+      setIsUploadingPhoto(false)
+    }
+  }
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click()
+  }
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -83,6 +134,8 @@ export function ProfilePage() {
 
   return (
     <div className="flex-1 p-6">
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -91,220 +144,234 @@ export function ProfilePage() {
             <p className="text-muted-foreground">Gerencie suas informações profissionais</p>
           </div>
           {!isEditing ? (
-            <Button
-              variant="outline"
-              className="border-border text-foreground bg-transparent"
-              onClick={() => setIsEditing(true)}
-            >
-              <Edit2 className="w-4 h-4 mr-2" />
-              Editar Perfil
+            <Button onClick={() => setIsEditing(true)} variant="outline" className="flex items-center gap-2">
+              <Edit2 className="w-4 h-4" />
+              Editar
             </Button>
           ) : (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="border-border text-foreground bg-transparent"
-                onClick={() => setIsEditing(false)}
-              >
-                <X className="w-4 h-4 mr-2" />
+              <Button onClick={() => setIsEditing(false)} variant="outline" className="flex items-center gap-2">
+                <X className="w-4 h-4" />
                 Cancelar
               </Button>
-              <Button className="bg-primary text-primary-foreground" onClick={handleSave} disabled={isSaving}>
-                <Save className="w-4 h-4 mr-2" />
-                {isSaving ? "Salvando..." : "Salvar"}
+              <Button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 gradient-bg text-primary-foreground"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar
               </Button>
             </div>
-          )}
-        </div>
-
-        {/* Plan Badge */}
-        <div
-          className={`rounded-xl border p-4 mb-6 flex items-center justify-between ${
-            profile.plan === "pro" ? "bg-primary/10 border-primary/30" : "bg-secondary/50 border-border"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Crown className={`w-6 h-6 ${profile.plan === "pro" ? "text-primary" : "text-muted-foreground"}`} />
-            <div>
-              <p className="font-semibold text-foreground">Plano {profile.plan === "pro" ? "Pro" : "Gratuito"}</p>
-              <p className="text-sm text-muted-foreground">
-                {profile.plan === "pro"
-                  ? "Acesso ilimitado a todas as funcionalidades"
-                  : "5 likes e 5 chamadas por dia"}
-              </p>
-            </div>
-          </div>
-          {profile.plan !== "pro" && (
-            <Link href="/dashboard/upgrade">
-              <Button className="gradient-bg text-primary-foreground">
-                <Crown className="w-4 h-4 mr-2" />
-                Upgrade
-              </Button>
-            </Link>
           )}
         </div>
 
         {/* Profile Card */}
-        <div className="bg-card rounded-2xl border border-border overflow-hidden">
-          {/* Cover & Avatar */}
-          <div className="relative h-32 bg-gradient-to-r from-primary/20 to-primary/5">
-            <div className="absolute -bottom-12 left-6">
-              <div className="relative">
-                <div className="w-24 h-24 rounded-full border-4 border-card overflow-hidden bg-muted">
+        <div className="bg-card rounded-xl border border-border p-6 mb-6">
+          <div className="flex flex-col md:flex-row items-start gap-6">
+            {/* Avatar */}
+            <div className="relative group">
+              <div className="w-32 h-32 rounded-full overflow-hidden bg-muted">
+                {profile.avatar_url ? (
                   <img
-                    src={profile.avatar_url || "/placeholder.svg?height=96&width=96&query=professional headshot"}
+                    src={profile.avatar_url || "/placeholder.svg"}
                     alt={profile.full_name}
                     className="w-full h-full object-cover"
                   />
-                </div>
-                {isEditing && (
-                  <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground">
-                    <Camera className="w-4 h-4" />
-                  </button>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <User className="w-16 h-16 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={triggerFileInput}
+                disabled={isUploadingPhoto}
+                className="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {isUploadingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+              </button>
+            </div>
+
+            {/* Basic Info */}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <h2 className="text-2xl font-bold text-foreground">{profile.full_name}</h2>
+                {profile.subscription_tier && profile.subscription_tier !== "free" && (
+                  <Crown className="w-5 h-5 text-yellow-500" />
+                )}
+              </div>
+              <p className="text-muted-foreground mb-4">
+                {profile.position || "Cargo não informado"} {profile.company ? `• ${profile.company}` : ""}
+              </p>
+              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  {profile.city || "Cidade não informada"}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Mail className="w-4 h-4" />
+                  {profile.email}
+                </span>
+                {profile.phone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-4 h-4" />
+                    {profile.phone}
+                  </span>
                 )}
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Content */}
-          <div className="pt-16 p-6">
+        {/* Details */}
+        <div className="bg-card rounded-xl border border-border p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Informações</h3>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <Label className="text-muted-foreground">Nome Completo</Label>
+              {isEditing ? (
+                <Input
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-foreground mt-1">{profile.full_name || "-"}</p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Telefone / WhatsApp</Label>
+              {isEditing ? (
+                <Input
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="(11) 99999-9999"
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-foreground mt-1">{profile.phone || "-"}</p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Empresa</Label>
+              {isEditing ? (
+                <Input
+                  value={formData.company}
+                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-foreground mt-1">{profile.company || "-"}</p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Cargo</Label>
+              {isEditing ? (
+                <Input
+                  value={formData.position}
+                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-foreground mt-1">{profile.position || "-"}</p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Cidade</Label>
+              {isEditing ? (
+                <Input
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-foreground mt-1">{profile.city || "-"}</p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Indústria</Label>
+              <p className="text-foreground mt-1">{profile.industry || "-"}</p>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <Label className="text-muted-foreground">Bio</Label>
             {isEditing ? (
-              <div className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-foreground">Nome Completo</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        value={formData.full_name}
-                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                        className="pl-10 bg-secondary border-border text-foreground"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-foreground">WhatsApp</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="pl-10 bg-secondary border-border text-foreground"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-foreground">Empresa</Label>
-                    <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        value={formData.company}
-                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                        className="pl-10 bg-secondary border-border text-foreground"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-foreground">Cargo</Label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        value={formData.position}
-                        onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                        className="pl-10 bg-secondary border-border text-foreground"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-foreground">Cidade</Label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        value={formData.city}
-                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        className="pl-10 bg-secondary border-border text-foreground"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-foreground">Bio</Label>
-                  <Textarea
-                    value={formData.bio}
-                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                    className="bg-secondary border-border text-foreground resize-none"
-                    rows={4}
-                  />
-                </div>
-              </div>
+              <Textarea
+                value={formData.bio}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                placeholder="Conte um pouco sobre você..."
+                className="mt-1"
+                rows={4}
+              />
             ) : (
-              <>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-foreground">{profile.full_name}</h2>
-                  <p className="text-muted-foreground">
-                    {profile.position} • {profile.company}
-                  </p>
-                </div>
+              <p className="text-foreground mt-1">{profile.bio || "Nenhuma bio adicionada"}</p>
+            )}
+          </div>
 
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <Mail className="w-5 h-5" />
-                    <span>{profile.email}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <Phone className="w-5 h-5" />
-                    <span>{profile.phone || "Não informado"}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <MapPin className="w-5 h-5" />
-                    <span>
-                      {profile.city || "Não informado"}, {profile.country}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <Building2 className="w-5 h-5" />
-                    <span>{profile.industry || "Não informado"}</span>
-                  </div>
-                </div>
+          {/* Interests */}
+          {profile.interests && profile.interests.length > 0 && (
+            <div className="mt-6">
+              <Label className="text-muted-foreground">Interesses</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {profile.interests.map((interest, index) => (
+                  <span key={index} className="px-3 py-1 bg-primary/10 text-primary text-sm rounded-full">
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
-                {profile.bio && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-muted-foreground mb-2">Sobre</h3>
-                    <p className="text-foreground">{profile.bio}</p>
-                  </div>
-                )}
+          {/* Looking For */}
+          {profile.looking_for && profile.looking_for.length > 0 && (
+            <div className="mt-6">
+              <Label className="text-muted-foreground">Buscando</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {profile.looking_for.map((item, index) => (
+                  <span key={index} className="px-3 py-1 bg-secondary text-secondary-foreground text-sm rounded-full">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
-                {profile.interests && profile.interests.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-muted-foreground mb-2">Interesses</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {profile.interests.map((interest) => (
-                        <span key={interest} className="px-3 py-1 bg-secondary text-foreground rounded-full text-sm">
-                          {interest}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {profile.looking_for && profile.looking_for.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-muted-foreground mb-2">Buscando</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {profile.looking_for.map((item) => (
-                        <span key={item} className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm">
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+        {/* Subscription */}
+        <div className="bg-card rounded-xl border border-border p-6 mt-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Assinatura</h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-foreground font-medium capitalize">
+                {profile.subscription_tier === "free"
+                  ? "Plano Gratuito"
+                  : profile.subscription_tier === "pro"
+                    ? "Plano Pro"
+                    : "Plano Premium"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {profile.subscription_tier === "free"
+                  ? "5 videochamadas e 10 likes por dia"
+                  : profile.subscription_tier === "pro"
+                    ? "15 videochamadas e likes ilimitados"
+                    : "Videochamadas e likes ilimitados"}
+              </p>
+            </div>
+            {profile.subscription_tier === "free" && (
+              <Link href="/dashboard/planos">
+                <Button className="gradient-bg text-primary-foreground">
+                  <Crown className="w-4 h-4 mr-2" />
+                  Fazer Upgrade
+                </Button>
+              </Link>
             )}
           </div>
         </div>
@@ -312,3 +379,5 @@ export function ProfilePage() {
     </div>
   )
 }
+
+export default ProfilePage
