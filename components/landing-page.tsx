@@ -186,7 +186,7 @@ export function LandingPage() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 <span className="text-sm text-primary font-medium">
-                  +{onlineCount1.toLocaleString("pt-BR")} profissionais online agora
+                  +{onlineCount1.toLocaleString("pt-BR")} empreendedores online agora
                 </span>
               </div>
 
@@ -195,7 +195,7 @@ export function LandingPage() {
               </h1>
 
               <p className="text-lg lg:text-xl text-muted-foreground mb-8 leading-relaxed max-w-xl">
-                Conecte-se instantaneamente com profissionais da sua área. Match por interesses, videochamadas 1v1 e
+                Conecte-se instantaneamente com empreendedores da sua área. Match por interesses, videochamadas 1v1 e
                 integração direta com WhatsApp.
               </p>
 
