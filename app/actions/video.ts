@@ -47,6 +47,163 @@ export async function checkCallLimit() {
   }
 }
 
+export async function joinVideoQueue() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { error: "Não autenticado" }
+
+  const limitCheck = await checkCallLimit()
+  if (!limitCheck.canCall) {
+    return { error: "Você atingiu o limite diário de chamadas. Faça upgrade para o Pro!" }
+  }
+
+  // Clean up old waiting rooms from this user
+  await supabase
+    .from("video_rooms")
+    .update({ status: "ended", ended_at: new Date().toISOString() })
+    .eq("user1_id", user.id)
+    .eq("status", "waiting")
+
+  // Look for someone waiting
+  const { data: waitingRooms } = await supabase
+    .from("video_rooms")
+    .select("id, user1_id, created_at")
+    .eq("status", "waiting")
+    .is("user2_id", null)
+    .neq("user1_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+
+  if (waitingRooms && waitingRooms.length > 0) {
+    const roomToJoin = waitingRooms[0]
+    console.log("[v0] Found waiting room:", roomToJoin.id)
+
+    const { error: joinError } = await supabase
+      .from("video_rooms")
+      .update({ user2_id: user.id, status: "active" })
+      .eq("id", roomToJoin.id)
+      .eq("status", "waiting")
+
+    if (!joinError) {
+      await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+      return {
+        success: true,
+        roomId: roomToJoin.id,
+        partnerId: roomToJoin.user1_id,
+        matched: true,
+      }
+    }
+  }
+
+  // Create new waiting room
+  const { data: room, error: createError } = await supabase
+    .from("video_rooms")
+    .insert({ user1_id: user.id, status: "waiting" })
+    .select()
+    .single()
+
+  if (createError) {
+    console.error("[v0] Create room error:", createError)
+    return { error: "Erro ao criar sala" }
+  }
+
+  await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+  return { success: true, roomId: room.id, waiting: true }
+}
+
+export async function checkRoomStatus(roomId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { error: "Não autenticado" }
+
+  const { data: room } = await supabase
+    .from("video_rooms")
+    .select("id, user1_id, user2_id, status")
+    .eq("id", roomId)
+    .single()
+
+  if (!room) return { error: "Sala não encontrada" }
+
+  if (room.status === "active" && room.user2_id) {
+    const partnerId = room.user1_id === user.id ? room.user2_id : room.user1_id
+    return { success: true, matched: true, partnerId, roomId: room.id }
+  }
+
+  // Check for other waiting rooms
+  const { data: otherRooms } = await supabase
+    .from("video_rooms")
+    .select("id, user1_id")
+    .eq("status", "waiting")
+    .is("user2_id", null)
+    .neq("user1_id", user.id)
+    .neq("id", roomId)
+    .limit(1)
+
+  if (otherRooms && otherRooms.length > 0) {
+    const roomToJoin = otherRooms[0]
+
+    const { error: joinError } = await supabase
+      .from("video_rooms")
+      .update({ user2_id: user.id, status: "active" })
+      .eq("id", roomToJoin.id)
+      .eq("status", "waiting")
+
+    if (!joinError) {
+      await supabase
+        .from("video_rooms")
+        .update({ status: "ended", ended_at: new Date().toISOString() })
+        .eq("id", roomId)
+
+      return {
+        success: true,
+        matched: true,
+        partnerId: roomToJoin.user1_id,
+        roomId: roomToJoin.id,
+        switchedRoom: true,
+      }
+    }
+  }
+
+  return { success: true, waiting: true }
+}
+
+export async function leaveVideoQueue(roomId: string) {
+  const supabase = await createClient()
+  await supabase.from("video_rooms").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", roomId)
+  return { success: true }
+}
+
+export async function endVideoRoom(roomId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { error: "Não autenticado" }
+
+  await supabase
+    .from("video_rooms")
+    .update({ status: "ended", ended_at: new Date().toISOString() })
+    .eq("id", roomId)
+    .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+
+  return { success: true }
+}
+
+export async function createVideoRoom() {
+  return joinVideoQueue()
+}
+
+export async function findVideoPartner(roomId: string) {
+  return checkRoomStatus(roomId)
+}
+
 export async function findAvailablePartner(): Promise<{ partner?: Profile; error?: string }> {
   const supabase = await createClient()
   const {
@@ -128,179 +285,6 @@ export async function createVideoRoomWithPartner(partnerId: string) {
 
   revalidatePath("/dashboard/video")
   return { success: true, room }
-}
-
-export async function createVideoRoom() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return { error: "Não autenticado" }
-
-  // Check limit
-  const limitCheck = await checkCallLimit()
-  if (!limitCheck.canCall) {
-    return { error: "Você atingiu o limite diário de chamadas. Faça upgrade para o Pro!" }
-  }
-
-  // First, look for another user waiting for a partner
-  const { data: waitingRooms } = await supabase
-    .from("video_rooms")
-    .select("id, user1_id")
-    .eq("status", "waiting")
-    .is("user2_id", null)
-    .neq("user1_id", user.id)
-    .limit(1)
-
-  if (waitingRooms && waitingRooms.length > 0) {
-    // Found a waiting room - join it
-    const roomToJoin = waitingRooms[0]
-
-    const { error: joinError } = await supabase
-      .from("video_rooms")
-      .update({
-        user2_id: user.id,
-        status: "active",
-      })
-      .eq("id", roomToJoin.id)
-      .eq("status", "waiting") // Extra safety check
-
-    if (joinError) {
-      console.error("[v0] Join video room error:", joinError)
-      return { error: "Erro ao entrar na sala" }
-    }
-
-    await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
-
-    revalidatePath("/dashboard/video")
-    return {
-      success: true,
-      room: { id: roomToJoin.id, status: "active" },
-      partnerId: roomToJoin.user1_id,
-      joined: true,
-    }
-  }
-
-  // No waiting rooms - check if there are other users online
-  const { data: otherProfiles } = await supabase.from("profiles").select("id").neq("id", user.id).limit(1)
-
-  if (!otherProfiles || otherProfiles.length === 0) {
-    return {
-      error: "Não há outros usuários disponíveis no momento. Convide amigos para usar o Connext!",
-      noUsers: true,
-    }
-  }
-
-  // Create a new waiting room
-  const { data: room, error } = await supabase
-    .from("video_rooms")
-    .insert({
-      user1_id: user.id,
-      status: "waiting",
-    })
-    .select()
-    .single()
-
-  if (error) {
-    console.error("[v0] Create video room error:", error)
-    return { error: error.message }
-  }
-
-  await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
-
-  revalidatePath("/dashboard/video")
-  return { success: true, room, waiting: true }
-}
-
-export async function findVideoPartner(roomId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return { error: "Não autenticado" }
-
-  // Check if someone joined our room
-  const { data: myRoom } = await supabase.from("video_rooms").select("id, user2_id, status").eq("id", roomId).single()
-
-  if (myRoom?.user2_id && myRoom.status === "active") {
-    // Someone joined our room!
-    return {
-      success: true,
-      partnerId: myRoom.user2_id,
-      roomId: myRoom.id,
-    }
-  }
-
-  // Look for another waiting room to join
-  const { data: waitingRooms } = await supabase
-    .from("video_rooms")
-    .select("id, user1_id")
-    .eq("status", "waiting")
-    .is("user2_id", null)
-    .neq("user1_id", user.id)
-    .neq("id", roomId)
-    .limit(1)
-
-  if (waitingRooms && waitingRooms.length > 0) {
-    const roomToJoin = waitingRooms[0]
-
-    // Join that room and close our waiting room
-    const { error: joinError } = await supabase
-      .from("video_rooms")
-      .update({
-        user2_id: user.id,
-        status: "active",
-      })
-      .eq("id", roomToJoin.id)
-      .eq("status", "waiting")
-
-    if (!joinError) {
-      // Close our waiting room
-      await supabase
-        .from("video_rooms")
-        .update({
-          status: "ended",
-          ended_at: new Date().toISOString(),
-        })
-        .eq("id", roomId)
-
-      return {
-        success: true,
-        joinedRoomId: roomToJoin.id,
-        partnerId: roomToJoin.user1_id,
-      }
-    }
-  }
-
-  // Still waiting
-  return { success: true, waiting: true }
-}
-
-export async function endVideoRoom(roomId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return { error: "Não autenticado" }
-
-  const { error } = await supabase
-    .from("video_rooms")
-    .update({
-      status: "ended",
-      ended_at: new Date().toISOString(),
-    })
-    .eq("id", roomId)
-    .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-
-  if (error) {
-    console.error("[v0] End video room error:", error)
-    return { error: error.message }
-  }
-
-  return { success: true }
 }
 
 export async function getVideoRoom(roomId: string) {
