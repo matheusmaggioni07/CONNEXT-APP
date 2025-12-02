@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth-context"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ConnextLogo } from "@/components/ui/connext-logo"
-import { User, LogOut, Compass, Heart, Video, Menu, X } from "lucide-react"
+import { User, LogOut, Compass, Heart, Video, Menu, X, Gift } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { NotificationsDropdown } from "@/components/notifications-dropdown"
@@ -13,16 +13,24 @@ const navItems = [
   { href: "/dashboard", icon: Compass, label: "Descobrir" },
   { href: "/dashboard/matches", icon: Heart, label: "Matches" },
   { href: "/dashboard/video", icon: Video, label: "Videochamada" },
+  { href: "/dashboard/referral", icon: Gift, label: "Indicar Amigos" },
   { href: "/dashboard/profile", icon: User, label: "Perfil" },
 ]
 
 export function MobileBottomNav() {
   const pathname = usePathname()
 
+  const mobileNavItems = [
+    { href: "/dashboard", icon: Compass, label: "Descobrir" },
+    { href: "/dashboard/matches", icon: Heart, label: "Matches" },
+    { href: "/dashboard/video", icon: Video, label: "Videochamada" },
+    { href: "/dashboard/profile", icon: User, label: "Perfil" },
+  ]
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/50 md:hidden safe-area-bottom">
       <ul className="flex justify-around items-center h-16 px-2">
-        {navItems.map((item) => {
+        {mobileNavItems.map((item) => {
           const isActive = pathname === item.href
           return (
             <li key={item.href}>
@@ -80,6 +88,14 @@ export function MobileHeader() {
             </div>
             <span className="font-medium truncate">{userName}</span>
           </div>
+          <Link
+            href="/dashboard/referral"
+            className="flex items-center gap-2 px-2 py-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors mb-2"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Gift className="w-4 h-4" />
+            Indicar Amigos
+          </Link>
           <Button
             variant="ghost"
             className="w-full justify-start text-muted-foreground hover:text-foreground"
@@ -101,7 +117,7 @@ export function Sidebar() {
 
   const userMetadata = user?.user_metadata || {}
   const userName = userMetadata.full_name || user?.email?.split("@")[0] || "Usuário"
-  const userPosition = userMetadata.position || "Profissional"
+  const userPosition = userMetadata.position || "Empreendedor"
   const userAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${userName}`
 
   const handleLogout = async () => {

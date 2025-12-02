@@ -190,12 +190,19 @@ export function LandingPage() {
                 </span>
               </div>
 
+              <div className="inline-flex items-center gap-2 bg-secondary/10 px-4 py-2 rounded-full mb-6 border border-secondary/20">
+                <Zap className="w-4 h-4 text-secondary" />
+                <span className="text-sm text-secondary font-medium">
+                  Primeira plataforma de networking profissional via vídeo
+                </span>
+              </div>
+
               <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.1] mb-6 text-balance">
                 Networking profissional via <span className="gradient-text">vídeo em tempo real</span>
               </h1>
 
               <p className="text-lg lg:text-xl text-muted-foreground mb-8 leading-relaxed max-w-xl">
-                Conecte-se instantaneamente com empreendedores da sua área. Match por interesses, videochamadas 1v1 e
+                Conecte-se instantaneamente com empreendedores da sua área. Match por interesses, videochamadas e
                 integração direta com WhatsApp.
               </p>
 
@@ -314,7 +321,7 @@ export function LandingPage() {
       <section className="py-12 px-6 border-y border-border/50 bg-muted/30">
         <div className="max-w-7xl mx-auto">
           <p className="text-center text-sm text-muted-foreground mb-8">
-            Profissionais de empresas líderes confiam no Connext
+            Profissionais e empreendedores de empresas líderes confiam no Connext
           </p>
           <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-16 opacity-60">
             {["Google", "Microsoft", "Meta", "Amazon", "Nubank", "iFood"].map((company) => (
@@ -336,7 +343,7 @@ export function LandingPage() {
               Tudo que você precisa para fazer <span className="gradient-text">networking</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Ferramentas poderosas para conectar profissionais e criar oportunidades de negócio.
+              Ferramentas poderosas para conectar profissionais e empreendedores e criar oportunidades de negócio.
             </p>
           </div>
 
@@ -350,7 +357,8 @@ export function LandingPage() {
               {
                 icon: Users,
                 title: "Match Inteligente",
-                description: "Algoritmo avançado que conecta você com profissionais baseado em interesses e objetivos.",
+                description:
+                  "Algoritmo avançado que conecta você com profissionais e empreendedores baseado em interesses e objetivos.",
               },
               {
                 icon: MessageCircle,
@@ -358,17 +366,17 @@ export function LandingPage() {
                 description: "Após o match, continue a conversa no WhatsApp para fechar negócios rapidamente.",
               },
               {
-                icon: Shield,
-                title: "Email Verificado",
-                description: "Apenas emails corporativos são aceitos, garantindo uma rede de profissionais reais.",
+                icon: Zap,
+                title: "Indique e Ganhe",
+                description: "Indique amigos e ganhe R$10 em créditos para cada cadastro. Acumule até R$200 por mês!",
               },
               {
                 icon: Globe,
                 title: "Filtro Geográfico",
-                description: "Encontre profissionais na sua cidade ou conecte-se globalmente.",
+                description: "Encontre profissionais e empreendedores na sua cidade ou conecte-se globalmente.",
               },
               {
-                icon: Zap,
+                icon: Shield,
                 title: "Setup em 2 Minutos",
                 description: "Perfil rápido de configurar. Comece a fazer networking em minutos.",
               },
@@ -404,13 +412,14 @@ export function LandingPage() {
               {
                 step: "01",
                 title: "Crie seu perfil",
-                description: "Cadastre-se com seu email profissional e configure seus interesses e objetivos.",
+                description: "Cadastre-se com seu email e configure seus interesses e objetivos.",
                 icon: Briefcase,
               },
               {
                 step: "02",
                 title: "Encontre matches",
-                description: "Navegue por profissionais compatíveis e inicie videochamadas instantâneas.",
+                description:
+                  "Navegue por profissionais e empreendedores compatíveis e inicie videochamadas instantâneas.",
                 icon: Users,
               },
               {
@@ -498,7 +507,9 @@ export function LandingPage() {
 
               <div className="mb-6">
                 <h3 className="text-xl font-semibold mb-2">Pro</h3>
-                <p className="text-muted-foreground text-sm">Para profissionais que levam networking a sério</p>
+                <p className="text-muted-foreground text-sm">
+                  Para profissionais e empreendedores que levam networking a sério
+                </p>
               </div>
 
               <div className="mb-6">
@@ -578,7 +589,7 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
             {[
-              { value: "50K+", label: "Profissionais cadastrados" },
+              { value: "50K+", label: "Empreendedores cadastrados" },
               { value: "150K+", label: "Conexões realizadas" },
               { value: "98%", label: "Taxa de satisfação" },
               { value: "45+", label: "Países" },
@@ -605,8 +616,8 @@ export function LandingPage() {
           <div className="space-y-4">
             {[
               {
-                q: "Por que preciso de um email profissional?",
-                a: "Exigimos email corporativo para garantir que todos os usuários são profissionais verificados. Isso mantém a qualidade da rede e evita perfis falsos.",
+                q: "O que é o Connext?",
+                a: "O Connext é a primeira plataforma web de networking profissional via videochamada. Conectamos empreendedores em tempo real para gerar oportunidades de negócios.",
               },
               {
                 q: "O plano Free é realmente gratuito?",
@@ -614,7 +625,7 @@ export function LandingPage() {
               },
               {
                 q: "Como funciona a integração com WhatsApp?",
-                a: "Quando você e outro profissional dão match, um botão aparece para iniciar conversa no WhatsApp usando o número cadastrado na plataforma.",
+                a: "Quando você e outro empreendedor dão match, um botão aparece para iniciar conversa no WhatsApp usando o número cadastrado na plataforma.",
               },
               {
                 q: "Posso cancelar o plano Pro a qualquer momento?",
@@ -623,6 +634,10 @@ export function LandingPage() {
               {
                 q: "A videochamada é segura?",
                 a: "Absolutamente. Usamos criptografia de ponta a ponta em todas as videochamadas. Suas conversas são privadas e seguras.",
+              },
+              {
+                q: "Como posso indicar amigos?",
+                a: "Na área logada, acesse a seção 'Indicar Amigos' e compartilhe seu link exclusivo. Você ganha R$10 em créditos para cada amigo que se cadastrar!",
               },
             ].map((faq, i) => (
               <details key={i} className="group rounded-xl border border-border/50 bg-card">
@@ -669,7 +684,13 @@ export function LandingPage() {
             <div className="md:col-span-2">
               <ConnextLogo size="lg" className="mb-4" />
               <p className="text-muted-foreground max-w-xs mb-4">
-                A plataforma de networking profissional via vídeo. Conecte-se, faça match e feche negócios.
+                A primeira plataforma de networking via vídeo. Conecte-se, faça match e feche negócios.
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Contato:{" "}
+                <a href="mailto:connextapp.oficial@gmail.com" className="text-primary hover:underline">
+                  connextapp.oficial@gmail.com
+                </a>
               </p>
               <div className="flex gap-4">
                 <a

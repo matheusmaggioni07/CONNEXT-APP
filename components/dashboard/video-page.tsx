@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import {
   Mic,
   MicOff,
@@ -17,7 +20,11 @@ import {
   Users,
   RefreshCw,
   Camera,
-  AlertCircle,
+  MapPin,
+  Filter,
+  MessageCircle,
+  Send,
+  X,
 } from "lucide-react"
 import { joinVideoQueue, checkRoomStatus, endVideoRoom, checkCallLimit } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/likes"
@@ -26,6 +33,20 @@ import { createClient } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types"
 
 type VideoState = "idle" | "searching" | "connecting" | "connected" | "ended"
+
+type LocationFilter = {
+  country: string
+  state: string
+  city: string
+}
+
+type ChatMessage = {
+  id: string
+  senderId: string
+  senderName: string
+  content: string
+  timestamp: Date
+}
 
 const rtcConfig: RTCConfiguration = {
   iceServers: [
@@ -55,642 +76,663 @@ const rtcConfig: RTCConfiguration = {
   rtcpMuxPolicy: "require",
 }
 
-function VideoPage() {
+const brazilianStates = [
+  { value: "all", label: "Todos os Estados" },
+  { value: "AC", label: "Acre" },
+  { value: "AL", label: "Alagoas" },
+  { value: "AP", label: "Amapá" },
+  { value: "AM", label: "Amazonas" },
+  { value: "BA", label: "Bahia" },
+  { value: "CE", label: "Ceará" },
+  { value: "DF", label: "Distrito Federal" },
+  { value: "ES", label: "Espírito Santo" },
+  { value: "GO", label: "Goiás" },
+  { value: "MA", label: "Maranhão" },
+  { value: "MT", label: "Mato Grosso" },
+  { value: "MS", label: "Mato Grosso do Sul" },
+  { value: "MG", label: "Minas Gerais" },
+  { value: "PA", label: "Pará" },
+  { value: "PB", label: "Paraíba" },
+  { value: "PR", label: "Paraná" },
+  { value: "PE", label: "Pernambuco" },
+  { value: "PI", label: "Piauí" },
+  { value: "RJ", label: "Rio de Janeiro" },
+  { value: "RN", label: "Rio Grande do Norte" },
+  { value: "RS", label: "Rio Grande do Sul" },
+  { value: "RO", label: "Rondônia" },
+  { value: "RR", label: "Roraima" },
+  { value: "SC", label: "Santa Catarina" },
+  { value: "SP", label: "São Paulo" },
+  { value: "SE", label: "Sergipe" },
+  { value: "TO", label: "Tocantins" },
+]
+
+export function VideoPage() {
   const [videoState, setVideoState] = useState<VideoState>("idle")
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null)
-  const [currentPartner, setCurrentPartner] = useState<Profile | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOff, setIsVideoOff] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [waitTime, setWaitTime] = useState(0)
-  const [callsRemaining, setCallsRemaining] = useState<number | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<string>("")
+  const [currentPartner, setCurrentPartner] = useState<Profile | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserName, setCurrentUserName] = useState<string>("")
   const [isLoading, setIsLoading] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState("")
   const [localVideoReady, setLocalVideoReady] = useState(false)
   const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+  const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
+  const [waitTime, setWaitTime] = useState(0)
+  const [showFilters, setShowFilters] = useState(false)
+  const [locationFilter, setLocationFilter] = useState<LocationFilter>({
+    country: "BR",
+    state: "all",
+    city: "",
+  })
+
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState("")
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const dataChannelRef = useRef<RTCDataChannel | null>(null)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
-  const channelRef = useRef<any>(null)
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const waitTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const roomIdRef = useRef<string | null>(null)
   const isInitiatorRef = useRef(false)
-  const hasRemoteDescRef = useRef(false)
-  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([])
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const waitTimeIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  const supabase = createClient()
-
-  // Initialize user
+  // Scroll chat to bottom
   useEffect(() => {
-    const init = async () => {
-      const { data } = await supabase.auth.getUser()
-      if (data.user) {
-        setCurrentUserId(data.user.id)
-        console.log("[v0] User ID:", data.user.id)
-      }
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [chatMessages])
 
-      const result = await checkCallLimit()
-      if (result.remaining !== undefined) {
-        setCallsRemaining(result.remaining === Number.POSITIVE_INFINITY ? -1 : result.remaining)
+  // Get current user on mount
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+        const profile = await getProfileById(user.id)
+        if (profile) {
+          setCurrentUserName(profile.full_name || "Você")
+        }
+        const limitResult = await checkCallLimit(user.id)
+        if (limitResult.success) {
+          setRemainingCalls(limitResult.remaining ?? null)
+        }
       }
     }
-    init()
-  }, [supabase])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => cleanup()
+    getCurrentUser()
   }, [])
 
-  const cleanup = useCallback(() => {
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const cleanup = useCallback(async () => {
     console.log("[v0] Cleanup called")
 
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
     }
-    if (waitTimerRef.current) {
-      clearInterval(waitTimerRef.current)
-      waitTimerRef.current = null
+
+    if (waitTimeIntervalRef.current) {
+      clearInterval(waitTimeIntervalRef.current)
+      waitTimeIntervalRef.current = null
     }
+
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      localStreamRef.current.getTracks().forEach((track) => {
+        track.stop()
+        console.log("[v0] Stopped local track:", track.kind)
+      })
       localStreamRef.current = null
     }
+
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
       peerConnectionRef.current = null
-    }
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current)
-      channelRef.current = null
+      console.log("[v0] Closed peer connection")
     }
 
-    hasRemoteDescRef.current = false
-    pendingCandidatesRef.current = []
+    // Close data channel
+    if (dataChannelRef.current) {
+      dataChannelRef.current.close()
+      dataChannelRef.current = null
+    }
+
+    if (roomIdRef.current && currentUserId) {
+      try {
+        await endVideoRoom(roomIdRef.current, currentUserId)
+      } catch (e) {
+        console.error("[v0] Error ending room:", e)
+      }
+    }
+
+    roomIdRef.current = null
+    isInitiatorRef.current = false
     setLocalVideoReady(false)
     setRemoteVideoReady(false)
-  }, [supabase])
+    setCurrentPartner(null)
+    setConnectionStatus("")
+    setChatMessages([])
+    setIsChatOpen(false)
 
-  const getLocalStream = async (): Promise<MediaStream | null> => {
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+    }
+  }, [currentUserId])
+
+  // Setup data channel for chat
+  const setupDataChannel = (channel: RTCDataChannel) => {
+    dataChannelRef.current = channel
+
+    channel.onopen = () => {
+      console.log("[v0] Data channel opened")
+    }
+
+    channel.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as ChatMessage
+        setChatMessages((prev) => [...prev, message])
+      } catch (e) {
+        console.error("[v0] Error parsing chat message:", e)
+      }
+    }
+
+    channel.onclose = () => {
+      console.log("[v0] Data channel closed")
+    }
+  }
+
+  // Send chat message
+  const sendChatMessage = () => {
+    if (!chatInput.trim() || !dataChannelRef.current || dataChannelRef.current.readyState !== "open") return
+
+    const message: ChatMessage = {
+      id: Date.now().toString(),
+      senderId: currentUserId || "",
+      senderName: currentUserName || "Você",
+      content: chatInput.trim(),
+      timestamp: new Date(),
+    }
+
+    // Send to peer
+    dataChannelRef.current.send(JSON.stringify(message))
+
+    // Add to local messages
+    setChatMessages((prev) => [...prev, message])
+    setChatInput("")
+  }
+
+  const getLocalStream = async () => {
     try {
-      console.log("[v0] Requesting camera/mic...")
-      setConnectionStatus("Solicitando câmera...")
-
+      console.log("[v0] Getting local stream...")
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          facingMode: "user",
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        audio: { echoCancellation: true, noiseSuppression: true },
       })
-
-      console.log("[v0] Got stream with", stream.getTracks().length, "tracks")
-      console.log(
-        "[v0] Video tracks:",
-        stream.getVideoTracks().map((t) => t.label),
-      )
-      console.log(
-        "[v0] Audio tracks:",
-        stream.getAudioTracks().map((t) => t.label),
-      )
-
       localStreamRef.current = stream
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.muted = true
-        localVideoRef.current.playsInline = true
-        localVideoRef.current.autoplay = true
-
-        // Wait for video to be ready
         localVideoRef.current.onloadedmetadata = () => {
           console.log("[v0] Local video metadata loaded")
-          localVideoRef.current
-            ?.play()
-            .then(() => {
-              console.log("[v0] Local video playing!")
-              setLocalVideoReady(true)
-            })
-            .catch((e) => console.log("[v0] Play error:", e))
-        }
-
-        // Also try to play immediately
-        try {
-          await localVideoRef.current.play()
           setLocalVideoReady(true)
-          console.log("[v0] Local video playing immediately!")
-        } catch (e) {
-          console.log("[v0] Will play when metadata loads")
         }
       }
 
+      console.log(
+        "[v0] Local stream obtained:",
+        stream.getTracks().map((t) => t.kind),
+      )
       return stream
-    } catch (err: any) {
-      console.error("[v0] Media error:", err)
-
-      if (err.name === "NotAllowedError") {
-        setErrorMessage("Permita o acesso à câmera e microfone no seu navegador.")
-      } else if (err.name === "NotFoundError") {
-        setErrorMessage("Câmera ou microfone não encontrado.")
-      } else {
-        setErrorMessage("Erro ao acessar câmera: " + err.message)
-      }
-
-      return null
+    } catch (error) {
+      console.error("[v0] Error getting local stream:", error)
+      throw error
     }
   }
 
-  const setupPeerConnection = (stream: MediaStream, roomId: string, partnerId: string) => {
-    console.log("[v0] Setting up peer connection for room:", roomId)
-    setConnectionStatus("Configurando conexão...")
+  const createPeerConnection = (localStream: MediaStream) => {
+    console.log("[v0] Creating peer connection...")
+    const pc = new RTCPeerConnection(rtcConfig)
 
-    // Close any existing connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
+    // Create data channel for chat (only initiator creates it)
+    if (isInitiatorRef.current) {
+      const channel = pc.createDataChannel("chat", { ordered: true })
+      setupDataChannel(channel)
     }
 
-    const pc = new RTCPeerConnection(rtcConfig)
-    peerConnectionRef.current = pc
+    // Receive data channel
+    pc.ondatachannel = (event) => {
+      console.log("[v0] Received data channel")
+      setupDataChannel(event.channel)
+    }
 
-    const remoteStream = new MediaStream()
-    remoteStreamRef.current = remoteStream
+    remoteStreamRef.current = new MediaStream()
 
-    // Add local tracks to peer connection
-    stream.getTracks().forEach((track) => {
-      console.log("[v0] Adding local track to PC:", track.kind, track.label)
-      pc.addTrack(track, stream)
+    localStream.getTracks().forEach((track) => {
+      console.log("[v0] Adding local track to PC:", track.kind)
+      pc.addTrack(track, localStream)
     })
 
     pc.ontrack = (event) => {
-      console.log("[v0] ========== RECEIVED REMOTE TRACK ==========")
-      console.log("[v0] Track kind:", event.track.kind)
-      console.log("[v0] Track id:", event.track.id)
-      console.log("[v0] Track enabled:", event.track.enabled)
-      console.log("[v0] Streams count:", event.streams.length)
+      console.log("[v0] Received remote track:", event.track.kind)
+      if (remoteStreamRef.current) {
+        remoteStreamRef.current.addTrack(event.track)
 
-      // Add track to our remote stream
-      remoteStream.addTrack(event.track)
-
-      // Attach remote stream to video element
-      if (remoteVideoRef.current) {
-        console.log("[v0] Attaching remote stream to video element")
-        remoteVideoRef.current.srcObject = remoteStream
-        remoteVideoRef.current.muted = false // Important: don't mute remote audio!
-        remoteVideoRef.current.playsInline = true
-        remoteVideoRef.current.autoplay = true
-
-        remoteVideoRef.current.onloadedmetadata = () => {
-          console.log("[v0] Remote video metadata loaded")
-          remoteVideoRef.current
-            ?.play()
-            .then(() => {
-              console.log("[v0] Remote video playing!")
-              setRemoteVideoReady(true)
-              setVideoState("connected")
-              setConnectionStatus("Conectado!")
-            })
-            .catch((e) => console.error("[v0] Remote play error:", e))
-        }
-
-        // Try to play immediately
-        remoteVideoRef.current
-          .play()
-          .then(() => {
-            console.log("[v0] Remote video playing immediately!")
+        if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+          remoteVideoRef.current.srcObject = remoteStreamRef.current
+          remoteVideoRef.current.onloadedmetadata = () => {
+            console.log("[v0] Remote video metadata loaded")
             setRemoteVideoReady(true)
-            setVideoState("connected")
-            setConnectionStatus("Conectado!")
-          })
-          .catch((e) => console.log("[v0] Will play when metadata loads:", e))
+          }
+        }
       }
     }
 
-    // ICE candidate handling
-    pc.onicecandidate = (event) => {
-      if (event.candidate && channelRef.current) {
-        console.log("[v0] Sending ICE candidate:", event.candidate.candidate?.substring(0, 50))
-        channelRef.current.send({
-          type: "broadcast",
-          event: "ice-candidate",
-          payload: {
-            candidate: event.candidate.toJSON(),
-            from: currentUserId,
-          },
+    pc.onicecandidate = async (event) => {
+      if (event.candidate && roomIdRef.current) {
+        console.log("[v0] ICE candidate:", event.candidate.candidate.substring(0, 50))
+        const supabase = createClient()
+        await supabase.from("ice_candidates").insert({
+          room_id: roomIdRef.current,
+          candidate: JSON.stringify(event.candidate),
+          sender_id: currentUserId,
         })
       }
     }
 
-    pc.onicegatheringstatechange = () => {
-      console.log("[v0] ICE gathering state:", pc.iceGatheringState)
-    }
-
     pc.oniceconnectionstatechange = () => {
       console.log("[v0] ICE connection state:", pc.iceConnectionState)
-      setConnectionStatus("ICE: " + pc.iceConnectionState)
+      setConnectionStatus(`ICE: ${pc.iceConnectionState}`)
 
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         setVideoState("connected")
         setConnectionStatus("Conectado!")
-      } else if (pc.iceConnectionState === "failed") {
-        console.log("[v0] ICE connection failed, trying restart")
-        pc.restartIce()
-      } else if (pc.iceConnectionState === "disconnected") {
-        setConnectionStatus("Reconectando...")
+      } else if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        setConnectionStatus("Conexão perdida")
       }
     }
 
-    pc.onconnectionstatechange = () => {
-      console.log("[v0] Peer connection state:", pc.connectionState)
-      if (pc.connectionState === "connected") {
-        setVideoState("connected")
-        setConnectionStatus("Conectado!")
-      }
-    }
-
-    pc.onnegotiationneeded = async () => {
-      console.log("[v0] Negotiation needed, isInitiator:", isInitiatorRef.current)
-    }
-
-    // Setup signaling channel
-    const channel = supabase.channel(`video-room-${roomId}`, {
-      config: { broadcast: { self: false } },
-    })
-
-    channel
-      .on("broadcast", { event: "offer" }, async ({ payload }) => {
-        if (payload.from === currentUserId) return
-        console.log("[v0] ========== RECEIVED OFFER ==========")
-        setConnectionStatus("Recebendo oferta...")
-
-        try {
-          if (pc.signalingState !== "stable") {
-            console.log("[v0] Signaling state not stable, waiting...")
-            await new Promise((r) => setTimeout(r, 100))
-          }
-
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer))
-          hasRemoteDescRef.current = true
-          console.log("[v0] Remote description set from offer")
-
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          console.log("[v0] Local description set with answer")
-
-          channel.send({
-            type: "broadcast",
-            event: "answer",
-            payload: { answer, from: currentUserId },
-          })
-          console.log("[v0] Answer sent!")
-
-          // Process pending candidates
-          console.log("[v0] Processing", pendingCandidatesRef.current.length, "pending candidates")
-          for (const candidate of pendingCandidatesRef.current) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            } catch (e) {
-              console.log("[v0] Error adding pending candidate:", e)
-            }
-          }
-          pendingCandidatesRef.current = []
-        } catch (err) {
-          console.error("[v0] Offer handling error:", err)
-        }
-      })
-      .on("broadcast", { event: "answer" }, async ({ payload }) => {
-        if (payload.from === currentUserId) return
-        console.log("[v0] ========== RECEIVED ANSWER ==========")
-        setConnectionStatus("Recebendo resposta...")
-
-        try {
-          if (pc.signalingState !== "have-local-offer") {
-            console.log("[v0] Unexpected signaling state for answer:", pc.signalingState)
-            return
-          }
-
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer))
-          hasRemoteDescRef.current = true
-          console.log("[v0] Remote description set from answer")
-
-          // Process pending candidates
-          console.log("[v0] Processing", pendingCandidatesRef.current.length, "pending candidates")
-          for (const candidate of pendingCandidatesRef.current) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            } catch (e) {
-              console.log("[v0] Error adding pending candidate:", e)
-            }
-          }
-          pendingCandidatesRef.current = []
-        } catch (err) {
-          console.error("[v0] Answer handling error:", err)
-        }
-      })
-      .on("broadcast", { event: "ice-candidate" }, async ({ payload }) => {
-        if (payload.from === currentUserId) return
-        console.log("[v0] Received ICE candidate")
-
-        try {
-          if (hasRemoteDescRef.current && pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
-            console.log("[v0] ICE candidate added immediately")
-          } else {
-            console.log("[v0] Queuing ICE candidate (no remote desc yet)")
-            pendingCandidatesRef.current.push(payload.candidate)
-          }
-        } catch (err) {
-          console.error("[v0] ICE candidate error:", err)
-        }
-      })
-      .subscribe(async (status) => {
-        console.log("[v0] Signaling channel status:", status)
-
-        if (status === "SUBSCRIBED") {
-          console.log("[v0] Channel subscribed, isInitiator:", isInitiatorRef.current)
-
-          if (isInitiatorRef.current) {
-            // Wait for the other peer to also subscribe
-            await new Promise((r) => setTimeout(r, 1500))
-
-            console.log("[v0] ========== CREATING OFFER ==========")
-            setConnectionStatus("Criando oferta...")
-
-            try {
-              const offer = await pc.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true,
-              })
-              await pc.setLocalDescription(offer)
-              console.log("[v0] Local description set with offer")
-
-              channel.send({
-                type: "broadcast",
-                event: "offer",
-                payload: { offer, from: currentUserId },
-              })
-              console.log("[v0] Offer sent!")
-            } catch (err) {
-              console.error("[v0] Offer creation error:", err)
-            }
-          }
-        }
-      })
-
-    channelRef.current = channel
+    peerConnectionRef.current = pc
     return pc
   }
 
-  // Connect to matched partner
-  const connectToPartner = async (roomId: string, partnerId: string, stream: MediaStream) => {
-    console.log("[v0] ========== CONNECTING TO PARTNER ==========")
-    console.log("[v0] Room:", roomId, "Partner:", partnerId)
-    setVideoState("connecting")
-    setConnectionStatus("Conectando com parceiro...")
-    setCurrentRoomId(roomId)
-
-    // Get partner profile
-    const partner = await getProfileById(partnerId)
-    if (partner) {
-      setCurrentPartner(partner)
-      console.log("[v0] Partner name:", partner.full_name)
-    }
-
-    // Setup WebRTC
-    setupPeerConnection(stream, roomId, partnerId)
-  }
-
-  const startVideoCall = async () => {
-    console.log("[v0] ========== START VIDEO CALL ==========")
-
+  const handleStartCall = async () => {
     if (!currentUserId) {
-      setErrorMessage("Você precisa estar logado.")
+      alert("Você precisa estar logado para iniciar uma videochamada.")
       return
     }
 
-    if (isLoading) return
-
     setIsLoading(true)
-    setErrorMessage(null)
-    setConnectionStatus("")
     setVideoState("searching")
     setWaitTime(0)
-    setLocalVideoReady(false)
-    setRemoteVideoReady(false)
-    hasRemoteDescRef.current = false
-    pendingCandidatesRef.current = []
+
+    waitTimeIntervalRef.current = setInterval(() => {
+      setWaitTime((prev) => prev + 1)
+    }, 1000)
 
     try {
-      // Step 1: Get camera
       const stream = await getLocalStream()
-      if (!stream) {
-        setVideoState("idle")
-        setIsLoading(false)
-        return
-      }
-
-      // Step 2: Join queue and find/create room
-      console.log("[v0] Joining video queue...")
       setConnectionStatus("Procurando parceiro...")
 
-      const result = await joinVideoQueue()
-      console.log("[v0] Queue result:", JSON.stringify(result))
+      const result = await joinVideoQueue(
+        currentUserId,
+        locationFilter.state !== "all" ? locationFilter.state : undefined,
+        locationFilter.city || undefined,
+      )
 
-      if (result.error) {
-        setErrorMessage(result.error)
-        setVideoState("idle")
-        setIsLoading(false)
-        return
+      if (!result.success) {
+        throw new Error(result.error)
       }
 
-      if (!result.roomId) {
-        setErrorMessage("Erro ao criar sala.")
-        setVideoState("idle")
-        setIsLoading(false)
-        return
+      roomIdRef.current = result.roomId!
+      isInitiatorRef.current = result.isInitiator!
+
+      console.log("[v0] Joined room:", result.roomId, "Initiator:", result.isInitiator)
+
+      if (result.partnerId) {
+        const partner = await getProfileById(result.partnerId)
+        setCurrentPartner(partner)
+        console.log("[v0] Partner found:", partner?.full_name)
       }
 
-      setCurrentRoomId(result.roomId)
+      const pc = createPeerConnection(stream)
+      const supabase = createClient()
 
-      // Step 3: Check if matched immediately
-      if (result.matched && result.partnerId) {
-        console.log("[v0] Matched immediately with:", result.partnerId)
-        isInitiatorRef.current = false // We joined existing room, so we wait for offer
-        await connectToPartner(result.roomId, result.partnerId, stream)
-        setIsLoading(false)
-        return
-      }
+      if (result.isInitiator) {
+        setConnectionStatus("Aguardando outro participante...")
 
-      // Step 4: Waiting for someone - we are initiator (created the room)
-      console.log("[v0] Room created, waiting for partner...")
-      isInitiatorRef.current = true
-      setConnectionStatus("Aguardando outro usuário...")
+        pollingIntervalRef.current = setInterval(async () => {
+          const status = await checkRoomStatus(roomIdRef.current!)
+          console.log("[v0] Room status:", status)
 
-      // Start wait timer
-      waitTimerRef.current = setInterval(() => {
-        setWaitTime((prev) => prev + 1)
-      }, 1000)
+          if (status.partnerId && !currentPartner) {
+            const partner = await getProfileById(status.partnerId)
+            setCurrentPartner(partner)
+            console.log("[v0] Partner joined:", partner?.full_name)
 
-      // Poll for partner
-      let pollCount = 0
-      pollIntervalRef.current = setInterval(async () => {
-        pollCount++
-        console.log("[v0] Polling for partner... attempt", pollCount)
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
 
-        const status = await checkRoomStatus(result.roomId!)
-        console.log("[v0] Room status:", JSON.stringify(status))
+            if (waitTimeIntervalRef.current) {
+              clearInterval(waitTimeIntervalRef.current)
+              waitTimeIntervalRef.current = null
+            }
 
-        if (status.matched && status.partnerId) {
-          console.log("[v0] Partner found via polling:", status.partnerId)
+            setVideoState("connecting")
+            setConnectionStatus("Criando oferta...")
 
-          // Clear intervals
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-          if (waitTimerRef.current) clearInterval(waitTimerRef.current)
-          pollIntervalRef.current = null
-          waitTimerRef.current = null
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            console.log("[v0] Created and set local offer")
 
-          // Use the correct room ID
-          const finalRoomId = status.switchedRoom && status.roomId ? status.roomId : result.roomId!
+            await supabase
+              .from("video_rooms")
+              .update({ offer: JSON.stringify(offer) })
+              .eq("id", roomIdRef.current)
 
-          // Connect
-          await connectToPartner(finalRoomId, status.partnerId, stream)
+            pollForAnswer(pc)
+          }
+        }, 2000)
+      } else {
+        setVideoState("connecting")
+        setConnectionStatus("Conectando à chamada...")
+
+        if (waitTimeIntervalRef.current) {
+          clearInterval(waitTimeIntervalRef.current)
+          waitTimeIntervalRef.current = null
         }
-      }, 1500)
 
-      setIsLoading(false)
-    } catch (err: any) {
-      console.error("[v0] Error:", err)
-      setErrorMessage("Erro: " + err.message)
+        pollForOffer(pc)
+      }
+    } catch (error) {
+      console.error("[v0] Error starting call:", error)
+      await cleanup()
       setVideoState("idle")
+      alert("Erro ao iniciar videochamada. Verifique permissões de câmera/microfone.")
+    } finally {
       setIsLoading(false)
     }
   }
 
-  const endCall = async () => {
-    console.log("[v0] Ending call")
+  const pollForOffer = async (pc: RTCPeerConnection) => {
+    const supabase = createClient()
 
-    if (currentRoomId) {
-      await endVideoRoom(currentRoomId)
+    const poll = async () => {
+      if (!roomIdRef.current) return
+
+      const { data: room } = await supabase.from("video_rooms").select("offer").eq("id", roomIdRef.current).single()
+
+      if (room?.offer) {
+        console.log("[v0] Received offer, setting remote description")
+        setConnectionStatus("Respondendo...")
+
+        await pc.setRemoteDescription(JSON.parse(room.offer))
+
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        console.log("[v0] Created and set local answer")
+
+        await supabase
+          .from("video_rooms")
+          .update({ answer: JSON.stringify(answer) })
+          .eq("id", roomIdRef.current)
+
+        startIceCandidateListener(pc)
+      } else {
+        setTimeout(poll, 1000)
+      }
     }
 
-    cleanup()
-    setVideoState("ended")
-    setCurrentPartner(null)
-    setCurrentRoomId(null)
+    poll()
   }
 
-  const skipToNext = async () => {
-    await endCall()
-    setVideoState("idle")
-    setTimeout(() => startVideoCall(), 500)
+  const pollForAnswer = async (pc: RTCPeerConnection) => {
+    const supabase = createClient()
+
+    const poll = async () => {
+      if (!roomIdRef.current) return
+
+      const { data: room } = await supabase.from("video_rooms").select("answer").eq("id", roomIdRef.current).single()
+
+      if (room?.answer) {
+        console.log("[v0] Received answer, setting remote description")
+        setConnectionStatus("Finalizando conexão...")
+
+        await pc.setRemoteDescription(JSON.parse(room.answer))
+        startIceCandidateListener(pc)
+      } else {
+        setTimeout(poll, 1000)
+      }
+    }
+
+    poll()
   }
 
-  const handleLike = async () => {
-    if (!currentPartner) return
-    const result = await likeUser(currentPartner.id)
-    console.log("[v0] Like result:", result)
+  const startIceCandidateListener = (pc: RTCPeerConnection) => {
+    const supabase = createClient()
+
+    const processExistingCandidates = async () => {
+      const { data: candidates } = await supabase
+        .from("ice_candidates")
+        .select("*")
+        .eq("room_id", roomIdRef.current)
+        .neq("sender_id", currentUserId)
+
+      if (candidates) {
+        for (const c of candidates) {
+          try {
+            const candidate = JSON.parse(c.candidate)
+            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            console.log("[v0] Added existing ICE candidate")
+          } catch (e) {
+            console.error("[v0] Error adding ICE candidate:", e)
+          }
+        }
+      }
+    }
+
+    processExistingCandidates()
+
+    const channel = supabase
+      .channel(`ice-${roomIdRef.current}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "ice_candidates",
+          filter: `room_id=eq.${roomIdRef.current}`,
+        },
+        async (payload) => {
+          if (payload.new.sender_id !== currentUserId) {
+            try {
+              const candidate = JSON.parse(payload.new.candidate)
+              await pc.addIceCandidate(new RTCIceCandidate(candidate))
+              console.log("[v0] Added new ICE candidate from realtime")
+            } catch (e) {
+              console.error("[v0] Error adding ICE candidate:", e)
+            }
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }
 
   const toggleMute = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = !track.enabled
-      })
-      setIsMuted(!isMuted)
+      const audioTrack = localStreamRef.current.getAudioTracks()[0]
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled
+        setIsMuted(!audioTrack.enabled)
+      }
     }
   }
 
   const toggleVideo = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach((track) => {
-        track.enabled = !track.enabled
-      })
-      setIsVideoOff(!isVideoOff)
+      const videoTrack = localStreamRef.current.getVideoTracks()[0]
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled
+        setIsVideoOff(!videoTrack.enabled)
+      }
     }
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  const skipToNext = async () => {
+    await cleanup()
+    setVideoState("idle")
+    setTimeout(() => {
+      handleStartCall()
+    }, 500)
   }
 
+  const endCall = async () => {
+    await cleanup()
+    setVideoState("ended")
+  }
+
+  const handleLike = async () => {
+    if (!currentUserId || !currentPartner) return
+
+    try {
+      const result = await likeUser(currentUserId, currentPartner.id)
+      if (result.isMatch) {
+        alert(`Match com ${currentPartner.full_name}! Agora vocês podem trocar WhatsApp.`)
+      } else {
+        alert(`Você deu like em ${currentPartner.full_name}!`)
+      }
+    } catch (error) {
+      console.error("Error liking user:", error)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      cleanup()
+    }
+  }, [cleanup])
+
   return (
-    <div className="flex flex-col h-full bg-background relative">
-      {/* Calls remaining badge */}
-      {callsRemaining !== null && (
-        <div className="absolute top-4 right-4 z-10">
-          <Badge variant="outline" className="bg-background/80 backdrop-blur">
-            <Video className="w-3 h-3 mr-1" />
-            {callsRemaining === -1 ? "Ilimitado" : `${callsRemaining} restantes`}
-          </Badge>
+    <div className="h-full flex flex-col">
+      {/* Header with remaining calls and filters */}
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center gap-2">
+          {remainingCalls !== null && (
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+              <Camera className="w-3 h-3 mr-1" />
+              {remainingCalls} restantes
+            </Badge>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowFilters(!showFilters)}
+          className="text-muted-foreground"
+        >
+          <Filter className="w-4 h-4 mr-1" />
+          Filtros
+        </Button>
+      </div>
+
+      {/* Location filters */}
+      {showFilters && videoState === "idle" && (
+        <div className="p-4 border-b border-border bg-muted/30">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[150px]">
+              <Label className="text-xs text-muted-foreground mb-1 block">Estado</Label>
+              <Select
+                value={locationFilter.state}
+                onValueChange={(value) => setLocationFilter({ ...locationFilter, state: value })}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brazilianStates.map((state) => (
+                    <SelectItem key={state.value} value={state.value}>
+                      {state.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <Label className="text-xs text-muted-foreground mb-1 block">Cidade (opcional)</Label>
+              <Input
+                placeholder="Digite a cidade..."
+                value={locationFilter.city}
+                onChange={(e) => setLocationFilter({ ...locationFilter, city: e.target.value })}
+                className="h-9"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+            <MapPin className="w-3 h-3" />
+            Filtre por localização para encontrar empreendedores perto de você
+          </p>
         </div>
       )}
 
-      {/* Search status */}
-      {videoState === "searching" && (
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-          <Badge variant="secondary" className="bg-primary/20 text-primary animate-pulse">
-            <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-            procurando
-          </Badge>
-          <Badge variant="outline" className="bg-destructive/20 text-destructive">
-            <span className="w-2 h-2 rounded-full bg-destructive mr-1 animate-pulse" />
-            {formatTime(waitTime)}
-          </Badge>
-        </div>
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 flex items-center justify-center p-4">
+      {/* Main video area */}
+      <div className="flex-1 relative bg-black/95 flex items-center justify-center overflow-hidden">
         {/* IDLE STATE */}
         {videoState === "idle" && (
-          <div className="text-center space-y-6">
-            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center">
-              <Camera className="w-12 h-12 text-primary" />
+          <div className="text-center space-y-6 p-8">
+            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center animate-pulse">
+              <Video className="w-12 h-12 text-primary" />
             </div>
-
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Pronto para conectar?</h2>
-              <p className="text-muted-foreground mt-2">
-                Inicie uma videochamada e conheça profissionais em tempo real
-              </p>
-            </div>
-
-            {errorMessage && (
-              <div className="bg-destructive/10 text-destructive p-3 rounded-lg flex items-center gap-2">
-                <AlertCircle className="w-5 h-5" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
+            <h2 className="text-2xl md:text-3xl font-bold mb-3">Pronto para conectar?</h2>
+            <p className="text-muted-foreground mb-6">Inicie uma videochamada e conheça empreendedores em tempo real</p>
 
             <Button
-              onClick={startVideoCall}
-              disabled={isLoading}
+              onClick={handleStartCall}
               size="lg"
-              className="bg-gradient-to-r from-primary to-pink-500 hover:opacity-90"
+              className="gradient-bg text-white px-8 h-14 text-lg"
+              disabled={isLoading || !currentUserId}
             >
-              {isLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Video className="w-5 h-5 mr-2" />}
-              {isLoading ? "Iniciando..." : "Iniciar Videochamada"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Iniciando...
+                </>
+              ) : (
+                <>
+                  <Video className="w-5 h-5 mr-2" />
+                  Iniciar Videochamada
+                </>
+              )}
             </Button>
 
-            <div className="flex justify-center gap-6 text-sm text-muted-foreground">
+            {/* Features */}
+            <div className="flex flex-wrap justify-center gap-4 mt-8 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Sparkles className="w-4 h-4 text-primary" />
                 Video HD
               </div>
               <div className="flex items-center gap-1">
                 <Users className="w-4 h-4 text-primary" />
-                Profissionais reais
+                Empreendedores reais
               </div>
               <div className="flex items-center gap-1">
                 <Heart className="w-4 h-4 text-primary" />
@@ -700,31 +742,22 @@ function VideoPage() {
           </div>
         )}
 
-        {/* ENDED STATE */}
-        {videoState === "ended" && (
-          <div className="text-center space-y-6">
-            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center">
-              <Heart className="w-12 h-12 text-primary" />
-            </div>
-
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Chamada encerrada</h2>
-              <p className="text-muted-foreground mt-2">Deseja iniciar uma nova conversa?</p>
-            </div>
-
-            <Button
-              onClick={startVideoCall}
-              size="lg"
-              className="bg-gradient-to-r from-primary to-pink-500 hover:opacity-90"
-            >
-              <Video className="w-5 h-5 mr-2" />
-              Nova Videochamada
-            </Button>
+        {/* SEARCHING STATE */}
+        {videoState === "searching" && (
+          <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+            <Badge variant="secondary" className="bg-primary/20 text-primary animate-pulse">
+              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+              procurando
+            </Badge>
+            <Badge variant="outline" className="bg-destructive/20 text-destructive">
+              <span className="w-2 h-2 rounded-full bg-destructive mr-1 animate-pulse" />
+              {formatTime(waitTime)}
+            </Badge>
           </div>
         )}
 
-        {/* SEARCHING/CONNECTING/CONNECTED STATES - Video UI */}
-        {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
+        {/* CONNECTING/CONNECTED STATES - Video UI */}
+        {(videoState === "connecting" || videoState === "connected") && (
           <div className="w-full h-full relative">
             {/* Remote video area */}
             <div className="absolute inset-0 bg-black rounded-lg overflow-hidden">
@@ -778,8 +811,68 @@ function VideoPage() {
               </div>
             )}
 
+            {/* Chat panel */}
+            {isChatOpen && (
+              <div className="absolute top-4 right-4 bottom-24 w-80 max-w-[calc(100%-2rem)] bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10 flex flex-col z-30">
+                <div className="flex items-center justify-between p-3 border-b border-white/10">
+                  <span className="font-medium text-white text-sm">Chat</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-8 h-8 text-white/70 hover:text-white"
+                    onClick={() => setIsChatOpen(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {chatMessages.length === 0 ? (
+                    <p className="text-white/50 text-xs text-center py-4">
+                      Envie uma mensagem para começar a conversar
+                    </p>
+                  ) : (
+                    chatMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex flex-col ${msg.senderId === currentUserId ? "items-end" : "items-start"}`}
+                      >
+                        <span className="text-white/50 text-[10px] mb-0.5">{msg.senderName}</span>
+                        <div
+                          className={`max-w-[80%] rounded-xl px-3 py-1.5 text-sm ${
+                            msg.senderId === currentUserId
+                              ? "bg-primary text-white rounded-br-none"
+                              : "bg-white/10 text-white rounded-bl-none"
+                          }`}
+                        >
+                          {msg.content}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    sendChatMessage()
+                  }}
+                  className="p-3 border-t border-white/10 flex gap-2"
+                >
+                  <Input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Digite..."
+                    className="flex-1 bg-white/10 border-white/10 text-white placeholder:text-white/40 h-9"
+                  />
+                  <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!chatInput.trim()}>
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </form>
+              </div>
+            )}
+
             {/* Local video (bottom right) - ALWAYS VISIBLE */}
-            <div className="absolute bottom-20 right-4 w-32 h-44 md:w-48 md:h-64 rounded-lg overflow-hidden border-2 border-primary shadow-xl bg-black z-20">
+            <div className="absolute bottom-24 right-4 w-28 h-40 md:w-40 md:h-56 rounded-lg overflow-hidden border-2 border-primary shadow-xl bg-black z-20">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -800,69 +893,109 @@ function VideoPage() {
               )}
             </div>
 
-            {/* Controls */}
-            <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 z-20">
-              <div className="flex items-center gap-4 md:gap-6 bg-black/60 backdrop-blur-xl px-6 md:px-8 py-4 md:py-5 rounded-full border border-white/10">
-                {/* Mute button - smaller, secondary */}
+            {/* Controls - Redesigned for mobile */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-full px-3">
+              <div className="flex items-center justify-center gap-2 bg-black/60 backdrop-blur-xl p-3 rounded-full border border-white/10 max-w-md mx-auto">
+                {/* Mute button */}
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={toggleMute}
-                  className={`w-12 h-12 md:w-14 md:h-14 rounded-full transition-all ${
+                  className={`w-11 h-11 rounded-full transition-all ${
                     isMuted
                       ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                       : "bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
-                  {isMuted ? <MicOff className="w-5 h-5 md:w-6 md:h-6" /> : <Mic className="w-5 h-5 md:w-6 md:h-6" />}
+                  {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </Button>
 
-                {/* Camera button - smaller, secondary */}
+                {/* Camera button */}
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={toggleVideo}
-                  className={`w-12 h-12 md:w-14 md:h-14 rounded-full transition-all ${
+                  className={`w-11 h-11 rounded-full transition-all ${
                     isVideoOff
                       ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                       : "bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
-                  {isVideoOff ? (
-                    <VideoOff className="w-5 h-5 md:w-6 md:h-6" />
-                  ) : (
-                    <Video className="w-5 h-5 md:w-6 md:h-6" />
-                  )}
+                  {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
                 </Button>
 
-                {/* NEXT button - large, prominent */}
+                {/* Chat button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsChatOpen(!isChatOpen)}
+                  className={`w-11 h-11 rounded-full transition-all ${
+                    isChatOpen
+                      ? "bg-primary/30 text-primary hover:bg-primary/40"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  <MessageCircle className="w-5 h-5" />
+                </Button>
+
+                {/* NEXT button */}
                 <Button
                   onClick={skipToNext}
-                  className="h-14 md:h-16 px-6 md:px-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-base md:text-lg border border-white/20 transition-all hover:scale-105"
+                  className="h-11 px-4 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-sm border border-white/20"
                 >
-                  <SkipForward className="w-5 h-5 md:w-6 md:h-6 mr-2" />
+                  <SkipForward className="w-5 h-5 mr-1" />
                   Next
                 </Button>
 
-                {/* End call button - red, important */}
-                <Button
-                  onClick={endCall}
-                  className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-red-500 hover:bg-red-600 text-white transition-all hover:scale-105"
-                >
-                  <PhoneOff className="w-6 h-6 md:w-7 md:h-7" />
+                {/* End call button */}
+                <Button onClick={endCall} className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 text-white">
+                  <PhoneOff className="w-5 h-5" />
                 </Button>
 
-                {/* CONNEXT/Match button - large, gradient, most prominent */}
+                {/* CONNECT/Match button */}
                 <Button
                   onClick={handleLike}
                   disabled={!currentPartner}
-                  className="h-14 md:h-16 px-6 md:px-8 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-semibold text-base md:text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-11 px-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium text-sm disabled:opacity-50"
                 >
-                  <Sparkles className="w-5 h-5 md:w-6 md:h-6 mr-2" />
-                  Connext
+                  <Sparkles className="w-5 h-5 mr-1" />
+                  Connect
                 </Button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ENDED STATE */}
+        {videoState === "ended" && (
+          <div className="text-center space-y-6">
+            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center">
+              <Heart className="w-12 h-12 text-primary" />
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">Chamada encerrada</h2>
+              <p className="text-muted-foreground mt-2">Deseja iniciar uma nova conversa?</p>
+            </div>
+
+            <Button
+              onClick={handleStartCall}
+              size="lg"
+              className="gradient-bg text-white px-8 h-14 text-lg"
+              disabled={isLoading || !currentUserId}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Iniciando...
+                </>
+              ) : (
+                <>
+                  <Video className="w-5 h-5 mr-2" />
+                  Nova Videochamada
+                </>
+              )}
+            </Button>
           </div>
         )}
       </div>
@@ -870,5 +1003,4 @@ function VideoPage() {
   )
 }
 
-export { VideoPage }
 export default VideoPage
