@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Inter, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { SiteProtection } from "@/components/site-protection"
 import "./globals.css"
 
 const _inter = Inter({ subsets: ["latin"] })
@@ -92,6 +93,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`font-sans antialiased`}>
+        <SiteProtection />
         {children}
         <Analytics />
       </body>

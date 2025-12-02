@@ -8,6 +8,12 @@ const PLAN_LIMITS = {
   pro: { dailyLikes: Number.POSITIVE_INFINITY, dailyCalls: Number.POSITIVE_INFINITY },
 }
 
+const ADMIN_EMAILS = ["matheus.maggioni@edu.pucrs.br"]
+
+function isAdmin(email: string | undefined): boolean {
+  return email ? ADMIN_EMAILS.includes(email.toLowerCase()) : false
+}
+
 export async function checkLikeLimit() {
   const supabase = await createClient()
   const {
@@ -15,6 +21,10 @@ export async function checkLikeLimit() {
   } = await supabase.auth.getUser()
 
   if (!user) return { canLike: false, error: "Não autenticado" }
+
+  if (isAdmin(user.email)) {
+    return { canLike: true, remaining: Number.POSITIVE_INFINITY, isPro: true, isAdmin: true }
+  }
 
   const { data: profile, error } = await supabase
     .from("profiles")
@@ -28,10 +38,22 @@ export async function checkLikeLimit() {
   }
 
   const plan = (profile.plan || "free") as keyof typeof PLAN_LIMITS
-  const today = new Date().toISOString().split("T")[0]
+
+  const now = new Date()
+  const brazilOffset = -3 * 60 // UTC-3
+  const brazilTime = new Date(now.getTime() + (brazilOffset + now.getTimezoneOffset()) * 60 * 1000)
+  const today = brazilTime.toISOString().split("T")[0]
 
   if (profile.last_activity_reset !== today) {
-    await supabase.rpc("reset_daily_limits", { p_user_id: user.id })
+    await supabase
+      .from("profiles")
+      .update({
+        daily_calls_count: 0,
+        daily_likes_count: 0,
+        last_activity_reset: today,
+      })
+      .eq("id", user.id)
+
     return { canLike: true, remaining: PLAN_LIMITS[plan].dailyLikes }
   }
 
@@ -54,10 +76,11 @@ export async function likeUser(toUserId: string) {
 
   if (!user) return { error: "Não autenticado" }
 
-  // Check limit
-  const limitCheck = await checkLikeLimit()
-  if (!limitCheck.canLike) {
-    return { error: "Você atingiu o limite diário de likes. Faça upgrade para o Pro!" }
+  if (!isAdmin(user.email)) {
+    const limitCheck = await checkLikeLimit()
+    if (!limitCheck.canLike) {
+      return { error: "Você atingiu o limite diário de likes. Faça upgrade para o Pro!" }
+    }
   }
 
   const { data: existingLike } = await supabase
@@ -82,7 +105,9 @@ export async function likeUser(toUserId: string) {
     return { error: likeError.message }
   }
 
-  await supabase.rpc("increment_daily_likes", { p_user_id: user.id })
+  if (!isAdmin(user.email)) {
+    await supabase.rpc("increment_daily_likes", { p_user_id: user.id })
+  }
 
   const { data: match } = await supabase
     .from("matches")
