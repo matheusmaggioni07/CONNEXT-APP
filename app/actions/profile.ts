@@ -171,28 +171,49 @@ export async function getProfilesToDiscover() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) return []
-
-  // Get profiles that the user already liked
-  const { data: likes } = await supabase.from("likes").select("to_user_id").eq("from_user_id", user.id)
-
-  const likedUserIds = likes?.map((l) => l.to_user_id) || []
-
-  let query = supabase.from("profiles").select("*").neq("id", user.id).order("created_at", { ascending: false })
-
-  // If there are liked users, exclude them
-  if (likedUserIds.length > 0) {
-    query = query.not("id", "in", `(${likedUserIds.join(",")})`)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error("Get profiles to discover error:", error)
+  if (!user) {
+    console.log("[v0] getProfilesToDiscover: No user found")
     return []
   }
 
-  return data || []
+  try {
+    // Get profiles that the user already liked
+    const { data: likes, error: likesError } = await supabase
+      .from("likes")
+      .select("to_user_id")
+      .eq("from_user_id", user.id)
+
+    if (likesError) {
+      console.log("[v0] Error getting likes:", likesError)
+    }
+
+    const likedUserIds = likes?.map((l) => l.to_user_id) || []
+
+    // Build query - get all profiles except current user
+    const query = supabase
+      .from("profiles")
+      .select("*")
+      .neq("id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(100)
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error("[v0] Get profiles to discover error:", error)
+      return []
+    }
+
+    // Filter out liked users in JavaScript (more reliable across devices)
+    const filteredProfiles = (data || []).filter((profile) => !likedUserIds.includes(profile.id))
+
+    console.log("[v0] Profiles found:", filteredProfiles.length)
+
+    return filteredProfiles
+  } catch (error) {
+    console.error("[v0] getProfilesToDiscover exception:", error)
+    return []
+  }
 }
 
 export async function uploadAvatar(base64Data: string, mimeType: string) {

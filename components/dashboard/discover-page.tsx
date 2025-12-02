@@ -14,6 +14,7 @@ import {
   Loader2,
   ChevronUp,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react"
 import { likeUser, checkLikeLimit } from "@/app/actions/likes"
 import { getProfilesToDiscover } from "@/app/actions/profile"
@@ -38,16 +39,18 @@ export function DiscoverPage() {
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     try {
+      console.log("[v0] Fetching profiles...")
       const [fetchedProfiles, online, limitStatus] = await Promise.all([
         getProfilesToDiscover(),
         getOnlineUserIds(),
         checkLikeLimit(),
       ])
+      console.log("[v0] Fetched profiles:", fetchedProfiles.length)
       setProfiles(fetchedProfiles)
       setOnlineUsers(online)
       setLikeStatus(limitStatus as { canLike: boolean; remaining: number; isPro?: boolean })
     } catch (error) {
-      console.error("Error fetching data:", error)
+      console.error("[v0] Error fetching data:", error)
     } finally {
       setIsLoading(false)
     }
@@ -111,13 +114,40 @@ export function DiscoverPage() {
     }
   }
 
-  const openWhatsApp = (phone: string) => {
-    const cleanPhone = phone.replace(/\D/g, "")
-    window.open(`https://wa.me/${cleanPhone}`, "_blank")
+  const openWhatsApp = (phone: string | undefined | null, name: string) => {
+    if (!phone) {
+      alert(`${name} ainda não adicionou o número de WhatsApp ao perfil.`)
+      return
+    }
+
+    // Clean phone number - remove all non-digits
+    let cleanPhone = phone.replace(/\D/g, "")
+
+    // Add Brazil country code if not present
+    if (cleanPhone.length === 11 || cleanPhone.length === 10) {
+      cleanPhone = "55" + cleanPhone
+    }
+
+    const message = encodeURIComponent(`Olá ${name}! Nos conectamos pelo Connext e gostaria de conversar com você.`)
+    window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
     setShowMatchModal(false)
   }
 
   const isOnline = (userId: string) => onlineUsers.includes(userId)
+
+  const getAvatarUrl = (profile: Profile) => {
+    if (profile.avatar_url && profile.avatar_url.startsWith("http")) {
+      return profile.avatar_url
+    }
+    // Generate placeholder based on name
+    const initials = profile.full_name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+    return `/placeholder.svg?height=600&width=400&query=${encodeURIComponent(profile.full_name || "professional")} portrait photo`
+  }
 
   if (isLoading) {
     return (
@@ -136,7 +166,11 @@ export function DiscoverPage() {
         <div className="text-center">
           <Sparkles className="w-16 h-16 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-foreground mb-2">Nenhum perfil encontrado</h2>
-          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos profissionais.</p>
+          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos empreendedores.</p>
+          <Button onClick={fetchData} variant="outline" className="gap-2 bg-transparent">
+            <RefreshCw className="w-4 h-4" />
+            Atualizar
+          </Button>
         </div>
       </div>
     )
@@ -148,9 +182,12 @@ export function DiscoverPage() {
       <div className="hidden md:flex items-center justify-between p-4 md:p-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Descobrir</h1>
-          <p className="text-muted-foreground">Encontre profissionais compatíveis</p>
+          <p className="text-muted-foreground">Encontre empreendedores compatíveis</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
+            <RefreshCw className="w-5 h-5" />
+          </Button>
           <div className="flex items-center gap-2 bg-secondary px-4 py-2 rounded-full">
             <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
             <span className="text-sm text-foreground">{onlineUsers.length} online</span>
@@ -181,15 +218,16 @@ export function DiscoverPage() {
         <div className="relative flex-1 max-w-lg mx-auto w-full">
           {/* Card */}
           <div className="absolute inset-0 bg-card rounded-2xl border border-border overflow-hidden shadow-2xl">
-            {/* Full Photo */}
+            {/* Full Photo - Use proper avatar URL */}
             <div className="absolute inset-0">
               <img
-                src={
-                  currentProfile.avatar_url ||
-                  "/placeholder.svg?height=600&width=400&query=professional person portrait"
-                }
+                src={getAvatarUrl(currentProfile) || "/placeholder.svg"}
                 alt={currentProfile.full_name}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.src = `/placeholder.svg?height=600&width=400&query=professional person`
+                }}
               />
               {/* Gradient overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
@@ -216,17 +254,20 @@ export function DiscoverPage() {
               <div className="mb-3">
                 <h2 className="text-2xl md:text-3xl font-bold text-white">{currentProfile.full_name}</h2>
                 <p className="text-white/90 text-sm md:text-base">
-                  {currentProfile.position} @ {currentProfile.company}
+                  {currentProfile.position || currentProfile.situation || "Empreendedor"}{" "}
+                  {currentProfile.company ? `@ ${currentProfile.company}` : ""}
                 </p>
                 <div className="flex items-center gap-3 mt-1 text-white/70 text-xs md:text-sm">
                   <span className="flex items-center gap-1">
                     <MapPin className="w-3 h-3" />
-                    {currentProfile.city}
+                    {currentProfile.city || "Brasil"}
                   </span>
-                  <span className="flex items-center gap-1">
-                    <Building2 className="w-3 h-3" />
-                    {currentProfile.industry}
-                  </span>
+                  {currentProfile.industry && (
+                    <span className="flex items-center gap-1">
+                      <Building2 className="w-3 h-3" />
+                      {currentProfile.industry}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -306,20 +347,24 @@ export function DiscoverPage() {
         </div>
       </div>
 
-      {/* Match Modal */}
+      {/* Match Modal - Use proper phone from matchedProfile */}
       {showMatchModal && matchedProfile && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-2xl border border-border p-6 md:p-8 max-w-md w-full text-center animate-in zoom-in-95 duration-300">
             <div className="relative mb-6">
               <div className="flex justify-center -space-x-4">
-                <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden z-10">
-                  <img src="/you-professional.jpg" alt="Você" className="w-full h-full object-cover" />
+                <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden z-10 bg-secondary flex items-center justify-center">
+                  <span className="text-2xl font-bold text-foreground">Você</span>
                 </div>
-                <div className="w-24 h-24 rounded-full border-4 border-pink-500 overflow-hidden">
+                <div className="w-24 h-24 rounded-full border-4 border-pink-500 overflow-hidden bg-secondary">
                   <img
-                    src={matchedProfile.avatar_url || "/placeholder.svg?height=96&width=96&query=professional"}
+                    src={getAvatarUrl(matchedProfile) || "/placeholder.svg"}
                     alt={matchedProfile.full_name}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.src = `/placeholder.svg?height=96&width=96&query=professional`
+                    }}
                   />
                 </div>
               </div>
@@ -334,18 +379,26 @@ export function DiscoverPage() {
             <p className="text-muted-foreground mb-6">Você e {matchedProfile.full_name} têm interesse mútuo!</p>
 
             <div className="space-y-3">
-              {matchedProfile.phone && (
-                <Button
-                  className="w-full bg-[#25D366] hover:bg-[#25D366]/90 text-white h-12"
-                  onClick={() => openWhatsApp(matchedProfile.phone || "")}
-                >
-                  <MessageCircle className="w-5 h-5 mr-2" />
-                  Conversar no WhatsApp
-                </Button>
-              )}
               <Button
-                variant="outline"
-                className="w-full border-border text-foreground bg-transparent h-12"
+                className={`w-full h-12 ${matchedProfile.phone ? "bg-[#25D366] hover:bg-[#25D366]/90" : "bg-gray-500"} text-white`}
+                onClick={() => openWhatsApp(matchedProfile.phone, matchedProfile.full_name)}
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                {matchedProfile.phone ? "Conversar no WhatsApp" : "WhatsApp não disponível"}
+              </Button>
+              <Link href="/dashboard/video" className="block">
+                <Button
+                  variant="outline"
+                  className="w-full border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white h-12 bg-transparent"
+                  onClick={() => setShowMatchModal(false)}
+                >
+                  <Video className="w-5 h-5 mr-2" />
+                  Iniciar Videochamada
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
+                className="w-full text-muted-foreground h-12"
                 onClick={() => setShowMatchModal(false)}
               >
                 Continuar Explorando

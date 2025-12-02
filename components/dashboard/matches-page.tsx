@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, Video, MapPin, Clock, Heart, AlertCircle } from "lucide-react"
+import { MessageCircle, Video, MapPin, Clock, Heart, AlertCircle, RefreshCw } from "lucide-react"
 import { getMatches } from "@/app/actions/likes"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
@@ -13,20 +13,21 @@ export function MatchesPage() {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true)
-      try {
-        const [fetchedMatches, online] = await Promise.all([getMatches(), getOnlineUserIds()])
-        setMatches(fetchedMatches)
-        setOnlineUsers(online)
-      } catch (error) {
-        console.error("Error fetching matches:", error)
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchData = async () => {
+    setIsLoading(true)
+    try {
+      const [fetchedMatches, online] = await Promise.all([getMatches(), getOnlineUserIds()])
+      console.log("[v0] Matches fetched:", fetchedMatches.length)
+      setMatches(fetchedMatches)
+      setOnlineUsers(online)
+    } catch (error) {
+      console.error("[v0] Error fetching matches:", error)
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchData()
   }, [])
 
@@ -65,6 +66,13 @@ export function MatchesPage() {
 
   const isOnline = (userId: string) => onlineUsers.includes(userId)
 
+  const getAvatarUrl = (profile: Profile) => {
+    if (profile.avatar_url && profile.avatar_url.startsWith("http")) {
+      return profile.avatar_url
+    }
+    return `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(profile.full_name || "professional")} portrait`
+  }
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -80,9 +88,14 @@ export function MatchesPage() {
     <div className="flex-1 p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Seus Matches</h1>
-          <p className="text-muted-foreground">Profissionais que demonstraram interesse mútuo</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Seus Matches</h1>
+            <p className="text-muted-foreground">Empreendedores que demonstraram interesse mútuo</p>
+          </div>
+          <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
+            <RefreshCw className="w-5 h-5" />
+          </Button>
         </div>
 
         {matches.length === 0 ? (
@@ -90,11 +103,11 @@ export function MatchesPage() {
             <Heart className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-foreground mb-2">Nenhum match ainda</h2>
             <p className="text-muted-foreground max-w-md mx-auto mb-6">
-              Continue explorando perfis na página Descobrir para encontrar profissionais compatíveis com seus
+              Continue explorando perfis na página Descobrir para encontrar empreendedores compatíveis com seus
               interesses.
             </p>
             <Link href="/dashboard">
-              <Button className="gradient-bg text-primary-foreground">Descobrir Profissionais</Button>
+              <Button className="gradient-bg text-primary-foreground">Descobrir Empreendedores</Button>
             </Link>
           </div>
         ) : (
@@ -111,13 +124,17 @@ export function MatchesPage() {
                   className="bg-card rounded-xl border border-border p-4 hover:border-primary/50 transition-colors"
                 >
                   <div className="flex gap-4">
-                    {/* Avatar */}
+                    {/* Avatar - Show actual profile photo */}
                     <div className="relative">
-                      <div className="w-16 h-16 rounded-full overflow-hidden">
+                      <div className="w-16 h-16 rounded-full overflow-hidden bg-secondary">
                         <img
-                          src={profile.avatar_url || "/placeholder.svg?height=64&width=64&query=professional"}
+                          src={getAvatarUrl(profile) || "/placeholder.svg"}
                           alt={profile.full_name}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement
+                            target.src = `/placeholder.svg?height=64&width=64&query=professional`
+                          }}
                         />
                       </div>
                       {isOnline(profile.id) && (
@@ -129,7 +146,7 @@ export function MatchesPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-foreground truncate">{profile.full_name}</h3>
                       <p className="text-sm text-muted-foreground truncate">
-                        {profile.position || profile.situation || "Profissional"}{" "}
+                        {profile.position || profile.situation || "Empreendedor"}{" "}
                         {profile.company ? `• ${profile.company}` : ""}
                       </p>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
@@ -161,7 +178,7 @@ export function MatchesPage() {
                     </div>
                   )}
 
-                  {/* Actions */}
+                  {/* Actions - Fixed WhatsApp and camera buttons */}
                   <div className="flex gap-2 mt-4">
                     <Button
                       size="sm"
@@ -176,7 +193,7 @@ export function MatchesPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="border-border text-foreground hover:bg-secondary bg-transparent"
+                        className="border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white bg-transparent"
                       >
                         <Video className="w-4 h-4" />
                       </Button>
