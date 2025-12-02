@@ -21,10 +21,11 @@ import {
   RefreshCw,
   Camera,
   MapPin,
-  Filter,
   MessageCircle,
   Send,
   X,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { joinVideoQueue, checkRoomStatus, endVideoRoom, checkCallLimit } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/likes"
@@ -120,7 +121,7 @@ export function VideoPage() {
   const [remoteVideoReady, setRemoteVideoReady] = useState(false)
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
   const [waitTime, setWaitTime] = useState(0)
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true) // Show filters by default in idle state
   const [locationFilter, setLocationFilter] = useState<LocationFilter>({
     country: "BR",
     state: "all",
@@ -203,7 +204,6 @@ export function VideoPage() {
       console.log("[v0] Closed peer connection")
     }
 
-    // Close data channel
     if (dataChannelRef.current) {
       dataChannelRef.current.close()
       dataChannelRef.current = null
@@ -268,10 +268,7 @@ export function VideoPage() {
       timestamp: new Date(),
     }
 
-    // Send to peer
     dataChannelRef.current.send(JSON.stringify(message))
-
-    // Add to local messages
     setChatMessages((prev) => [...prev, message])
     setChatInput("")
   }
@@ -279,24 +276,52 @@ export function VideoPage() {
   const getLocalStream = async () => {
     try {
       console.log("[v0] Getting local stream...")
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: { echoCancellation: true, noiseSuppression: true },
+        video: {
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          facingMode: "user",
+          frameRate: { ideal: 30 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       })
+
       localStreamRef.current = stream
+      console.log(
+        "[v0] Local stream obtained:",
+        stream.getTracks().map((t) => `${t.kind}:${t.enabled}`),
+      )
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.onloadedmetadata = () => {
-          console.log("[v0] Local video metadata loaded")
-          setLocalVideoReady(true)
+
+        // Force play the video
+        localVideoRef.current.onloadedmetadata = async () => {
+          console.log("[v0] Local video metadata loaded, attempting to play")
+          try {
+            await localVideoRef.current?.play()
+            setLocalVideoReady(true)
+            console.log("[v0] Local video playing successfully")
+          } catch (playError) {
+            console.error("[v0] Error playing local video:", playError)
+            // Still mark as ready even if autoplay fails
+            setLocalVideoReady(true)
+          }
+        }
+
+        // Also try playing immediately
+        try {
+          await localVideoRef.current.play()
+        } catch (e) {
+          console.log("[v0] Initial play attempt (may fail due to metadata not loaded):", e)
         }
       }
 
-      console.log(
-        "[v0] Local stream obtained:",
-        stream.getTracks().map((t) => t.kind),
-      )
       return stream
     } catch (error) {
       console.error("[v0] Error getting local stream:", error)
@@ -322,21 +347,49 @@ export function VideoPage() {
 
     remoteStreamRef.current = new MediaStream()
 
+    // Attach remote stream to video element immediately
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current
+    }
+
     localStream.getTracks().forEach((track) => {
       console.log("[v0] Adding local track to PC:", track.kind)
       pc.addTrack(track, localStream)
     })
 
-    pc.ontrack = (event) => {
-      console.log("[v0] Received remote track:", event.track.kind)
-      if (remoteStreamRef.current) {
-        remoteStreamRef.current.addTrack(event.track)
+    pc.ontrack = async (event) => {
+      console.log("[v0] Received remote track:", event.track.kind, "readyState:", event.track.readyState)
 
-        if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-          remoteVideoRef.current.srcObject = remoteStreamRef.current
-          remoteVideoRef.current.onloadedmetadata = () => {
+      if (remoteStreamRef.current) {
+        // Add track to remote stream
+        remoteStreamRef.current.addTrack(event.track)
+        console.log("[v0] Added track to remote stream. Total tracks:", remoteStreamRef.current.getTracks().length)
+
+        // Make sure video element has the stream
+        if (remoteVideoRef.current) {
+          if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+            remoteVideoRef.current.srcObject = remoteStreamRef.current
+          }
+
+          // Try to play the video
+          remoteVideoRef.current.onloadedmetadata = async () => {
             console.log("[v0] Remote video metadata loaded")
+            try {
+              await remoteVideoRef.current?.play()
+              setRemoteVideoReady(true)
+              console.log("[v0] Remote video playing")
+            } catch (e) {
+              console.error("[v0] Error playing remote video:", e)
+              setRemoteVideoReady(true)
+            }
+          }
+
+          // Try immediate play
+          try {
+            await remoteVideoRef.current.play()
             setRemoteVideoReady(true)
+          } catch (e) {
+            console.log("[v0] Initial remote play attempt:", e)
           }
         }
       }
@@ -344,7 +397,7 @@ export function VideoPage() {
 
     pc.onicecandidate = async (event) => {
       if (event.candidate && roomIdRef.current) {
-        console.log("[v0] ICE candidate:", event.candidate.candidate.substring(0, 50))
+        console.log("[v0] ICE candidate generated")
         const supabase = createClient()
         await supabase.from("ice_candidates").insert({
           room_id: roomIdRef.current,
@@ -366,6 +419,10 @@ export function VideoPage() {
       }
     }
 
+    pc.onconnectionstatechange = () => {
+      console.log("[v0] Connection state:", pc.connectionState)
+    }
+
     peerConnectionRef.current = pc
     return pc
   }
@@ -379,6 +436,7 @@ export function VideoPage() {
     setIsLoading(true)
     setVideoState("searching")
     setWaitTime(0)
+    setShowFilters(false) // Hide filters when call starts
 
     waitTimeIntervalRef.current = setInterval(() => {
       setWaitTime((prev) => prev + 1)
@@ -437,7 +495,10 @@ export function VideoPage() {
             setVideoState("connecting")
             setConnectionStatus("Criando oferta...")
 
-            const offer = await pc.createOffer()
+            const offer = await pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true,
+            })
             await pc.setLocalDescription(offer)
             console.log("[v0] Created and set local offer")
 
@@ -464,6 +525,7 @@ export function VideoPage() {
       console.error("[v0] Error starting call:", error)
       await cleanup()
       setVideoState("idle")
+      setShowFilters(true)
       alert("Erro ao iniciar videochamada. Verifique permissões de câmera/microfone.")
     } finally {
       setIsLoading(false)
@@ -609,6 +671,7 @@ export function VideoPage() {
   const endCall = async () => {
     await cleanup()
     setVideoState("ended")
+    setShowFilters(true)
   }
 
   const handleLike = async () => {
@@ -634,8 +697,8 @@ export function VideoPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header with remaining calls and filters */}
-      <div className="flex items-center justify-between p-4 border-b border-border">
+      {/* Header with remaining calls */}
+      <div className="flex items-center justify-between p-3 md:p-4 border-b border-border">
         <div className="flex items-center gap-2">
           {remainingCalls !== null && (
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
@@ -644,28 +707,33 @@ export function VideoPage() {
             </Badge>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowFilters(!showFilters)}
-          className="text-muted-foreground"
-        >
-          <Filter className="w-4 h-4 mr-1" />
-          Filtros
-        </Button>
+        {(videoState === "idle" || videoState === "ended") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="text-muted-foreground"
+          >
+            <MapPin className="w-4 h-4 mr-1" />
+            Filtros
+            {showFilters ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+          </Button>
+        )}
       </div>
 
-      {/* Location filters */}
-      {showFilters && videoState === "idle" && (
-        <div className="p-4 border-b border-border bg-muted/30">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[150px]">
-              <Label className="text-xs text-muted-foreground mb-1 block">Estado</Label>
+      {showFilters && (videoState === "idle" || videoState === "ended") && (
+        <div className="p-3 md:p-4 border-b border-border bg-gradient-to-r from-primary/5 to-pink-500/5">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <Label className="text-xs text-muted-foreground mb-1.5 block flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                Estado
+              </Label>
               <Select
                 value={locationFilter.state}
                 onValueChange={(value) => setLocationFilter({ ...locationFilter, state: value })}
               >
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-10 bg-background">
                   <SelectValue placeholder="Selecione o estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -677,19 +745,18 @@ export function VideoPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1 min-w-[150px]">
-              <Label className="text-xs text-muted-foreground mb-1 block">Cidade (opcional)</Label>
+            <div className="flex-1">
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Cidade (opcional)</Label>
               <Input
                 placeholder="Digite a cidade..."
                 value={locationFilter.city}
                 onChange={(e) => setLocationFilter({ ...locationFilter, city: e.target.value })}
-                className="h-9"
+                className="h-10 bg-background"
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-            <MapPin className="w-3 h-3" />
-            Filtre por localização para encontrar empreendedores perto de você
+          <p className="text-xs text-muted-foreground mt-2">
+            Filtre por localização para encontrar empreendedores e profissionais perto de você
           </p>
         </div>
       )}
@@ -698,17 +765,19 @@ export function VideoPage() {
       <div className="flex-1 relative bg-black/95 flex items-center justify-center overflow-hidden">
         {/* IDLE STATE */}
         {videoState === "idle" && (
-          <div className="text-center space-y-6 p-8">
-            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center animate-pulse">
-              <Video className="w-12 h-12 text-primary" />
+          <div className="text-center space-y-6 p-6 md:p-8">
+            <div className="w-20 h-20 md:w-24 md:h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center animate-pulse">
+              <Video className="w-10 h-10 md:w-12 md:h-12 text-primary" />
             </div>
-            <h2 className="text-2xl md:text-3xl font-bold mb-3">Pronto para conectar?</h2>
-            <p className="text-muted-foreground mb-6">Inicie uma videochamada e conheça empreendedores em tempo real</p>
+            <h2 className="text-xl md:text-3xl font-bold mb-3">Pronto para conectar?</h2>
+            <p className="text-muted-foreground mb-6 text-sm md:text-base">
+              Inicie uma videochamada e conheça empreendedores em tempo real
+            </p>
 
             <Button
               onClick={handleStartCall}
               size="lg"
-              className="gradient-bg text-white px-8 h-14 text-lg"
+              className="gradient-bg text-white px-6 md:px-8 h-12 md:h-14 text-base md:text-lg"
               disabled={isLoading || !currentUserId}
             >
               {isLoading ? (
@@ -725,14 +794,14 @@ export function VideoPage() {
             </Button>
 
             {/* Features */}
-            <div className="flex flex-wrap justify-center gap-4 mt-8 text-sm text-muted-foreground">
+            <div className="flex flex-wrap justify-center gap-3 md:gap-4 mt-6 md:mt-8 text-xs md:text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Sparkles className="w-4 h-4 text-primary" />
                 Video HD
               </div>
               <div className="flex items-center gap-1">
                 <Users className="w-4 h-4 text-primary" />
-                Empreendedores reais
+                Pessoas reais
               </div>
               <div className="flex items-center gap-1">
                 <Heart className="w-4 h-4 text-primary" />
@@ -742,31 +811,58 @@ export function VideoPage() {
           </div>
         )}
 
-        {/* SEARCHING STATE */}
+        {/* SEARCHING STATE - show local video preview */}
         {videoState === "searching" && (
-          <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-            <Badge variant="secondary" className="bg-primary/20 text-primary animate-pulse">
-              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-              procurando
-            </Badge>
-            <Badge variant="outline" className="bg-destructive/20 text-destructive">
-              <span className="w-2 h-2 rounded-full bg-destructive mr-1 animate-pulse" />
-              {formatTime(waitTime)}
-            </Badge>
-          </div>
+          <>
+            {/* Status badges */}
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+              <Badge variant="secondary" className="bg-primary/20 text-primary animate-pulse">
+                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                procurando
+              </Badge>
+              <Badge variant="outline" className="bg-destructive/20 text-destructive">
+                <span className="w-2 h-2 rounded-full bg-destructive mr-1 animate-pulse" />
+                {formatTime(waitTime)}
+              </Badge>
+            </div>
+
+            {/* Center searching UI */}
+            <div className="text-center">
+              <Loader2 className="w-12 h-12 mx-auto animate-spin text-primary mb-4" />
+              <p className="text-lg font-medium text-white">Procurando...</p>
+              <p className="text-white/70 text-sm mt-1">{connectionStatus}</p>
+            </div>
+
+            <div className="absolute bottom-20 right-4 w-28 h-40 md:w-36 md:h-48 rounded-xl overflow-hidden border-2 border-primary shadow-2xl bg-black z-20">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+                style={{ transform: "scaleX(-1)" }}
+              />
+              {!localVideoReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         {/* CONNECTING/CONNECTED STATES - Video UI */}
         {(videoState === "connecting" || videoState === "connected") && (
           <div className="w-full h-full relative">
             {/* Remote video area */}
-            <div className="absolute inset-0 bg-black rounded-lg overflow-hidden">
-              {/* Remote video element - always rendered */}
+            <div className="absolute inset-0 bg-black">
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className={`w-full h-full object-cover ${remoteVideoReady ? "opacity-100" : "opacity-0"}`}
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  remoteVideoReady ? "opacity-100" : "opacity-0"
+                }`}
               />
 
               {/* Placeholder when remote video not ready */}
@@ -774,7 +870,7 @@ export function VideoPage() {
                 <div className="absolute inset-0 flex items-center justify-center">
                   {currentPartner ? (
                     <div className="text-center">
-                      <Avatar className="w-24 h-24 mx-auto mb-4">
+                      <Avatar className="w-24 h-24 mx-auto mb-4 ring-4 ring-primary/20">
                         <AvatarImage src={currentPartner.avatar_url || ""} />
                         <AvatarFallback className="text-2xl bg-gradient-to-br from-primary to-pink-500 text-white">
                           {currentPartner.full_name?.charAt(0) || "?"}
@@ -782,14 +878,15 @@ export function VideoPage() {
                       </Avatar>
                       <p className="text-lg font-medium text-white">{currentPartner.full_name}</p>
                       <p className="text-white/70">{currentPartner.position}</p>
-                      <p className="text-sm text-white/50 mt-2">{connectionStatus}</p>
+                      <p className="text-sm text-white/50 mt-2 flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {connectionStatus}
+                      </p>
                     </div>
                   ) : (
                     <div className="text-center">
                       <Loader2 className="w-12 h-12 mx-auto animate-spin text-primary mb-4" />
-                      <p className="text-lg font-medium text-white">
-                        {videoState === "searching" ? "Procurando..." : "Conectando..."}
-                      </p>
+                      <p className="text-lg font-medium text-white">Conectando...</p>
                       <p className="text-white/70 text-sm mt-1">{connectionStatus}</p>
                     </div>
                   )}
@@ -799,7 +896,7 @@ export function VideoPage() {
 
             {/* Partner info overlay (when connected) */}
             {currentPartner && remoteVideoReady && (
-              <div className="absolute top-4 left-4 z-10 flex items-center gap-3 bg-black/50 backdrop-blur rounded-full px-3 py-2">
+              <div className="absolute top-4 left-4 z-10 flex items-center gap-3 bg-black/60 backdrop-blur-sm rounded-full px-3 py-2">
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={currentPartner.avatar_url || ""} />
                   <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
@@ -813,7 +910,7 @@ export function VideoPage() {
 
             {/* Chat panel */}
             {isChatOpen && (
-              <div className="absolute top-4 right-4 bottom-24 w-80 max-w-[calc(100%-2rem)] bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10 flex flex-col z-30">
+              <div className="absolute top-4 right-4 bottom-28 w-72 md:w-80 max-w-[calc(100%-2rem)] bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10 flex flex-col z-30">
                 <div className="flex items-center justify-between p-3 border-b border-white/10">
                   <span className="font-medium text-white text-sm">Chat</span>
                   <Button
@@ -861,7 +958,7 @@ export function VideoPage() {
                   <Input
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Digite..."
+                    placeholder="Digite uma mensagem..."
                     className="flex-1 bg-white/10 border-white/10 text-white placeholder:text-white/40 h-9"
                   />
                   <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!chatInput.trim()}>
@@ -871,8 +968,7 @@ export function VideoPage() {
               </div>
             )}
 
-            {/* Local video (bottom right) - ALWAYS VISIBLE */}
-            <div className="absolute bottom-24 right-4 w-28 h-40 md:w-40 md:h-56 rounded-lg overflow-hidden border-2 border-primary shadow-xl bg-black z-20">
+            <div className="absolute bottom-28 right-4 w-24 h-32 md:w-36 md:h-48 rounded-xl overflow-hidden border-2 border-primary shadow-2xl bg-black z-20">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -882,32 +978,31 @@ export function VideoPage() {
                 style={{ transform: "scaleX(-1)" }}
               />
               {!localVideoReady && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                 </div>
               )}
               {isVideoOff && (
-                <div className="absolute inset-0 bg-muted flex items-center justify-center">
-                  <VideoOff className="w-8 h-8 text-muted-foreground" />
+                <div className="absolute inset-0 bg-muted/90 flex items-center justify-center">
+                  <VideoOff className="w-6 h-6 text-muted-foreground" />
                 </div>
               )}
             </div>
 
-            {/* Controls - Redesigned for mobile */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-full px-3">
-              <div className="flex items-center justify-center gap-2 bg-black/60 backdrop-blur-xl p-3 rounded-full border border-white/10 max-w-md mx-auto">
+              <div className="flex items-center justify-center gap-2 md:gap-3 bg-black/70 backdrop-blur-xl p-2.5 md:p-3 rounded-full border border-white/10 max-w-sm md:max-w-md mx-auto">
                 {/* Mute button */}
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={toggleMute}
-                  className={`w-11 h-11 rounded-full transition-all ${
+                  className={`w-10 h-10 md:w-11 md:h-11 rounded-full transition-all ${
                     isMuted
                       ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                       : "bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
-                  {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  {isMuted ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
                 </Button>
 
                 {/* Camera button */}
@@ -915,13 +1010,17 @@ export function VideoPage() {
                   variant="ghost"
                   size="icon"
                   onClick={toggleVideo}
-                  className={`w-11 h-11 rounded-full transition-all ${
+                  className={`w-10 h-10 md:w-11 md:h-11 rounded-full transition-all ${
                     isVideoOff
                       ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                       : "bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
-                  {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                  {isVideoOff ? (
+                    <VideoOff className="w-4 h-4 md:w-5 md:h-5" />
+                  ) : (
+                    <Video className="w-4 h-4 md:w-5 md:h-5" />
+                  )}
                 </Button>
 
                 {/* Chat button */}
@@ -929,37 +1028,40 @@ export function VideoPage() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setIsChatOpen(!isChatOpen)}
-                  className={`w-11 h-11 rounded-full transition-all ${
+                  className={`w-10 h-10 md:w-11 md:h-11 rounded-full transition-all ${
                     isChatOpen
                       ? "bg-primary/30 text-primary hover:bg-primary/40"
                       : "bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
-                  <MessageCircle className="w-5 h-5" />
+                  <MessageCircle className="w-4 h-4 md:w-5 md:h-5" />
                 </Button>
 
                 {/* NEXT button */}
                 <Button
                   onClick={skipToNext}
-                  className="h-11 px-4 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-sm border border-white/20"
+                  className="h-10 md:h-11 px-3 md:px-4 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-xs md:text-sm border border-white/20"
                 >
-                  <SkipForward className="w-5 h-5 mr-1" />
-                  Next
+                  <SkipForward className="w-4 h-4 mr-1" />
+                  <span className="hidden xs:inline">Next</span>
                 </Button>
 
                 {/* End call button */}
-                <Button onClick={endCall} className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 text-white">
-                  <PhoneOff className="w-5 h-5" />
+                <Button
+                  onClick={endCall}
+                  className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-red-500 hover:bg-red-600 text-white"
+                >
+                  <PhoneOff className="w-4 h-4 md:w-5 md:h-5" />
                 </Button>
 
                 {/* CONNECT/Match button */}
                 <Button
                   onClick={handleLike}
                   disabled={!currentPartner}
-                  className="h-11 px-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium text-sm disabled:opacity-50"
+                  className="h-10 md:h-11 px-3 md:px-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium text-xs md:text-sm disabled:opacity-50"
                 >
-                  <Sparkles className="w-5 h-5 mr-1" />
-                  Connect
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  <span className="hidden xs:inline">Connect</span>
                 </Button>
               </div>
             </div>
@@ -968,7 +1070,7 @@ export function VideoPage() {
 
         {/* ENDED STATE */}
         {videoState === "ended" && (
-          <div className="text-center space-y-6">
+          <div className="text-center space-y-6 p-8">
             <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center">
               <Heart className="w-12 h-12 text-primary" />
             </div>
