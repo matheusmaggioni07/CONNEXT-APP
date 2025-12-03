@@ -6,6 +6,7 @@ export async function GET() {
 
   if (apiKey) {
     try {
+      console.log("[v0] Fetching TURN credentials...")
       const response = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${apiKey}`, {
         cache: "no-store",
       })
@@ -13,6 +14,14 @@ export async function GET() {
       if (response.ok) {
         const credentials = await response.json()
         console.log("[v0] Metered credentials fetched successfully")
+        console.log("[v0] Credentials count:", credentials.length)
+
+        if (credentials.length > 0) {
+          const first = credentials[0]
+          console.log("[v0] First credential has username:", !!first.username)
+          console.log("[v0] First credential urls:", first.urls)
+        }
+
         return NextResponse.json({
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
@@ -21,14 +30,16 @@ export async function GET() {
           ],
         })
       } else {
-        console.error("[v0] Metered API error:", response.status)
+        const errorText = await response.text()
+        console.error("[v0] Metered API error:", response.status, errorText)
       }
     } catch (error) {
       console.error("[v0] Metered fetch error:", error)
     }
+  } else {
+    console.log("[v0] No METERED_API_KEY, using fallback servers")
   }
 
-  // These are well-known public TURN servers that work for most cases
   const iceServers = [
     // Google STUN servers (very reliable)
     { urls: "stun:stun.l.google.com:19302" },

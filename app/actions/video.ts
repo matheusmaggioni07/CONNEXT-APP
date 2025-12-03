@@ -395,3 +395,79 @@ export async function getAvailableUsersForVideo() {
 
   return profiles || []
 }
+
+export async function getRemainingCalls(userId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { success: false, error: "Não autenticado" }
+
+  if (isAdmin(user.email)) {
+    return { success: true, remaining: -1, isPro: true, isAdmin: true }
+  }
+
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("plan, daily_calls_count, last_activity_reset")
+    .eq("id", user.id)
+    .single()
+
+  if (error || !profile) {
+    return { success: false, error: "Perfil não encontrado" }
+  }
+
+  const plan = (profile.plan || "free") as keyof typeof PLAN_LIMITS
+
+  const now = new Date()
+  const brazilOffset = -3 * 60
+  const brazilTime = new Date(now.getTime() + (brazilOffset + now.getTimezoneOffset()) * 60 * 1000)
+  const today = brazilTime.toISOString().split("T")[0]
+
+  if (profile.last_activity_reset !== today) {
+    await supabase
+      .from("profiles")
+      .update({
+        daily_calls_count: 0,
+        daily_likes_count: 0,
+        last_activity_reset: today,
+      })
+      .eq("id", user.id)
+
+    return {
+      success: true,
+      remaining: plan === "pro" ? -1 : PLAN_LIMITS[plan].dailyCalls,
+      isPro: plan === "pro",
+    }
+  }
+
+  const limit = PLAN_LIMITS[plan].dailyCalls
+  const currentCount = profile.daily_calls_count || 0
+
+  if (plan === "pro") {
+    return { success: true, remaining: -1, isPro: true }
+  }
+
+  const remaining = limit - currentCount
+
+  if (remaining <= 0) {
+    // Calculate reset time (next day at midnight Brazil time)
+    const tomorrow = new Date(brazilTime)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(0, 0, 0, 0)
+
+    return {
+      success: true,
+      remaining: 0,
+      resetTime: tomorrow.toISOString(),
+      isPro: false,
+    }
+  }
+
+  return {
+    success: true,
+    remaining,
+    isPro: false,
+  }
+}
