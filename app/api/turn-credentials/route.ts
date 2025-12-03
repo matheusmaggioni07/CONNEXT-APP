@@ -2,13 +2,10 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   const apiKey = process.env.METERED_API_KEY
-
-  // Your Metered.ca domain
   const METERED_DOMAIN = "connextapp.metered.live"
 
   if (apiKey) {
     try {
-      // Fetch dynamic TURN credentials from your Metered account
       const response = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${apiKey}`, {
         cache: "no-store",
       })
@@ -20,7 +17,6 @@ export async function GET() {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            { urls: `stun:${METERED_DOMAIN}:80` },
             ...credentials,
           ],
         })
@@ -32,40 +28,47 @@ export async function GET() {
     }
   }
 
-  // Fallback: Use your domain with static TURN servers
-  const FALLBACK_SERVERS = [
-    // Google STUN
+  // These are well-known public TURN servers that work for most cases
+  const iceServers = [
+    // Google STUN servers (very reliable)
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
 
-    // Your Metered.ca TURN servers
+    // Twilio STUN (reliable)
+    { urls: "stun:global.stun.twilio.com:3478" },
+
+    // OpenRelay TURN (free public, works for NAT traversal)
     {
-      urls: `turn:${METERED_DOMAIN}:80`,
-      username: "83eebabf8b4cce9d5dbcb649",
-      credential: "2D7JvfkOQtBdYW3R",
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
     {
-      urls: `turn:${METERED_DOMAIN}:80?transport=tcp`,
-      username: "83eebabf8b4cce9d5dbcb649",
-      credential: "2D7JvfkOQtBdYW3R",
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
     {
-      urls: `turn:${METERED_DOMAIN}:443`,
-      username: "83eebabf8b4cce9d5dbcb649",
-      credential: "2D7JvfkOQtBdYW3R",
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
     {
-      urls: `turn:${METERED_DOMAIN}:443?transport=tcp`,
-      username: "83eebabf8b4cce9d5dbcb649",
-      credential: "2D7JvfkOQtBdYW3R",
+      urls: "turns:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
+
+    // Alternative free TURN from Metered OpenRelay
     {
-      urls: `turns:${METERED_DOMAIN}:443?transport=tcp`,
-      username: "83eebabf8b4cce9d5dbcb649",
-      credential: "2D7JvfkOQtBdYW3R",
+      urls: "turn:openrelay.metered.ca:80?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
   ]
 
-  return NextResponse.json({ iceServers: FALLBACK_SERVERS })
+  return NextResponse.json({ iceServers })
 }

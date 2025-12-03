@@ -162,13 +162,16 @@ export function VideoPage() {
   useEffect(() => {
     async function fetchTurnCredentials() {
       try {
+        console.log("[v0] Fetching TURN credentials...")
         const res = await fetch("/api/turn-credentials")
         const data = await res.json()
-        if (data.iceServers) {
+        if (data.iceServers && data.iceServers.length > 0) {
+          console.log("[v0] ICE servers loaded:", data.iceServers.length)
           setIceServers(data.iceServers)
         }
-      } catch {
-        // Use fallback STUN servers
+      } catch (err) {
+        console.error("[v0] Failed to fetch TURN credentials:", err)
+        // Use fallback
         setIceServers([{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }])
       }
     }
@@ -246,6 +249,7 @@ export function VideoPage() {
   const initLocalMedia = useCallback(async (facing: "user" | "environment" = "user") => {
     try {
       setConnectionStatus("Acessando câmera e microfone...")
+      console.log("[v0] Initializing local media with facing:", facing)
 
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -266,21 +270,29 @@ export function VideoPage() {
       for (const constraint of constraints) {
         try {
           stream = await navigator.mediaDevices.getUserMedia(constraint)
+          console.log("[v0] Got media stream with constraint:", JSON.stringify(constraint))
           break
-        } catch {
+        } catch (err) {
+          console.log("[v0] Failed with constraint, trying next:", err)
           continue
         }
       }
 
       if (stream) {
         localStreamRef.current = stream
+        console.log(
+          "[v0] Local stream tracks:",
+          stream.getTracks().map((t) => `${t.kind}:${t.enabled}`),
+        )
+
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream
           localVideoRef.current.muted = true
           try {
             await localVideoRef.current.play()
-          } catch {
-            /* ignore autoplay issues */
+            console.log("[v0] Local video playing")
+          } catch (playErr) {
+            console.log("[v0] Autoplay blocked, will play on interaction:", playErr)
           }
           setLocalVideoReady(true)
         }
@@ -289,7 +301,7 @@ export function VideoPage() {
 
       throw new Error("No media stream available")
     } catch (error: unknown) {
-      console.error("Error accessing media:", error)
+      console.error("[v0] Error accessing media:", error)
       const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
 
       if (errorMessage.includes("Permission denied") || errorMessage.includes("NotAllowedError")) {
@@ -325,6 +337,7 @@ export function VideoPage() {
     async (type: "offer" | "answer", sdp: RTCSessionDescriptionInit) => {
       if (!supabaseRef.current || !currentUserId || !partnerIdRef.current || !roomIdRef.current) return
 
+      console.log("[v0] Sending signaling:", type)
       await supabaseRef.current.from("signaling").insert({
         room_id: roomIdRef.current,
         from_user_id: currentUserId,
@@ -375,25 +388,22 @@ export function VideoPage() {
 
             try {
               const sdp = JSON.parse(signal.sdp) as RTCSessionDescriptionInit
+              console.log("[v0] Processing signal:", signal.type, "state:", pc.signalingState)
 
               if (signal.type === "offer" && pc.signalingState !== "closed") {
-                // Only accept offer if we're not the initiator or in stable state
                 if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
                   if (pc.signalingState === "have-local-offer") {
-                    // Collision - use polite peer logic (lower ID yields)
                     if (currentUserId > partnerIdRef.current!) {
-                      // We're impolite, ignore incoming offer
                       await supabaseRef.current!.from("signaling").delete().eq("id", signal.id)
                       continue
                     }
-                    // We're polite, rollback our offer
                     await pc.setLocalDescription({ type: "rollback" })
                   }
 
                   await pc.setRemoteDescription(new RTCSessionDescription(sdp))
                   hasRemoteDescRef.current = true
+                  console.log("[v0] Remote description set (offer)")
 
-                  // Process pending ICE candidates
                   for (const candidate of pendingCandidatesRef.current) {
                     try {
                       await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -403,16 +413,16 @@ export function VideoPage() {
                   }
                   pendingCandidatesRef.current = []
 
-                  // Create and send answer
                   const answer = await pc.createAnswer()
                   await pc.setLocalDescription(answer)
                   await sendSignaling("answer", answer)
+                  console.log("[v0] Answer sent")
                 }
               } else if (signal.type === "answer" && pc.signalingState === "have-local-offer") {
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp))
                 hasRemoteDescRef.current = true
+                console.log("[v0] Remote description set (answer)")
 
-                // Process pending ICE candidates
                 for (const candidate of pendingCandidatesRef.current) {
                   try {
                     await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -423,10 +433,9 @@ export function VideoPage() {
                 pendingCandidatesRef.current = []
               }
             } catch (e) {
-              console.error("Error processing signal:", e)
+              console.error("[v0] Error processing signal:", e)
             }
 
-            // Delete processed signal
             await supabaseRef.current!.from("signaling").delete().eq("id", signal.id)
           }
         }
@@ -456,16 +465,14 @@ export function VideoPage() {
               /* ignore */
             }
 
-            // Delete processed candidate
             await supabaseRef.current!.from("ice_candidates").delete().eq("id", candidateRow.id)
           }
         }
       } catch (e) {
-        console.error("Polling error:", e)
+        console.error("[v0] Polling error:", e)
       }
     }
 
-    // Poll every 500ms for reliability
     signalingPollRef.current = setInterval(poll, 500)
     poll()
   }, [currentUserId, sendSignaling])
@@ -484,12 +491,35 @@ export function VideoPage() {
         peerConnectionRef.current.close()
       }
 
-      // Use dynamic ICE servers
+      const servers: RTCIceServer[] =
+        iceServers.length > 0
+          ? iceServers
+          : [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" },
+              { urls: "stun:stun2.l.google.com:19302" },
+              // OpenRelay free TURN servers
+              {
+                urls: "turn:openrelay.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject",
+              },
+              {
+                urls: "turn:openrelay.metered.ca:443",
+                username: "openrelayproject",
+                credential: "openrelayproject",
+              },
+              {
+                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                username: "openrelayproject",
+                credential: "openrelayproject",
+              },
+            ]
+
+      console.log("[v0] Setting up WebRTC with", servers.length, "ICE servers, isInitiator:", isInitiator)
+
       const rtcConfig: RTCConfiguration = {
-        iceServers:
-          iceServers.length > 0
-            ? iceServers
-            : [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
+        iceServers: servers,
         iceCandidatePoolSize: 10,
         iceTransportPolicy: "all",
         bundlePolicy: "max-bundle",
@@ -499,10 +529,11 @@ export function VideoPage() {
       const pc = new RTCPeerConnection(rtcConfig)
       peerConnectionRef.current = pc
 
-      // Add local tracks FIRST before anything else
+      // Add local tracks
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
           pc.addTrack(track, localStreamRef.current!)
+          console.log("[v0] Added local track:", track.kind)
         })
       }
 
@@ -514,6 +545,7 @@ export function VideoPage() {
       }
 
       pc.ontrack = (event) => {
+        console.log("[v0] Received remote track:", event.track.kind)
         const remote = remoteStreamRef.current
         if (!remote) return
 
@@ -521,6 +553,7 @@ export function VideoPage() {
           const existing = remote.getTracks().find((t) => t.id === track.id)
           if (!existing) {
             remote.addTrack(track)
+            console.log("[v0] Added remote track to stream:", track.kind)
           }
         })
 
@@ -536,6 +569,7 @@ export function VideoPage() {
 
       pc.oniceconnectionstatechange = () => {
         const state = pc.iceConnectionState
+        console.log("[v0] ICE connection state:", state)
 
         if (state === "connected" || state === "completed") {
           setVideoState("connected")
@@ -546,9 +580,10 @@ export function VideoPage() {
           if (iceRestartAttempts.current < 3) {
             iceRestartAttempts.current++
             setConnectionStatus(`Reconectando... (tentativa ${iceRestartAttempts.current})`)
+            setConnectionQuality("poor")
             pc.restartIce()
           } else {
-            setConnectionStatus("Conexão falhou")
+            setConnectionStatus("Conexão falhou. Clique em Next para tentar novamente.")
             setConnectionQuality("poor")
           }
         } else if (state === "disconnected") {
@@ -556,10 +591,12 @@ export function VideoPage() {
           setConnectionQuality("medium")
         } else if (state === "checking") {
           setConnectionStatus("Estabelecendo conexão...")
+          setConnectionQuality("medium")
         }
       }
 
       pc.onconnectionstatechange = () => {
+        console.log("[v0] Connection state:", pc.connectionState)
         if (pc.connectionState === "connected") {
           setVideoState("connected")
           setConnectionQuality("good")
@@ -572,11 +609,11 @@ export function VideoPage() {
         }
       }
 
-      // Data channel for chat - initiator creates it
+      // Data channel for chat
       if (isInitiator) {
         const dataChannel = pc.createDataChannel("chat", { ordered: true })
         dataChannelRef.current = dataChannel
-        dataChannel.onopen = () => {}
+        dataChannel.onopen = () => console.log("[v0] Data channel open")
         dataChannel.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data) as ChatMessage
@@ -588,6 +625,7 @@ export function VideoPage() {
       }
 
       pc.ondatachannel = (event) => {
+        console.log("[v0] Received data channel")
         dataChannelRef.current = event.channel
         event.channel.onmessage = (e) => {
           try {
@@ -604,8 +642,8 @@ export function VideoPage() {
 
       if (isInitiator && !offerSentRef.current) {
         offerSentRef.current = true
-        // Wait for ICE gathering to start
-        await new Promise((resolve) => setTimeout(resolve, 1000))
+        // Small delay to ensure tracks are added
+        await new Promise((resolve) => setTimeout(resolve, 500))
 
         try {
           const offer = await pc.createOffer({
@@ -614,8 +652,9 @@ export function VideoPage() {
           })
           await pc.setLocalDescription(offer)
           await sendSignaling("offer", offer)
+          console.log("[v0] Offer sent")
         } catch (e) {
-          console.error("Error creating offer:", e)
+          console.error("[v0] Error creating offer:", e)
         }
       }
 
@@ -737,18 +776,25 @@ export function VideoPage() {
 
   const toggleVideo = async () => {
     if (isVideoOff) {
-      // Turn video ON
-      const stream = await initLocalMedia(facingMode)
-      if (stream && peerConnectionRef.current) {
-        const newVideoTrack = stream.getVideoTracks()[0]
-        const senders = peerConnectionRef.current.getSenders()
-        const videoSender = senders.find((s) => s.track?.kind === "video")
-        if (videoSender && newVideoTrack) {
-          await videoSender.replaceTrack(newVideoTrack)
+      // Turn video ON - get new stream
+      try {
+        const stream = await initLocalMedia(facingMode)
+        if (stream) {
+          // Replace track in peer connection if exists
+          if (peerConnectionRef.current) {
+            const newVideoTrack = stream.getVideoTracks()[0]
+            const senders = peerConnectionRef.current.getSenders()
+            const videoSender = senders.find((s) => s.track?.kind === "video")
+            if (videoSender && newVideoTrack) {
+              await videoSender.replaceTrack(newVideoTrack)
+            }
+          }
+          setIsVideoOff(false)
+          setLocalVideoReady(true)
         }
-        setLocalVideoReady(true)
+      } catch (err) {
+        console.error("[v0] Failed to turn video on:", err)
       }
-      setIsVideoOff(false)
     } else {
       // Turn video OFF
       if (localStreamRef.current) {
@@ -774,21 +820,6 @@ export function VideoPage() {
     if (!chatInput.trim()) return
     if (!currentUserId) return
 
-    const dc = dataChannelRef.current
-    if (!dc || dc.readyState !== "open") {
-      // If data channel not ready, still show message locally
-      const message: ChatMessage = {
-        id: crypto.randomUUID(),
-        senderId: currentUserId,
-        senderName: currentUserName,
-        content: chatInput.trim(),
-        timestamp: new Date(),
-      }
-      setChatMessages((prev) => [...prev, message])
-      setChatInput("")
-      return
-    }
-
     const message: ChatMessage = {
       id: crypto.randomUUID(),
       senderId: currentUserId,
@@ -797,13 +828,18 @@ export function VideoPage() {
       timestamp: new Date(),
     }
 
-    try {
-      dc.send(JSON.stringify(message))
-      setChatMessages((prev) => [...prev, message])
-      setChatInput("")
-    } catch (e) {
-      console.error("Failed to send message:", e)
+    const dc = dataChannelRef.current
+    if (dc && dc.readyState === "open") {
+      try {
+        dc.send(JSON.stringify(message))
+      } catch (e) {
+        console.error("[v0] Failed to send message:", e)
+      }
     }
+
+    // Always show message locally
+    setChatMessages((prev) => [...prev, message])
+    setChatInput("")
   }
 
   if (videoState === "ended") {
@@ -950,6 +986,24 @@ export function VideoPage() {
                   <p className="font-medium text-foreground">{currentPartner.full_name}</p>
                   <p className="text-xs text-muted-foreground">{currentPartner.position}</p>
                 </div>
+                {connectionQuality && (
+                  <Badge
+                    className={
+                      connectionQuality === "good"
+                        ? "bg-green-500/20 text-green-400"
+                        : connectionQuality === "medium"
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-red-500/20 text-red-400"
+                    }
+                  >
+                    {connectionQuality === "good" ? (
+                      <Wifi className="mr-1 h-3 w-3" />
+                    ) : (
+                      <WifiOff className="mr-1 h-3 w-3" />
+                    )}
+                    {connectionQuality === "good" ? "Boa" : connectionQuality === "medium" ? "Média" : "Fraca"}
+                  </Badge>
+                )}
               </div>
             )}
 
@@ -959,8 +1013,12 @@ export function VideoPage() {
               <p className="mt-2 text-sm text-muted-foreground">{waitTime}s</p>
             </div>
 
-            {localVideoReady && (
-              <div className="absolute bottom-24 right-4 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg md:h-40 md:w-32">
+            <div className="absolute bottom-24 right-4 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg md:h-40 md:w-32">
+              {isVideoOff ? (
+                <div className="flex h-full w-full items-center justify-center bg-card">
+                  <VideoOff className="h-8 w-8 text-muted-foreground" />
+                </div>
+              ) : localVideoReady ? (
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -969,8 +1027,20 @@ export function VideoPage() {
                   className="h-full w-full object-cover"
                   style={{ transform: "scaleX(-1)" }}
                 />
-              </div>
-            )}
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-card">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={flipCamera}
+                className="absolute bottom-1 right-1 h-6 w-6 rounded-full bg-black/50 text-white hover:bg-black/70"
+              >
+                <SwitchCamera className="h-3 w-3" />
+              </Button>
+            </div>
           </>
         )}
 
@@ -1078,12 +1148,12 @@ export function VideoPage() {
       </div>
 
       {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
-        <div className="flex items-center justify-center gap-1.5 border-t border-border bg-card/90 p-2 backdrop-blur sm:gap-3 sm:p-4">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-t border-border bg-card/90 p-3 backdrop-blur sm:gap-3 sm:p-4">
           <Button
             variant="outline"
             size="icon"
             onClick={toggleMute}
-            className={`h-9 w-9 shrink-0 sm:h-11 sm:w-11 ${isMuted ? "border-destructive text-destructive" : "border-border"}`}
+            className={`h-10 w-10 shrink-0 ${isMuted ? "border-destructive text-destructive" : "border-border"}`}
           >
             {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
@@ -1092,7 +1162,7 @@ export function VideoPage() {
             variant="outline"
             size="icon"
             onClick={toggleVideo}
-            className={`h-9 w-9 shrink-0 sm:h-11 sm:w-11 ${isVideoOff ? "border-destructive text-destructive" : "border-border"}`}
+            className={`h-10 w-10 shrink-0 ${isVideoOff ? "border-destructive text-destructive" : "border-border"}`}
           >
             {isVideoOff ? <VideoOff className="h-4 w-4" /> : <Video className="h-4 w-4" />}
           </Button>
@@ -1102,37 +1172,28 @@ export function VideoPage() {
               variant="outline"
               size="icon"
               onClick={() => setIsChatOpen(!isChatOpen)}
-              className="h-9 w-9 shrink-0 border-border sm:h-11 sm:w-11"
+              className="h-10 w-10 shrink-0 border-border"
             >
               <MessageCircle className="h-4 w-4" />
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            onClick={handleSkip}
-            className="h-9 shrink-0 border-border bg-transparent px-2 sm:h-11 sm:px-4"
-          >
-            <SkipForward className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Next</span>
+          <Button variant="outline" onClick={handleSkip} className="h-10 shrink-0 border-border bg-transparent px-3">
+            <SkipForward className="h-4 w-4" />
+            <span className="ml-2 hidden sm:inline">Next</span>
           </Button>
 
-          <Button
-            variant="destructive"
-            size="icon"
-            onClick={handleEndCall}
-            className="h-9 w-9 shrink-0 sm:h-11 sm:w-11"
-          >
+          <Button variant="destructive" size="icon" onClick={handleEndCall} className="h-10 w-10 shrink-0">
             <PhoneOff className="h-4 w-4" />
           </Button>
 
           {videoState === "connected" && currentPartner && (
             <Button
               onClick={handleConnect}
-              className="h-9 shrink-0 bg-gradient-to-r from-primary to-pink-500 px-2 hover:from-primary/90 hover:to-pink-500/90 sm:h-11 sm:px-4"
+              className="h-10 shrink-0 bg-gradient-to-r from-primary to-pink-500 px-3 hover:from-primary/90 hover:to-pink-500/90"
             >
-              <Sparkles className="h-4 w-4 sm:mr-1" />
-              <Heart className="h-4 w-4 sm:ml-1" />
+              <Sparkles className="h-4 w-4" />
+              <Heart className="ml-1 h-4 w-4" />
             </Button>
           )}
         </div>
