@@ -54,28 +54,34 @@ type ChatMessage = {
 
 const rtcConfig: RTCConfiguration = {
   iceServers: [
+    // STUN servers
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.relay.metered.ca:80" },
+    // TURN servers (Metered.ca - free tier)
     {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:80",
+      username: "d7d85abc5c3c7f8c3e2c3f28",
+      credential: "9lKDqQE5V5MxKPJx",
     },
     {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "d7d85abc5c3c7f8c3e2c3f28",
+      credential: "9lKDqQE5V5MxKPJx",
     },
     {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:443",
+      username: "d7d85abc5c3c7f8c3e2c3f28",
+      credential: "9lKDqQE5V5MxKPJx",
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "d7d85abc5c3c7f8c3e2c3f28",
+      credential: "9lKDqQE5V5MxKPJx",
     },
   ],
   iceCandidatePoolSize: 10,
+  iceTransportPolicy: "all",
 }
 
 const brazilianStates = [
@@ -166,6 +172,7 @@ export function VideoPage() {
   const isInitiatorRef = useRef(false)
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([])
   const hasRemoteDescRef = useRef(false)
+  const videoEnabledRef = useRef(true)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -240,6 +247,7 @@ export function VideoPage() {
     try {
       setConnectionStatus("Acessando câmera e microfone...")
 
+      // Stop existing tracks
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop())
       }
@@ -249,7 +257,7 @@ export function VideoPage() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: facing },
-          audio: { echoCancellation: true, noiseSuppression: true },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         })
       } catch {
         try {
@@ -258,7 +266,7 @@ export function VideoPage() {
             audio: true,
           })
         } catch {
-          stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true })
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         }
       }
 
@@ -340,11 +348,19 @@ export function VideoPage() {
       }
 
       pc.ontrack = (event) => {
-        console.log("[v0] Received remote track:", event.track.kind)
-        remoteStream.addTrack(event.track)
+        console.log("[v0] Received remote track:", event.track.kind, "readyState:", event.track.readyState)
+
+        // Add track to remote stream
+        event.streams[0]?.getTracks().forEach((track) => {
+          console.log("[v0] Adding track to remoteStream:", track.kind)
+          remoteStream.addTrack(track)
+        })
+
         if (remoteVideoRef.current) {
-          remoteVideoRef.current.play().catch(() => {})
+          remoteVideoRef.current.srcObject = remoteStream
+          remoteVideoRef.current.play().catch((err) => console.log("[v0] Remote video play error:", err))
         }
+
         setRemoteVideoReady(true)
         setVideoState("connected")
         setConnectionStatus("")
@@ -359,10 +375,16 @@ export function VideoPage() {
         } else if (pc.iceConnectionState === "failed") {
           setConnectionStatus("Conexão falhou. Tentando reconectar...")
           setConnectionQuality("poor")
+          // Try to restart ICE
+          pc.restartIce()
         } else if (pc.iceConnectionState === "disconnected") {
           setConnectionStatus("Conexão perdida...")
           setConnectionQuality("poor")
         }
+      }
+
+      pc.onconnectionstatechange = () => {
+        console.log("[v0] Connection state:", pc.connectionState)
       }
 
       // Data channel for chat
@@ -403,7 +425,7 @@ export function VideoPage() {
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log("[v0] Sending ICE candidate")
+          console.log("[v0] Sending ICE candidate:", event.candidate.candidate.substring(0, 50))
           channel.send({
             type: "broadcast",
             event: "ice-candidate",
@@ -412,16 +434,21 @@ export function VideoPage() {
         }
       }
 
+      pc.onicegatheringstatechange = () => {
+        console.log("[v0] ICE gathering state:", pc.iceGatheringState)
+      }
+
       channel
         .on("broadcast", { event: "offer" }, async ({ payload }) => {
           if (payload.from === currentUserId) return
-          console.log("[v0] Received offer")
+          console.log("[v0] Received offer from:", payload.from)
 
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
             hasRemoteDescRef.current = true
 
             // Process pending ICE candidates
+            console.log("[v0] Processing", pendingCandidatesRef.current.length, "pending ICE candidates")
             for (const candidate of pendingCandidatesRef.current) {
               await pc.addIceCandidate(new RTCIceCandidate(candidate))
             }
@@ -442,13 +469,14 @@ export function VideoPage() {
         })
         .on("broadcast", { event: "answer" }, async ({ payload }) => {
           if (payload.from === currentUserId) return
-          console.log("[v0] Received answer")
+          console.log("[v0] Received answer from:", payload.from)
 
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
             hasRemoteDescRef.current = true
 
             // Process pending ICE candidates
+            console.log("[v0] Processing", pendingCandidatesRef.current.length, "pending ICE candidates")
             for (const candidate of pendingCandidatesRef.current) {
               await pc.addIceCandidate(new RTCIceCandidate(candidate))
             }
@@ -459,12 +487,13 @@ export function VideoPage() {
         })
         .on("broadcast", { event: "ice-candidate" }, async ({ payload }) => {
           if (payload.from === currentUserId) return
-          console.log("[v0] Received ICE candidate")
+          console.log("[v0] Received ICE candidate from:", payload.from)
 
           try {
             if (hasRemoteDescRef.current && pc.remoteDescription) {
               await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
             } else {
+              console.log("[v0] Buffering ICE candidate")
               pendingCandidatesRef.current.push(payload.candidate)
             }
           } catch (err) {
@@ -481,7 +510,10 @@ export function VideoPage() {
               setTimeout(async () => {
                 try {
                   console.log("[v0] Creating offer...")
-                  const offer = await pc.createOffer()
+                  const offer = await pc.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: true,
+                  })
                   await pc.setLocalDescription(offer)
 
                   console.log("[v0] Sending offer...")
@@ -493,7 +525,7 @@ export function VideoPage() {
                 } catch (err) {
                   console.error("[v0] Error creating offer:", err)
                 }
-              }, 1000)
+              }, 1500) // Increased delay for better sync
             }
           }
         })
@@ -668,14 +700,58 @@ export function VideoPage() {
     }
   }
 
-  const toggleVideo = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach((track) => {
-        track.enabled = !track.enabled
+  const toggleVideo = useCallback(async () => {
+    if (!localStreamRef.current) return
+
+    const videoTracks = localStreamRef.current.getVideoTracks()
+
+    if (isVideoOff) {
+      // Turning video ON - get new stream
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode },
+          audio: false,
+        })
+
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        if (newVideoTrack) {
+          // Replace in local stream
+          const oldTrack = localStreamRef.current.getVideoTracks()[0]
+          if (oldTrack) {
+            localStreamRef.current.removeTrack(oldTrack)
+            oldTrack.stop()
+          }
+          localStreamRef.current.addTrack(newVideoTrack)
+
+          // Update local video element
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current
+            await localVideoRef.current.play().catch(() => {})
+          }
+
+          // Replace in peer connection
+          if (peerConnectionRef.current) {
+            const senders = peerConnectionRef.current.getSenders()
+            const videoSender = senders.find((s) => s.track?.kind === "video")
+            if (videoSender) {
+              await videoSender.replaceTrack(newVideoTrack)
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[v0] Error enabling video:", err)
+        return
+      }
+    } else {
+      // Turning video OFF
+      videoTracks.forEach((track) => {
+        track.enabled = false
       })
-      setIsVideoOff(!isVideoOff)
     }
-  }
+
+    setIsVideoOff(!isVideoOff)
+    videoEnabledRef.current = isVideoOff // Will be the new value after toggle
+  }, [isVideoOff, facingMode])
 
   if (videoState === "permission_denied") {
     return (
@@ -875,10 +951,21 @@ export function VideoPage() {
           </div>
         )}
 
-        {showCallControls && (
-          <div className="absolute bottom-4 right-4 w-32 h-24 md:w-48 md:h-36 rounded-lg overflow-hidden border-2 border-pink-500/50 shadow-lg">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            {videoState === "connected" && (
+        {showCallControls && videoState !== "ended" && (
+          <div className="absolute bottom-4 right-4 w-32 h-24 md:w-48 md:h-36 rounded-lg overflow-hidden border-2 border-pink-500/50 shadow-lg bg-black">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${isVideoOff ? "hidden" : ""}`}
+            />
+            {isVideoOff && (
+              <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                <VideoOff className="w-8 h-8 text-gray-500" />
+              </div>
+            )}
+            {videoState === "connected" && !isVideoOff && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -930,7 +1017,7 @@ export function VideoPage() {
         )}
       </div>
 
-      {showCallControls && (
+      {showCallControls && videoState !== "ended" && (
         <div className="p-4 border-t border-border">
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button

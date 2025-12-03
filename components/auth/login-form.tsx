@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { createClient } from "@/lib/supabase/client"
-import { Mail, Lock, AlertCircle, Sparkles } from "lucide-react"
+import { Mail, Lock, AlertCircle, Sparkles, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { OAuthButtons } from "./oauth-buttons"
 
@@ -17,6 +17,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,13 +94,20 @@ export function LoginForm() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 bg-card/50 border-border/50 text-foreground backdrop-blur-sm focus:border-primary focus:ring-primary/20"
+                  className="pl-10 pr-10 bg-card/50 border-border/50 text-foreground backdrop-blur-sm focus:border-primary focus:ring-primary/20"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
@@ -125,7 +133,7 @@ export function LoginForm() {
         </div>
       </div>
 
-      {/* Right Side - Visual - CHANGE: More realistic image */}
+      {/* Right Side - Visual */}
       <div className="hidden lg:flex flex-1 items-center justify-center p-8 relative">
         <div className="max-w-lg relative z-10">
           <div className="gradient-border rounded-3xl overflow-hidden bg-card/50 backdrop-blur-sm p-8">
@@ -133,7 +141,11 @@ export function LoginForm() {
               <Sparkles className="w-5 h-5 text-primary" />
               <span className="text-sm text-muted-foreground">Profissionais verificados</span>
             </div>
-            <img src="/professionals-networking-meeting-office-diverse-te.jpg" alt="Networking" className="rounded-2xl mb-6 w-full" />
+            <img
+              src="/professionals-networking-meeting-office-diverse-te.jpg"
+              alt="Networking"
+              className="rounded-2xl mb-6 w-full"
+            />
             <h2 className="text-2xl font-bold text-foreground mb-4">
               Conecte-se com <span className="gradient-text">profissionais verificados</span>
             </h2>
