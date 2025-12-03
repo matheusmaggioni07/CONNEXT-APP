@@ -41,7 +41,7 @@ export async function checkCallLimit() {
   const plan = (profile.plan || "free") as keyof typeof PLAN_LIMITS
 
   const now = new Date()
-  const brazilOffset = -3 * 60 // UTC-3
+  const brazilOffset = -3 * 60
   const brazilTime = new Date(now.getTime() + (brazilOffset + now.getTimezoneOffset()) * 60 * 1000)
   const today = brazilTime.toISOString().split("T")[0]
 
@@ -69,18 +69,18 @@ export async function checkCallLimit() {
   }
 }
 
-export async function joinVideoQueue() {
+export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) return { error: "Não autenticado" }
+  if (!user) return { success: false, error: "Não autenticado" }
 
   if (!isAdmin(user.email)) {
     const limitCheck = await checkCallLimit()
     if (!limitCheck.canCall) {
-      return { error: "Você atingiu o limite diário de chamadas. Faça upgrade para o Pro!" }
+      return { success: false, error: "Você atingiu o limite diário de chamadas. Faça upgrade para o Pro!" }
     }
   }
 
@@ -90,6 +90,10 @@ export async function joinVideoQueue() {
     .update({ status: "ended", ended_at: new Date().toISOString() })
     .eq("user1_id", user.id)
     .eq("status", "waiting")
+
+  // Also clean up any stale signaling/ice_candidates from old sessions
+  await supabase.from("signaling").delete().eq("from_user_id", user.id)
+  await supabase.from("ice_candidates").delete().eq("from_user_id", user.id)
 
   // Look for someone waiting
   const { data: waitingRooms } = await supabase
@@ -105,6 +109,13 @@ export async function joinVideoQueue() {
     const roomToJoin = waitingRooms[0]
     console.log("[v0] Found waiting room:", roomToJoin.id)
 
+    // Get partner profile BEFORE joining
+    const { data: partnerProfile } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, bio, city, position, company")
+      .eq("id", roomToJoin.user1_id)
+      .single()
+
     const { error: joinError } = await supabase
       .from("video_rooms")
       .update({ user2_id: user.id, status: "active" })
@@ -115,11 +126,15 @@ export async function joinVideoQueue() {
       if (!isAdmin(user.email)) {
         await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
       }
+
+      console.log("[v0] Joined room successfully, partner:", partnerProfile?.full_name)
+
       return {
         success: true,
         roomId: roomToJoin.id,
         partnerId: roomToJoin.user1_id,
         matched: true,
+        partnerProfile: partnerProfile || { full_name: "Usuário" },
       }
     }
   }
@@ -133,13 +148,15 @@ export async function joinVideoQueue() {
 
   if (createError) {
     console.error("[v0] Create room error:", createError)
-    return { error: "Erro ao criar sala" }
+    return { success: false, error: "Erro ao criar sala" }
   }
 
   if (!isAdmin(user.email)) {
     await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
   }
-  return { success: true, roomId: room.id, waiting: true }
+
+  console.log("[v0] Created new room:", room.id)
+  return { success: true, roomId: room.id, waiting: true, matched: false }
 }
 
 export async function checkRoomStatus(roomId: string) {
@@ -148,7 +165,7 @@ export async function checkRoomStatus(roomId: string) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) return { error: "Não autenticado" }
+  if (!user) return { status: "error", error: "Não autenticado" }
 
   const { data: room } = await supabase
     .from("video_rooms")
@@ -156,54 +173,43 @@ export async function checkRoomStatus(roomId: string) {
     .eq("id", roomId)
     .single()
 
-  if (!room) return { error: "Sala não encontrada" }
+  if (!room) return { status: "error", error: "Sala não encontrada" }
 
+  // Room is now active with partner
   if (room.status === "active" && room.user2_id) {
     const partnerId = room.user1_id === user.id ? room.user2_id : room.user1_id
-    return { success: true, matched: true, partnerId, roomId: room.id }
-  }
 
-  // Check for other waiting rooms
-  const { data: otherRooms } = await supabase
-    .from("video_rooms")
-    .select("id, user1_id")
-    .eq("status", "waiting")
-    .is("user2_id", null)
-    .neq("user1_id", user.id)
-    .neq("id", roomId)
-    .limit(1)
+    // Get partner profile
+    const { data: partnerProfile } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, bio, city, position, company")
+      .eq("id", partnerId)
+      .single()
 
-  if (otherRooms && otherRooms.length > 0) {
-    const roomToJoin = otherRooms[0]
+    console.log("[v0] Room active, partner:", partnerProfile?.full_name)
 
-    const { error: joinError } = await supabase
-      .from("video_rooms")
-      .update({ user2_id: user.id, status: "active" })
-      .eq("id", roomToJoin.id)
-      .eq("status", "waiting")
-
-    if (!joinError) {
-      await supabase
-        .from("video_rooms")
-        .update({ status: "ended", ended_at: new Date().toISOString() })
-        .eq("id", roomId)
-
-      return {
-        success: true,
-        matched: true,
-        partnerId: roomToJoin.user1_id,
-        roomId: roomToJoin.id,
-        switchedRoom: true,
-      }
+    return {
+      status: "active",
+      partnerId,
+      roomId: room.id,
+      partnerProfile: partnerProfile || { full_name: "Usuário" },
     }
   }
 
-  return { success: true, waiting: true }
+  // Still waiting
+  return { status: "waiting" }
 }
 
-export async function leaveVideoQueue(roomId: string) {
+export async function leaveVideoQueue(userId: string, roomId: string) {
   const supabase = await createClient()
+
+  // End the room
   await supabase.from("video_rooms").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", roomId)
+
+  // Clean up signaling
+  await supabase.from("signaling").delete().eq("room_id", roomId)
+  await supabase.from("ice_candidates").delete().eq("room_id", roomId)
+
   return { success: true }
 }
 
@@ -220,6 +226,10 @@ export async function endVideoRoom(roomId: string) {
     .update({ status: "ended", ended_at: new Date().toISOString() })
     .eq("id", roomId)
     .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+
+  // Clean up signaling
+  await supabase.from("signaling").delete().eq("room_id", roomId)
+  await supabase.from("ice_candidates").delete().eq("room_id", roomId)
 
   return { success: true }
 }
@@ -262,7 +272,6 @@ export async function findAvailablePartner(): Promise<{ partner?: Profile; error
     return { error: "Nenhum profissional disponível no momento. Convide amigos para usar o Connext!" }
   }
 
-  // Pick a random profile from available ones
   const randomIndex = Math.floor(Math.random() * profiles.length)
   const partner = profiles[randomIndex] as Profile
 
@@ -282,7 +291,6 @@ export async function createVideoRoomWithPartner(partnerId: string) {
     return { error: "Nenhum parceiro especificado" }
   }
 
-  // Verify the partner exists
   const { data: partnerExists, error: partnerError } = await supabase
     .from("profiles")
     .select("id, full_name")
@@ -337,7 +345,6 @@ export async function getVideoRoom(roomId: string) {
     return null
   }
 
-  // Get profiles for both users
   if (room) {
     const [user1Profile, user2Profile] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", room.user1_id).single(),
@@ -452,7 +459,6 @@ export async function getRemainingCalls(userId: string) {
   const remaining = limit - currentCount
 
   if (remaining <= 0) {
-    // Calculate reset time (next day at midnight Brazil time)
     const tomorrow = new Date(brazilTime)
     tomorrow.setDate(tomorrow.getDate() + 1)
     tomorrow.setHours(0, 0, 0, 0)
