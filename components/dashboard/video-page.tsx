@@ -52,37 +52,6 @@ type ChatMessage = {
   timestamp: Date
 }
 
-const rtcConfig: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun.relay.metered.ca:80" },
-    {
-      urls: "turn:global.relay.metered.ca:80",
-      username: "d7d85abc5c3c7f8c3e2c3f28",
-      credential: "9lKDqQE5V5MxKPJx",
-    },
-    {
-      urls: "turn:global.relay.metered.ca:80?transport=tcp",
-      username: "d7d85abc5c3c7f8c3e2c3f28",
-      credential: "9lKDqQE5V5MxKPJx",
-    },
-    {
-      urls: "turn:global.relay.metered.ca:443",
-      username: "d7d85abc5c3c7f8c3e2c3f28",
-      credential: "9lKDqQE5V5MxKPJx",
-    },
-    {
-      urls: "turns:global.relay.metered.ca:443?transport=tcp",
-      username: "d7d85abc5c3c7f8c3e2c3f28",
-      credential: "9lKDqQE5V5MxKPJx",
-    },
-  ],
-  iceCandidatePoolSize: 10,
-  iceTransportPolicy: "all",
-}
-
 const brazilianStates = [
   { value: "all", label: "Todos os Estados" },
   { value: "AC", label: "Acre" },
@@ -146,6 +115,7 @@ export function VideoPage() {
   const [timeUntilReset, setTimeUntilReset] = useState("")
   const [connectionQuality, setConnectionQuality] = useState<"good" | "medium" | "poor" | null>(null)
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user")
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
   const [locationFilter, setLocationFilter] = useState<LocationFilter>({
     country: "BR",
     state: "all",
@@ -161,6 +131,7 @@ export function VideoPage() {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const waitTimeIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -173,6 +144,8 @@ export function VideoPage() {
   const hasRemoteDescRef = useRef(false)
   const processedSignalsRef = useRef<Set<string>>(new Set())
   const processedCandidatesRef = useRef<Set<string>>(new Set())
+  const iceRestartAttempts = useRef(0)
+  const offerSentRef = useRef(false)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -185,6 +158,22 @@ export function VideoPage() {
       return () => clearInterval(interval)
     }
   }, [limitReached])
+
+  useEffect(() => {
+    async function fetchTurnCredentials() {
+      try {
+        const res = await fetch("/api/turn-credentials")
+        const data = await res.json()
+        if (data.iceServers) {
+          setIceServers(data.iceServers)
+        }
+      } catch {
+        // Use fallback STUN servers
+        setIceServers([{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }])
+      }
+    }
+    fetchTurnCredentials()
+  }, [])
 
   useEffect(() => {
     async function init() {
@@ -214,10 +203,14 @@ export function VideoPage() {
   }, [])
 
   const cleanup = useCallback(async () => {
-    console.log("[v0] Cleaning up...")
     if (waitTimeIntervalRef.current) clearInterval(waitTimeIntervalRef.current)
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     if (signalingPollRef.current) clearInterval(signalingPollRef.current)
+
+    if (dataChannelRef.current) {
+      dataChannelRef.current.close()
+      dataChannelRef.current = null
+    }
 
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
@@ -229,7 +222,6 @@ export function VideoPage() {
       localStreamRef.current = null
     }
 
-    // Clean up signaling data from database
     if (supabaseRef.current && currentUserId && roomIdRef.current) {
       await supabaseRef.current.from("signaling").delete().eq("room_id", roomIdRef.current)
       await supabaseRef.current.from("ice_candidates").delete().eq("room_id", roomIdRef.current)
@@ -245,7 +237,10 @@ export function VideoPage() {
     hasRemoteDescRef.current = false
     processedSignalsRef.current.clear()
     processedCandidatesRef.current.clear()
+    iceRestartAttempts.current = 0
+    offerSentRef.current = false
     setLocalVideoReady(false)
+    remoteStreamRef.current = null
   }, [currentUserId])
 
   const initLocalMedia = useCallback(async (facing: "user" | "environment" = "user") => {
@@ -258,19 +253,22 @@ export function VideoPage() {
 
       let stream: MediaStream | null = null
 
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
+      const constraints = [
+        {
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: facing },
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        })
-      } catch {
+        },
+        { video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: facing }, audio: true },
+        { video: { facingMode: facing }, audio: true },
+        { video: true, audio: true },
+      ]
+
+      for (const constraint of constraints) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: facing },
-            audio: true,
-          })
+          stream = await navigator.mediaDevices.getUserMedia(constraint)
+          break
         } catch {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          continue
         }
       }
 
@@ -282,7 +280,7 @@ export function VideoPage() {
           try {
             await localVideoRef.current.play()
           } catch {
-            /* ignore */
+            /* ignore autoplay issues */
           }
           setLocalVideoReady(true)
         }
@@ -291,7 +289,7 @@ export function VideoPage() {
 
       throw new Error("No media stream available")
     } catch (error: unknown) {
-      console.error("[v0] Error accessing media:", error)
+      console.error("Error accessing media:", error)
       const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
 
       if (errorMessage.includes("Permission denied") || errorMessage.includes("NotAllowedError")) {
@@ -327,8 +325,6 @@ export function VideoPage() {
     async (type: "offer" | "answer", sdp: RTCSessionDescriptionInit) => {
       if (!supabaseRef.current || !currentUserId || !partnerIdRef.current || !roomIdRef.current) return
 
-      console.log("[v0] Sending signaling:", type)
-
       await supabaseRef.current.from("signaling").insert({
         room_id: roomIdRef.current,
         from_user_id: currentUserId,
@@ -343,8 +339,6 @@ export function VideoPage() {
   const sendIceCandidate = useCallback(
     async (candidate: RTCIceCandidateInit) => {
       if (!supabaseRef.current || !currentUserId || !partnerIdRef.current || !roomIdRef.current) return
-
-      console.log("[v0] Sending ICE candidate")
 
       await supabaseRef.current.from("ice_candidates").insert({
         room_id: roomIdRef.current,
@@ -363,152 +357,176 @@ export function VideoPage() {
       if (!supabaseRef.current || !currentUserId || !roomIdRef.current || !peerConnectionRef.current) return
 
       const pc = peerConnectionRef.current
+      if (pc.signalingState === "closed") return
 
-      // Get signaling messages
-      const { data: signals } = await supabaseRef.current
-        .from("signaling")
-        .select("*")
-        .eq("room_id", roomIdRef.current)
-        .eq("to_user_id", currentUserId)
-        .order("created_at", { ascending: true })
+      try {
+        // Get signaling messages
+        const { data: signals } = await supabaseRef.current
+          .from("signaling")
+          .select("*")
+          .eq("room_id", roomIdRef.current)
+          .eq("to_user_id", currentUserId)
+          .order("created_at", { ascending: true })
 
-      if (signals) {
-        for (const signal of signals) {
-          if (processedSignalsRef.current.has(signal.id)) continue
-          processedSignalsRef.current.add(signal.id)
+        if (signals && signals.length > 0) {
+          for (const signal of signals) {
+            if (processedSignalsRef.current.has(signal.id)) continue
+            processedSignalsRef.current.add(signal.id)
 
-          console.log("[v0] Processing signal:", signal.type)
+            try {
+              const sdp = JSON.parse(signal.sdp) as RTCSessionDescriptionInit
 
-          try {
-            const sdp = JSON.parse(signal.sdp) as RTCSessionDescriptionInit
+              if (signal.type === "offer" && pc.signalingState !== "closed") {
+                // Only accept offer if we're not the initiator or in stable state
+                if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
+                  if (pc.signalingState === "have-local-offer") {
+                    // Collision - use polite peer logic (lower ID yields)
+                    if (currentUserId > partnerIdRef.current!) {
+                      // We're impolite, ignore incoming offer
+                      await supabaseRef.current!.from("signaling").delete().eq("id", signal.id)
+                      continue
+                    }
+                    // We're polite, rollback our offer
+                    await pc.setLocalDescription({ type: "rollback" })
+                  }
 
-            if (signal.type === "offer") {
-              console.log("[v0] Received offer, setting remote description")
-              await pc.setRemoteDescription(new RTCSessionDescription(sdp))
-              hasRemoteDescRef.current = true
+                  await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+                  hasRemoteDescRef.current = true
 
-              // Process pending ICE candidates
-              for (const candidate of pendingCandidatesRef.current) {
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(candidate))
-                } catch (e) {
-                  console.log("[v0] Error adding pending candidate:", e)
+                  // Process pending ICE candidates
+                  for (const candidate of pendingCandidatesRef.current) {
+                    try {
+                      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                  pendingCandidatesRef.current = []
+
+                  // Create and send answer
+                  const answer = await pc.createAnswer()
+                  await pc.setLocalDescription(answer)
+                  await sendSignaling("answer", answer)
                 }
-              }
-              pendingCandidatesRef.current = []
+              } else if (signal.type === "answer" && pc.signalingState === "have-local-offer") {
+                await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+                hasRemoteDescRef.current = true
 
-              // Create and send answer
-              console.log("[v0] Creating answer")
-              const answer = await pc.createAnswer()
-              await pc.setLocalDescription(answer)
-              await sendSignaling("answer", answer)
-              console.log("[v0] Answer sent")
-            } else if (signal.type === "answer") {
-              console.log("[v0] Received answer, setting remote description")
-              await pc.setRemoteDescription(new RTCSessionDescription(sdp))
-              hasRemoteDescRef.current = true
-
-              // Process pending ICE candidates
-              for (const candidate of pendingCandidatesRef.current) {
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(candidate))
-                } catch (e) {
-                  console.log("[v0] Error adding pending candidate:", e)
+                // Process pending ICE candidates
+                for (const candidate of pendingCandidatesRef.current) {
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                  } catch {
+                    /* ignore */
+                  }
                 }
+                pendingCandidatesRef.current = []
               }
-              pendingCandidatesRef.current = []
+            } catch (e) {
+              console.error("Error processing signal:", e)
             }
-          } catch (e) {
-            console.error("[v0] Error processing signal:", e)
+
+            // Delete processed signal
+            await supabaseRef.current!.from("signaling").delete().eq("id", signal.id)
           }
-
-          // Delete processed signal
-          await supabaseRef.current.from("signaling").delete().eq("id", signal.id)
         }
-      }
 
-      // Get ICE candidates
-      const { data: candidates } = await supabaseRef.current
-        .from("ice_candidates")
-        .select("*")
-        .eq("room_id", roomIdRef.current)
-        .eq("to_user_id", currentUserId)
-        .order("created_at", { ascending: true })
+        // Get ICE candidates
+        const { data: candidates } = await supabaseRef.current
+          .from("ice_candidates")
+          .select("*")
+          .eq("room_id", roomIdRef.current)
+          .eq("to_user_id", currentUserId)
+          .order("created_at", { ascending: true })
 
-      if (candidates) {
-        for (const candidateRow of candidates) {
-          if (processedCandidatesRef.current.has(candidateRow.id)) continue
-          processedCandidatesRef.current.add(candidateRow.id)
+        if (candidates && candidates.length > 0) {
+          for (const candidateRow of candidates) {
+            if (processedCandidatesRef.current.has(candidateRow.id)) continue
+            processedCandidatesRef.current.add(candidateRow.id)
 
-          try {
-            const candidate = JSON.parse(candidateRow.candidate) as RTCIceCandidateInit
+            try {
+              const candidate = JSON.parse(candidateRow.candidate) as RTCIceCandidateInit
 
-            if (hasRemoteDescRef.current) {
-              console.log("[v0] Adding ICE candidate")
-              await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            } else {
-              console.log("[v0] Buffering ICE candidate (no remote desc yet)")
-              pendingCandidatesRef.current.push(candidate)
+              if (hasRemoteDescRef.current && pc.signalingState !== "closed") {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate))
+              } else {
+                pendingCandidatesRef.current.push(candidate)
+              }
+            } catch {
+              /* ignore */
             }
-          } catch (e) {
-            console.error("[v0] Error processing ICE candidate:", e)
-          }
 
-          // Delete processed candidate
-          await supabaseRef.current.from("ice_candidates").delete().eq("id", candidateRow.id)
+            // Delete processed candidate
+            await supabaseRef.current!.from("ice_candidates").delete().eq("id", candidateRow.id)
+          }
         }
+      } catch (e) {
+        console.error("Polling error:", e)
       }
     }
 
-    // Poll every 500ms
+    // Poll every 500ms for reliability
     signalingPollRef.current = setInterval(poll, 500)
-    // Run immediately
     poll()
   }, [currentUserId, sendSignaling])
 
   const setupWebRTC = useCallback(
     async (partnerId: string, isInitiator: boolean) => {
-      console.log("[v0] Setting up WebRTC. Initiator:", isInitiator, "Partner:", partnerId)
-
       partnerIdRef.current = partnerId
       isInitiatorRef.current = isInitiator
       hasRemoteDescRef.current = false
       pendingCandidatesRef.current = []
       processedSignalsRef.current.clear()
       processedCandidatesRef.current.clear()
+      offerSentRef.current = false
 
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close()
       }
 
+      // Use dynamic ICE servers
+      const rtcConfig: RTCConfiguration = {
+        iceServers:
+          iceServers.length > 0
+            ? iceServers
+            : [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
+        iceCandidatePoolSize: 10,
+        iceTransportPolicy: "all",
+        bundlePolicy: "max-bundle",
+        rtcpMuxPolicy: "require",
+      }
+
       const pc = new RTCPeerConnection(rtcConfig)
       peerConnectionRef.current = pc
 
-      // Add local tracks
+      // Add local tracks FIRST before anything else
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
-          console.log("[v0] Adding local track:", track.kind)
           pc.addTrack(track, localStreamRef.current!)
         })
       }
 
       // Setup remote stream
       const remoteStream = new MediaStream()
+      remoteStreamRef.current = remoteStream
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream
       }
 
       pc.ontrack = (event) => {
-        console.log("[v0] Received remote track:", event.track.kind)
+        const remote = remoteStreamRef.current
+        if (!remote) return
 
         event.streams[0]?.getTracks().forEach((track) => {
-          console.log("[v0] Adding track to remoteStream:", track.kind)
-          remoteStream.addTrack(track)
+          const existing = remote.getTracks().find((t) => t.id === track.id)
+          if (!existing) {
+            remote.addTrack(track)
+          }
         })
 
         if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream
-          remoteVideoRef.current.play().catch((err) => console.log("[v0] Remote video play error:", err))
+          remoteVideoRef.current.srcObject = remote
+          remoteVideoRef.current.play().catch(() => {})
         }
 
         setRemoteVideoReady(true)
@@ -517,38 +535,48 @@ export function VideoPage() {
       }
 
       pc.oniceconnectionstatechange = () => {
-        console.log("[v0] ICE connection state:", pc.iceConnectionState)
-        if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        const state = pc.iceConnectionState
+
+        if (state === "connected" || state === "completed") {
           setVideoState("connected")
           setConnectionStatus("")
           setConnectionQuality("good")
-        } else if (pc.iceConnectionState === "failed") {
-          setConnectionStatus("Conexão falhou. Tentando reconectar...")
-          setConnectionQuality("poor")
-          pc.restartIce()
-        } else if (pc.iceConnectionState === "disconnected") {
-          setConnectionStatus("Conexão perdida...")
-          setConnectionQuality("poor")
+          iceRestartAttempts.current = 0
+        } else if (state === "failed") {
+          if (iceRestartAttempts.current < 3) {
+            iceRestartAttempts.current++
+            setConnectionStatus(`Reconectando... (tentativa ${iceRestartAttempts.current})`)
+            pc.restartIce()
+          } else {
+            setConnectionStatus("Conexão falhou")
+            setConnectionQuality("poor")
+          }
+        } else if (state === "disconnected") {
+          setConnectionStatus("Reconectando...")
+          setConnectionQuality("medium")
+        } else if (state === "checking") {
+          setConnectionStatus("Estabelecendo conexão...")
         }
       }
 
-      // Handle ICE candidates - send via database
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          setVideoState("connected")
+          setConnectionQuality("good")
+        }
+      }
+
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log("[v0] Got ICE candidate, sending via DB")
           sendIceCandidate(event.candidate.toJSON())
         }
       }
 
-      pc.onicegatheringstatechange = () => {
-        console.log("[v0] ICE gathering state:", pc.iceGatheringState)
-      }
-
-      // Data channel for chat
+      // Data channel for chat - initiator creates it
       if (isInitiator) {
-        const dataChannel = pc.createDataChannel("chat")
+        const dataChannel = pc.createDataChannel("chat", { ordered: true })
         dataChannelRef.current = dataChannel
-        dataChannel.onopen = () => console.log("[v0] Data channel open")
+        dataChannel.onopen = () => {}
         dataChannel.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data) as ChatMessage
@@ -560,7 +588,6 @@ export function VideoPage() {
       }
 
       pc.ondatachannel = (event) => {
-        console.log("[v0] Received data channel")
         dataChannelRef.current = event.channel
         event.channel.onmessage = (e) => {
           try {
@@ -575,24 +602,26 @@ export function VideoPage() {
       // Start polling for signaling data
       startSignalingPoll()
 
-      // If initiator, create and send offer
-      if (isInitiator) {
-        // Small delay to ensure both parties are ready
+      if (isInitiator && !offerSentRef.current) {
+        offerSentRef.current = true
+        // Wait for ICE gathering to start
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
-        console.log("[v0] Creating offer...")
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        })
-        await pc.setLocalDescription(offer)
-        await sendSignaling("offer", offer)
-        console.log("[v0] Offer sent")
+        try {
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true,
+          })
+          await pc.setLocalDescription(offer)
+          await sendSignaling("offer", offer)
+        } catch (e) {
+          console.error("Error creating offer:", e)
+        }
       }
 
       return pc
     },
-    [sendSignaling, sendIceCandidate, startSignalingPoll],
+    [iceServers, sendSignaling, sendIceCandidate, startSignalingPoll],
   )
 
   const startSearching = async () => {
@@ -604,19 +633,15 @@ export function VideoPage() {
     setWaitTime(0)
     setConnectionStatus("Procurando alguém para conectar...")
 
-    // Start wait timer
     waitTimeIntervalRef.current = setInterval(() => setWaitTime((prev) => prev + 1), 1000)
 
-    // Get local media
     const stream = await initLocalMedia(facingMode)
     if (!stream) {
       setIsLoading(false)
       return
     }
 
-    // Join queue
     const result = await joinVideoQueue()
-    console.log("[v0] Join queue result:", JSON.stringify(result))
 
     if (result.error) {
       if (result.error.includes("limite")) {
@@ -634,12 +659,8 @@ export function VideoPage() {
     setIsLoading(false)
 
     if (result.matched && result.partnerId) {
-      // Matched immediately
-      console.log("[v0] Matched immediately with:", result.partnerId)
       handleMatch(result.partnerId, false)
     } else {
-      // Wait for match
-      console.log("[v0] Waiting for someone to join, roomId:", result.roomId)
       startPollingForMatch()
     }
   }
@@ -651,7 +672,6 @@ export function VideoPage() {
       if (!roomIdRef.current) return
 
       const status = await checkRoomStatus(roomIdRef.current)
-      console.log("[v0] Room status:", JSON.stringify(status))
 
       if (status.matched && status.partnerId) {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -664,12 +684,9 @@ export function VideoPage() {
   }
 
   const handleMatch = async (partnerId: string, isInitiator: boolean) => {
-    console.log("[v0] Handling match. Partner:", partnerId, "Is initiator:", isInitiator)
-
     setVideoState("connecting")
     setConnectionStatus("Conectando...")
 
-    // Get partner profile
     const supabase = supabaseRef.current!
     const { data: partner } = await supabase.from("profiles").select("*").eq("id", partnerId).single()
 
@@ -677,12 +694,10 @@ export function VideoPage() {
       setCurrentPartner(partner as Profile)
     }
 
-    // Setup WebRTC
     await setupWebRTC(partnerId, isInitiator)
   }
 
   const handleSkip = async () => {
-    console.log("[v0] Skipping...")
     await cleanup()
     setVideoState("idle")
     setCurrentPartner(null)
@@ -690,12 +705,10 @@ export function VideoPage() {
     setChatMessages([])
     setConnectionStatus("")
     setConnectionQuality(null)
-    // Auto start new search
     setTimeout(() => startSearching(), 500)
   }
 
   const handleEndCall = async () => {
-    console.log("[v0] Ending call...")
     await cleanup()
     setVideoState("ended")
     setRemoteVideoReady(false)
@@ -723,30 +736,29 @@ export function VideoPage() {
   }
 
   const toggleVideo = async () => {
-    if (localStreamRef.current) {
-      const videoTracks = localStreamRef.current.getVideoTracks()
-
-      if (isVideoOff) {
-        // Turn video back on - need to get new stream
-        const stream = await initLocalMedia(facingMode)
-        if (stream && peerConnectionRef.current) {
-          const newVideoTrack = stream.getVideoTracks()[0]
-          const senders = peerConnectionRef.current.getSenders()
-          const videoSender = senders.find((s) => s.track?.kind === "video")
-          if (videoSender && newVideoTrack) {
-            await videoSender.replaceTrack(newVideoTrack)
-          }
+    if (isVideoOff) {
+      // Turn video ON
+      const stream = await initLocalMedia(facingMode)
+      if (stream && peerConnectionRef.current) {
+        const newVideoTrack = stream.getVideoTracks()[0]
+        const senders = peerConnectionRef.current.getSenders()
+        const videoSender = senders.find((s) => s.track?.kind === "video")
+        if (videoSender && newVideoTrack) {
+          await videoSender.replaceTrack(newVideoTrack)
         }
-        setIsVideoOff(false)
-      } else {
-        // Turn video off
-        videoTracks.forEach((track) => {
+        setLocalVideoReady(true)
+      }
+      setIsVideoOff(false)
+    } else {
+      // Turn video OFF
+      if (localStreamRef.current) {
+        localStreamRef.current.getVideoTracks().forEach((track) => {
           track.enabled = false
           track.stop()
         })
-        setIsVideoOff(true)
-        setLocalVideoReady(false)
       }
+      setIsVideoOff(true)
+      setLocalVideoReady(false)
     }
   }
 
@@ -759,22 +771,41 @@ export function VideoPage() {
   }
 
   const sendChatMessage = () => {
-    if (!chatInput.trim() || !dataChannelRef.current || dataChannelRef.current.readyState !== "open") return
+    if (!chatInput.trim()) return
+    if (!currentUserId) return
+
+    const dc = dataChannelRef.current
+    if (!dc || dc.readyState !== "open") {
+      // If data channel not ready, still show message locally
+      const message: ChatMessage = {
+        id: crypto.randomUUID(),
+        senderId: currentUserId,
+        senderName: currentUserName,
+        content: chatInput.trim(),
+        timestamp: new Date(),
+      }
+      setChatMessages((prev) => [...prev, message])
+      setChatInput("")
+      return
+    }
 
     const message: ChatMessage = {
       id: crypto.randomUUID(),
-      senderId: currentUserId!,
+      senderId: currentUserId,
       senderName: currentUserName,
       content: chatInput.trim(),
       timestamp: new Date(),
     }
 
-    dataChannelRef.current.send(JSON.stringify(message))
-    setChatMessages((prev) => [...prev, message])
-    setChatInput("")
+    try {
+      dc.send(JSON.stringify(message))
+      setChatMessages((prev) => [...prev, message])
+      setChatInput("")
+    } catch (e) {
+      console.error("Failed to send message:", e)
+    }
   }
 
-  // Clean UI for call ended state
   if (videoState === "ended") {
     return (
       <div className="relative flex h-full flex-col bg-background">
@@ -928,7 +959,6 @@ export function VideoPage() {
               <p className="mt-2 text-sm text-muted-foreground">{waitTime}s</p>
             </div>
 
-            {/* Local video preview during search */}
             {localVideoReady && (
               <div className="absolute bottom-24 right-4 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg md:h-40 md:w-32">
                 <video
@@ -947,10 +977,8 @@ export function VideoPage() {
         {/* Connected */}
         {videoState === "connected" && (
           <>
-            {/* Remote video */}
             <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
 
-            {/* Partner info */}
             {currentPartner && (
               <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded-lg bg-black/60 p-3 backdrop-blur">
                 <Avatar className="h-10 w-10 border-2 border-primary">
@@ -984,7 +1012,6 @@ export function VideoPage() {
               </div>
             )}
 
-            {/* Local video */}
             <div className="absolute bottom-24 right-4 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg md:h-40 md:w-32">
               {isVideoOff ? (
                 <div className="flex h-full w-full items-center justify-center bg-card">
@@ -1000,7 +1027,6 @@ export function VideoPage() {
                   style={{ transform: "scaleX(-1)" }}
                 />
               )}
-              {/* Flip camera button */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -1011,7 +1037,6 @@ export function VideoPage() {
               </Button>
             </div>
 
-            {/* Chat panel */}
             {isChatOpen && (
               <div className="absolute bottom-24 left-4 z-10 flex h-80 w-72 flex-col rounded-lg bg-black/80 backdrop-blur">
                 <div className="flex items-center justify-between border-b border-white/20 p-3">
@@ -1052,50 +1077,62 @@ export function VideoPage() {
         )}
       </div>
 
-      {/* Controls */}
       {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
-        <div className="flex items-center justify-center gap-3 border-t border-border bg-card/90 p-4 backdrop-blur">
+        <div className="flex items-center justify-center gap-1.5 border-t border-border bg-card/90 p-2 backdrop-blur sm:gap-3 sm:p-4">
           <Button
             variant="outline"
             size="icon"
             onClick={toggleMute}
-            className={isMuted ? "border-destructive text-destructive" : "border-border"}
+            className={`h-9 w-9 shrink-0 sm:h-11 sm:w-11 ${isMuted ? "border-destructive text-destructive" : "border-border"}`}
           >
-            {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
 
           <Button
             variant="outline"
             size="icon"
             onClick={toggleVideo}
-            className={isVideoOff ? "border-destructive text-destructive" : "border-border"}
+            className={`h-9 w-9 shrink-0 sm:h-11 sm:w-11 ${isVideoOff ? "border-destructive text-destructive" : "border-border"}`}
           >
-            {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+            {isVideoOff ? <VideoOff className="h-4 w-4" /> : <Video className="h-4 w-4" />}
           </Button>
 
           {videoState === "connected" && (
-            <Button variant="outline" size="icon" onClick={() => setIsChatOpen(!isChatOpen)} className="border-border">
-              <MessageCircle className="h-5 w-5" />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className="h-9 w-9 shrink-0 border-border sm:h-11 sm:w-11"
+            >
+              <MessageCircle className="h-4 w-4" />
             </Button>
           )}
 
-          <Button variant="outline" onClick={handleSkip} className="border-border bg-transparent">
-            <SkipForward className="mr-2 h-4 w-4" />
-            Next
+          <Button
+            variant="outline"
+            onClick={handleSkip}
+            className="h-9 shrink-0 border-border bg-transparent px-2 sm:h-11 sm:px-4"
+          >
+            <SkipForward className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Next</span>
           </Button>
 
-          <Button variant="destructive" size="icon" onClick={handleEndCall}>
-            <PhoneOff className="h-5 w-5" />
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={handleEndCall}
+            className="h-9 w-9 shrink-0 sm:h-11 sm:w-11"
+          >
+            <PhoneOff className="h-4 w-4" />
           </Button>
 
           {videoState === "connected" && currentPartner && (
             <Button
               onClick={handleConnect}
-              className="bg-gradient-to-r from-primary to-pink-500 hover:from-primary/90 hover:to-pink-500/90"
+              className="h-9 shrink-0 bg-gradient-to-r from-primary to-pink-500 px-2 hover:from-primary/90 hover:to-pink-500/90 sm:h-11 sm:px-4"
             >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Connect
-              <Heart className="ml-2 h-4 w-4" />
+              <Sparkles className="h-4 w-4 sm:mr-1" />
+              <Heart className="h-4 w-4 sm:ml-1" />
             </Button>
           )}
         </div>
