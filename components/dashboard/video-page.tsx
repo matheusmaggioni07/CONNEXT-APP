@@ -54,15 +54,12 @@ type ChatMessage = {
 
 const rtcConfig: RTCConfiguration = {
   iceServers: [
-    // Google STUN servers
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
-    // Cloudflare STUN
     { urls: "stun:stun.cloudflare.com:3478" },
-    // OpenRelay TURN servers (free, reliable)
     {
       urls: "turn:openrelay.metered.ca:80",
       username: "openrelayproject",
@@ -78,7 +75,6 @@ const rtcConfig: RTCConfiguration = {
       username: "openrelayproject",
       credential: "openrelayproject",
     },
-    // Metered TURN (backup)
     {
       urls: "turn:a.relay.metered.ca:80",
       username: "e8dd65b92c629dca0f516c18",
@@ -183,14 +179,17 @@ export function VideoPage() {
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const roomIdRef = useRef<string | null>(null)
+  const partnerIdRef = useRef<string | null>(null)
   const isInitiatorRef = useRef(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const waitTimeIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const maxReconnectAttempts = 3
-  const signalingChannelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
-  const iceChannelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
+  const broadcastChannelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
+  const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([])
+  const hasRemoteDescriptionRef = useRef(false)
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -209,6 +208,7 @@ export function VideoPage() {
   useEffect(() => {
     async function init() {
       const supabase = createClient()
+      supabaseRef.current = supabase
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -231,13 +231,32 @@ export function VideoPage() {
     init()
 
     return () => {
-      if (signalingChannelRef.current) {
-        signalingChannelRef.current.unsubscribe()
-      }
-      if (iceChannelRef.current) {
-        iceChannelRef.current.unsubscribe()
-      }
+      cleanupConnection()
     }
+  }, [])
+
+  const cleanupConnection = useCallback(async () => {
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
+    if (waitTimeIntervalRef.current) clearInterval(waitTimeIntervalRef.current)
+    if (statsIntervalRef.current) clearInterval(statsIntervalRef.current)
+
+    if (broadcastChannelRef.current) {
+      await broadcastChannelRef.current.unsubscribe()
+      broadcastChannelRef.current = null
+    }
+
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      localStreamRef.current = null
+    }
+
+    pendingIceCandidatesRef.current = []
+    hasRemoteDescriptionRef.current = false
   }, [])
 
   const monitorConnectionQuality = useCallback(() => {
@@ -300,7 +319,6 @@ export function VideoPage() {
         channelCount: 1,
       }
 
-      // Tentar com vídeo HD primeiro
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: videoConstraints,
@@ -309,7 +327,6 @@ export function VideoPage() {
       } catch (err) {
         console.log("[v0] Full HD failed, trying standard:", err)
         try {
-          // Fallback para vídeo padrão
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
             audio: audioConstraints,
@@ -317,7 +334,6 @@ export function VideoPage() {
         } catch (videoErr) {
           console.log("[v0] Video failed, trying audio only:", videoErr)
           try {
-            // Fallback para apenas áudio
             stream = await navigator.mediaDevices.getUserMedia({
               video: false,
               audio: true,
@@ -338,7 +354,7 @@ export function VideoPage() {
           try {
             await localVideoRef.current.play()
           } catch (e) {
-            // Auto-play foi bloqueado, tentar novamente com interação
+            // Auto-play blocked
           }
           setLocalVideoReady(true)
         }
@@ -368,6 +384,247 @@ export function VideoPage() {
       return null
     }
   }, [])
+
+  const setupWebRTC = useCallback(
+    async (partnerId: string, isInitiator: boolean) => {
+      try {
+        console.log("[v0] Setting up WebRTC. Initiator:", isInitiator, "Partner:", partnerId)
+        setConnectionStatus(isInitiator ? "Criando conexão..." : "Aguardando conexão...")
+
+        const supabase = supabaseRef.current
+        if (!supabase || !currentUserId) {
+          console.error("[v0] Supabase or user not ready")
+          return
+        }
+
+        partnerIdRef.current = partnerId
+        pendingIceCandidatesRef.current = []
+        hasRemoteDescriptionRef.current = false
+
+        // Cleanup previous connection
+        if (broadcastChannelRef.current) {
+          await broadcastChannelRef.current.unsubscribe()
+        }
+        if (peerConnectionRef.current) {
+          peerConnectionRef.current.close()
+        }
+
+        // Create new peer connection
+        const pc = new RTCPeerConnection(rtcConfig)
+        peerConnectionRef.current = pc
+
+        // Setup remote stream
+        remoteStreamRef.current = new MediaStream()
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStreamRef.current
+        }
+
+        // Add local tracks
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach((track) => {
+            console.log("[v0] Adding local track:", track.kind)
+            pc.addTrack(track, localStreamRef.current!)
+          })
+        }
+
+        // Setup data channel for chat
+        if (isInitiator) {
+          const dataChannel = pc.createDataChannel("chat", { ordered: true })
+          dataChannelRef.current = dataChannel
+          setupDataChannel(dataChannel)
+        }
+
+        pc.ondatachannel = (event) => {
+          dataChannelRef.current = event.channel
+          setupDataChannel(event.channel)
+        }
+
+        // Handle remote tracks
+        pc.ontrack = (event) => {
+          console.log("[v0] Received remote track:", event.track.kind)
+          event.streams[0].getTracks().forEach((track) => {
+            remoteStreamRef.current?.addTrack(track)
+          })
+
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.play().catch(() => {})
+          }
+
+          setRemoteVideoReady(true)
+          setVideoState("connected")
+          setConnectionStatus("")
+          monitorConnectionQuality()
+        }
+
+        // Handle ICE connection state changes
+        pc.oniceconnectionstatechange = () => {
+          console.log("[v0] ICE state:", pc.iceConnectionState)
+
+          switch (pc.iceConnectionState) {
+            case "connected":
+            case "completed":
+              setVideoState("connected")
+              setConnectionStatus("")
+              setConnectionQuality("good")
+              reconnectAttemptsRef.current = 0
+              break
+            case "disconnected":
+              setConnectionStatus("Conexão instável. Reconectando...")
+              setConnectionQuality("poor")
+              break
+            case "failed":
+              if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+                reconnectAttemptsRef.current++
+                setConnectionStatus(`Reconectando... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`)
+                pc.restartIce()
+              } else {
+                setConnectionStatus("Falha na conexão. Tente novamente.")
+                setVideoState("ended")
+              }
+              break
+            case "closed":
+              setConnectionStatus("")
+              break
+          }
+        }
+
+        pc.onconnectionstatechange = () => {
+          console.log("[v0] Connection state:", pc.connectionState)
+          if (pc.connectionState === "connected") {
+            setVideoState("connected")
+            setConnectionStatus("")
+          }
+        }
+
+        const roomChannel = roomIdRef.current || `room-${Date.now()}`
+        const channelName = `video-${roomChannel}`
+
+        console.log("[v0] Creating broadcast channel:", channelName)
+
+        const channel = supabase.channel(channelName, {
+          config: {
+            broadcast: { self: false, ack: true },
+            presence: { key: currentUserId },
+          },
+        })
+
+        // Handle incoming signaling messages
+        channel
+          .on("broadcast", { event: "offer" }, async (payload) => {
+            console.log("[v0] Received offer from:", payload.payload.from)
+            if (payload.payload.from === partnerId && pc.signalingState === "stable") {
+              try {
+                const offer = payload.payload.sdp
+                await pc.setRemoteDescription(new RTCSessionDescription(offer))
+                hasRemoteDescriptionRef.current = true
+
+                // Process pending ICE candidates
+                for (const candidate of pendingIceCandidatesRef.current) {
+                  await pc.addIceCandidate(candidate)
+                }
+                pendingIceCandidatesRef.current = []
+
+                // Create and send answer
+                const answer = await pc.createAnswer()
+                await pc.setLocalDescription(answer)
+
+                console.log("[v0] Sending answer")
+                await channel.send({
+                  type: "broadcast",
+                  event: "answer",
+                  payload: { from: currentUserId, sdp: answer },
+                })
+              } catch (e) {
+                console.error("[v0] Error handling offer:", e)
+              }
+            }
+          })
+          .on("broadcast", { event: "answer" }, async (payload) => {
+            console.log("[v0] Received answer from:", payload.payload.from)
+            if (payload.payload.from === partnerId && pc.signalingState === "have-local-offer") {
+              try {
+                const answer = payload.payload.sdp
+                await pc.setRemoteDescription(new RTCSessionDescription(answer))
+                hasRemoteDescriptionRef.current = true
+
+                // Process pending ICE candidates
+                for (const candidate of pendingIceCandidatesRef.current) {
+                  await pc.addIceCandidate(candidate)
+                }
+                pendingIceCandidatesRef.current = []
+              } catch (e) {
+                console.error("[v0] Error handling answer:", e)
+              }
+            }
+          })
+          .on("broadcast", { event: "ice-candidate" }, async (payload) => {
+            if (payload.payload.from === partnerId) {
+              try {
+                const candidate = new RTCIceCandidate(payload.payload.candidate)
+                if (hasRemoteDescriptionRef.current && pc.remoteDescription) {
+                  await pc.addIceCandidate(candidate)
+                } else {
+                  pendingIceCandidatesRef.current.push(candidate)
+                }
+              } catch (e) {
+                console.error("[v0] Error adding ICE candidate:", e)
+              }
+            }
+          })
+
+        // Subscribe to channel
+        await channel.subscribe(async (status) => {
+          console.log("[v0] Channel status:", status)
+          if (status === "SUBSCRIBED") {
+            broadcastChannelRef.current = channel
+
+            // Handle ICE candidates
+            pc.onicecandidate = async (event) => {
+              if (event.candidate) {
+                console.log("[v0] Sending ICE candidate")
+                await channel.send({
+                  type: "broadcast",
+                  event: "ice-candidate",
+                  payload: { from: currentUserId, candidate: event.candidate.toJSON() },
+                })
+              }
+            }
+
+            // If initiator, create and send offer
+            if (isInitiator) {
+              // Small delay to ensure both parties are subscribed
+              await new Promise((resolve) => setTimeout(resolve, 1000))
+
+              console.log("[v0] Creating offer")
+              setConnectionStatus("Enviando oferta de conexão...")
+
+              const offer = await pc.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true,
+              })
+              await pc.setLocalDescription(offer)
+
+              console.log("[v0] Sending offer to:", partnerId)
+              await channel.send({
+                type: "broadcast",
+                event: "offer",
+                payload: { from: currentUserId, sdp: offer },
+              })
+
+              setConnectionStatus("Aguardando resposta...")
+            } else {
+              setConnectionStatus("Aguardando oferta de conexão...")
+            }
+          }
+        })
+      } catch (error) {
+        console.error("[v0] WebRTC setup error:", error)
+        setConnectionStatus("Erro na conexão. Tente novamente.")
+        setVideoState("idle")
+      }
+    },
+    [currentUserId, monitorConnectionQuality],
+  )
 
   const startVideoCall = useCallback(async () => {
     const limitCheck = await checkCallLimit()
@@ -415,8 +672,11 @@ export function VideoPage() {
     }
 
     roomIdRef.current = result.roomId!
+    console.log("[v0] Room ID:", roomIdRef.current)
 
     if (result.matched) {
+      // Found someone waiting - we are NOT the initiator
+      console.log("[v0] Matched with existing room, we receive the offer")
       isInitiatorRef.current = false
       const profile = await getProfileById(result.partnerId!)
       if (profile) {
@@ -425,7 +685,11 @@ export function VideoPage() {
       setVideoState("connecting")
       await setupWebRTC(result.partnerId!, false)
     } else {
+      // Created new room - we ARE the initiator
+      console.log("[v0] Created new room, we send the offer")
       isInitiatorRef.current = true
+
+      // Poll for a partner
       pollingIntervalRef.current = setInterval(async () => {
         const status = await checkRoomStatus(roomIdRef.current!)
 
@@ -454,303 +718,7 @@ export function VideoPage() {
     }
 
     setIsLoading(false)
-  }, [initLocalMedia])
-
-  const setupWebRTC = async (partnerId: string, isInitiator: boolean) => {
-    try {
-      setConnectionStatus("Estabelecendo conexão segura...")
-
-      const supabase = createClient()
-
-      // Limpar subscriptions anteriores
-      if (signalingChannelRef.current) {
-        await signalingChannelRef.current.unsubscribe()
-      }
-      if (iceChannelRef.current) {
-        await iceChannelRef.current.unsubscribe()
-      }
-
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close()
-      }
-
-      const pc = new RTCPeerConnection(rtcConfig)
-      peerConnectionRef.current = pc
-
-      remoteStreamRef.current = new MediaStream()
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current
-      }
-
-      // Adicionar tracks locais
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
-          pc.addTrack(track, localStreamRef.current!)
-        })
-      }
-
-      // Setup data channel para chat
-      if (isInitiator) {
-        const dataChannel = pc.createDataChannel("chat", { ordered: true })
-        dataChannelRef.current = dataChannel
-        setupDataChannel(dataChannel)
-      }
-
-      pc.ondatachannel = (event) => {
-        dataChannelRef.current = event.channel
-        setupDataChannel(event.channel)
-      }
-
-      // Handler para tracks remotos
-      pc.ontrack = (event) => {
-        console.log("[v0] Received remote track:", event.track.kind)
-        event.streams[0].getTracks().forEach((track) => {
-          remoteStreamRef.current?.addTrack(track)
-        })
-
-        // Forçar play do vídeo remoto
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.play().catch(() => {
-            // Will play on user interaction
-          })
-        }
-
-        setRemoteVideoReady(true)
-        setVideoState("connected")
-        setConnectionStatus("")
-        monitorConnectionQuality()
-      }
-
-      // Handler para ICE candidates
-      pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-          console.log("[v0] Sending ICE candidate")
-          await supabase.from("ice_candidates").insert({
-            room_id: roomIdRef.current,
-            from_user_id: currentUserId,
-            to_user_id: partnerId,
-            candidate: JSON.stringify(event.candidate),
-          })
-        }
-      }
-
-      // Handler para mudanças de estado da conexão
-      pc.oniceconnectionstatechange = () => {
-        console.log("[v0] ICE state:", pc.iceConnectionState)
-
-        switch (pc.iceConnectionState) {
-          case "connected":
-          case "completed":
-            setVideoState("connected")
-            setConnectionStatus("")
-            setConnectionQuality("good")
-            reconnectAttemptsRef.current = 0
-            break
-          case "disconnected":
-            setConnectionStatus("Conexão instável. Reconectando...")
-            setConnectionQuality("poor")
-            break
-          case "failed":
-            if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-              reconnectAttemptsRef.current++
-              setConnectionStatus(`Reconectando... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`)
-              pc.restartIce()
-            } else {
-              setConnectionStatus("Falha na conexão. Tente novamente.")
-              setVideoState("ended")
-            }
-            break
-          case "closed":
-            setConnectionStatus("")
-            break
-        }
-      }
-
-      pc.onconnectionstatechange = () => {
-        console.log("[v0] Connection state:", pc.connectionState)
-        if (pc.connectionState === "connected") {
-          setVideoState("connected")
-          setConnectionStatus("")
-        }
-      }
-
-      // Configurar listeners de sinalização via Realtime
-      const channelId = `room-${roomIdRef.current}-${Date.now()}`
-
-      // Listener para ICE candidates
-      const iceChannel = supabase
-        .channel(`ice-${channelId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "ice_candidates",
-            filter: `to_user_id=eq.${currentUserId}`,
-          },
-          async (payload) => {
-            const ice = payload.new as { candidate: string; room_id: string }
-            if (ice.room_id === roomIdRef.current) {
-              try {
-                console.log("[v0] Received ICE candidate")
-                const candidate = JSON.parse(ice.candidate)
-                if (pc.remoteDescription) {
-                  await pc.addIceCandidate(new RTCIceCandidate(candidate))
-                }
-              } catch (e) {
-                console.error("[v0] Error adding ICE candidate:", e)
-              }
-            }
-          },
-        )
-        .subscribe()
-
-      iceChannelRef.current = iceChannel
-
-      if (isInitiator) {
-        setConnectionStatus("Criando oferta de conexão...")
-
-        // Criar e enviar oferta
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        })
-        await pc.setLocalDescription(offer)
-
-        await supabase.from("signaling").insert({
-          room_id: roomIdRef.current,
-          from_user_id: currentUserId,
-          to_user_id: partnerId,
-          type: "offer",
-          sdp: JSON.stringify(offer),
-        })
-
-        // Listener para resposta
-        const signalingChannel = supabase
-          .channel(`signaling-${channelId}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              schema: "public",
-              table: "signaling",
-              filter: `to_user_id=eq.${currentUserId}`,
-            },
-            async (payload) => {
-              const signal = payload.new as { type: string; sdp: string; room_id: string }
-              if (signal.room_id === roomIdRef.current && signal.type === "answer") {
-                try {
-                  console.log("[v0] Received answer")
-                  const answer = JSON.parse(signal.sdp)
-                  if (pc.signalingState === "have-local-offer") {
-                    await pc.setRemoteDescription(new RTCSessionDescription(answer))
-                  }
-                } catch (e) {
-                  console.error("[v0] Error setting remote description:", e)
-                }
-              }
-            },
-          )
-          .subscribe()
-
-        signalingChannelRef.current = signalingChannel
-      } else {
-        setConnectionStatus("Aguardando oferta de conexão...")
-
-        // Buscar oferta existente
-        const { data: offers } = await supabase
-          .from("signaling")
-          .select("*")
-          .eq("room_id", roomIdRef.current)
-          .eq("to_user_id", currentUserId)
-          .eq("type", "offer")
-          .order("created_at", { ascending: false })
-          .limit(1)
-
-        if (offers && offers.length > 0) {
-          console.log("[v0] Found existing offer")
-          const offer = JSON.parse(offers[0].sdp)
-          await pc.setRemoteDescription(new RTCSessionDescription(offer))
-
-          setConnectionStatus("Criando resposta...")
-
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-
-          await supabase.from("signaling").insert({
-            room_id: roomIdRef.current,
-            from_user_id: currentUserId,
-            to_user_id: partnerId,
-            type: "answer",
-            sdp: JSON.stringify(answer),
-          })
-        } else {
-          // Se não encontrou oferta, aguardar via realtime
-          const signalingChannel = supabase
-            .channel(`signaling-wait-${channelId}`)
-            .on(
-              "postgres_changes",
-              {
-                event: "INSERT",
-                schema: "public",
-                table: "signaling",
-                filter: `to_user_id=eq.${currentUserId}`,
-              },
-              async (payload) => {
-                const signal = payload.new as { type: string; sdp: string; room_id: string; from_user_id: string }
-                if (signal.room_id === roomIdRef.current && signal.type === "offer") {
-                  try {
-                    console.log("[v0] Received offer via realtime")
-                    const offer = JSON.parse(signal.sdp)
-                    await pc.setRemoteDescription(new RTCSessionDescription(offer))
-
-                    const answer = await pc.createAnswer()
-                    await pc.setLocalDescription(answer)
-
-                    await supabase.from("signaling").insert({
-                      room_id: roomIdRef.current,
-                      from_user_id: currentUserId,
-                      to_user_id: signal.from_user_id,
-                      type: "answer",
-                      sdp: JSON.stringify(answer),
-                    })
-                  } catch (e) {
-                    console.error("[v0] Error handling offer:", e)
-                  }
-                }
-              },
-            )
-            .subscribe()
-
-          signalingChannelRef.current = signalingChannel
-        }
-
-        // Também buscar ICE candidates existentes
-        const { data: existingCandidates } = await supabase
-          .from("ice_candidates")
-          .select("*")
-          .eq("room_id", roomIdRef.current)
-          .eq("to_user_id", currentUserId)
-
-        if (existingCandidates) {
-          for (const ice of existingCandidates) {
-            try {
-              const candidate = JSON.parse(ice.candidate)
-              if (pc.remoteDescription) {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate))
-              }
-            } catch (e) {
-              console.error("[v0] Error adding existing ICE:", e)
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("[v0] WebRTC setup error:", error)
-      setConnectionStatus("Erro na conexão. Tente novamente.")
-      setVideoState("idle")
-    }
-  }
+  }, [initLocalMedia, setupWebRTC])
 
   const setupDataChannel = (channel: RTCDataChannel) => {
     channel.onopen = () => {
@@ -770,29 +738,7 @@ export function VideoPage() {
   }
 
   const endCall = useCallback(async () => {
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
-    if (waitTimeIntervalRef.current) clearInterval(waitTimeIntervalRef.current)
-    if (statsIntervalRef.current) clearInterval(statsIntervalRef.current)
-
-    // Limpar subscriptions
-    if (signalingChannelRef.current) {
-      await signalingChannelRef.current.unsubscribe()
-      signalingChannelRef.current = null
-    }
-    if (iceChannelRef.current) {
-      await iceChannelRef.current.unsubscribe()
-      iceChannelRef.current = null
-    }
-
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
-    }
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop())
-      localStreamRef.current = null
-    }
+    await cleanupConnection()
 
     if (roomIdRef.current) {
       await endVideoRoom(roomIdRef.current)
@@ -805,7 +751,7 @@ export function VideoPage() {
     setChatMessages([])
     setIsChatOpen(false)
     setConnectionQuality(null)
-  }, [])
+  }, [cleanupConnection])
 
   const skipPartner = useCallback(async () => {
     await endCall()
@@ -869,7 +815,6 @@ export function VideoPage() {
     }
   }
 
-  // Tela de permissão negada
   if (videoState === "permission_denied") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
@@ -980,7 +925,7 @@ export function VideoPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            Filtre por localização para encontrar empreendedores e profissionais perto de você
+            Filtre por localização para encontrar profissionais perto de você
           </p>
         </div>
       )}
@@ -1023,7 +968,7 @@ export function VideoPage() {
             </div>
             <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Pronto para conectar?</h2>
             <p className="text-gray-400 mb-6 text-sm md:text-base">
-              Inicie uma videochamada e conheça empreendedores em tempo real
+              Inicie uma videochamada e conheça profissionais em tempo real
             </p>
             <Button
               onClick={startVideoCall}
