@@ -13,25 +13,21 @@ export default async function VideoRoute() {
     redirect("/login")
   }
 
+  // Also removed redirect to onboarding - allow users to access video even without complete profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, avatar_url, city, state, interests")
+    .select("full_name, avatar_url, city, interests")
     .eq("id", user.id)
     .single()
-
-  if (!profile) {
-    redirect("/dashboard/onboarding")
-  }
 
   return (
     <VideoPage
       userId={user.id}
       userProfile={{
-        full_name: profile.full_name || "Usuário",
-        avatar_url: profile.avatar_url,
-        city: profile.city,
-        state: profile.state,
-        interests: profile.interests,
+        full_name: profile?.full_name || "Usuário",
+        avatar_url: profile?.avatar_url,
+        city: profile?.city,
+        interests: profile?.interests,
       }}
     />
   )

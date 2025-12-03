@@ -40,7 +40,6 @@ interface VideoPageProps {
     full_name: string
     avatar_url?: string
     city?: string
-    state?: string
     interests?: string[]
   }
 }
@@ -52,7 +51,6 @@ interface PartnerProfile {
   profession?: string
   bio?: string
   city?: string
-  state?: string
 }
 
 interface ChatMessage {
