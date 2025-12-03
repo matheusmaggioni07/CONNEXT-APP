@@ -146,6 +146,7 @@ export function VideoPage() {
   const processedCandidatesRef = useRef<Set<string>>(new Set())
   const iceRestartAttempts = useRef(0)
   const offerSentRef = useRef(false)
+  const matchHandledRef = useRef(false)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -171,7 +172,6 @@ export function VideoPage() {
         }
       } catch (err) {
         console.error("[v0] Failed to fetch TURN credentials:", err)
-        // Use fallback
         setIceServers([{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }])
       }
     }
@@ -242,6 +242,7 @@ export function VideoPage() {
     processedCandidatesRef.current.clear()
     iceRestartAttempts.current = 0
     offerSentRef.current = false
+    matchHandledRef.current = false
     setLocalVideoReady(false)
     remoteStreamRef.current = null
   }, [currentUserId])
@@ -391,32 +392,39 @@ export function VideoPage() {
               console.log("[v0] Processing signal:", signal.type, "state:", pc.signalingState)
 
               if (signal.type === "offer" && pc.signalingState !== "closed") {
-                if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
-                  if (pc.signalingState === "have-local-offer") {
-                    if (currentUserId > partnerIdRef.current!) {
-                      await supabaseRef.current!.from("signaling").delete().eq("id", signal.id)
-                      continue
+                if (!isInitiatorRef.current) {
+                  if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
+                    if (pc.signalingState === "have-local-offer") {
+                      // Glare handling - use ID comparison to decide who wins
+                      if (currentUserId! > partnerIdRef.current!) {
+                        console.log("[v0] Glare: I win, ignoring remote offer")
+                        await supabaseRef.current!.from("signaling").delete().eq("id", signal.id)
+                        continue
+                      }
+                      console.log("[v0] Glare: I lose, rolling back")
+                      await pc.setLocalDescription({ type: "rollback" })
                     }
-                    await pc.setLocalDescription({ type: "rollback" })
-                  }
 
-                  await pc.setRemoteDescription(new RTCSessionDescription(sdp))
-                  hasRemoteDescRef.current = true
-                  console.log("[v0] Remote description set (offer)")
+                    await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+                    hasRemoteDescRef.current = true
+                    console.log("[v0] Remote description set (offer)")
 
-                  for (const candidate of pendingCandidatesRef.current) {
-                    try {
-                      await pc.addIceCandidate(new RTCIceCandidate(candidate))
-                    } catch {
-                      /* ignore */
+                    for (const candidate of pendingCandidatesRef.current) {
+                      try {
+                        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                      } catch {
+                        /* ignore */
+                      }
                     }
-                  }
-                  pendingCandidatesRef.current = []
+                    pendingCandidatesRef.current = []
 
-                  const answer = await pc.createAnswer()
-                  await pc.setLocalDescription(answer)
-                  await sendSignaling("answer", answer)
-                  console.log("[v0] Answer sent")
+                    const answer = await pc.createAnswer()
+                    await pc.setLocalDescription(answer)
+                    await sendSignaling("answer", answer)
+                    console.log("[v0] Answer sent")
+                  }
+                } else {
+                  console.log("[v0] I am initiator, ignoring offer")
                 }
               } else if (signal.type === "answer" && pc.signalingState === "have-local-offer") {
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp))
@@ -458,8 +466,10 @@ export function VideoPage() {
 
               if (hasRemoteDescRef.current && pc.signalingState !== "closed") {
                 await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                console.log("[v0] Added ICE candidate")
               } else {
                 pendingCandidatesRef.current.push(candidate)
+                console.log("[v0] Queued ICE candidate (no remote desc yet)")
               }
             } catch {
               /* ignore */
@@ -652,10 +662,12 @@ export function VideoPage() {
           })
           await pc.setLocalDescription(offer)
           await sendSignaling("offer", offer)
-          console.log("[v0] Offer sent")
+          console.log("[v0] Offer sent (I am initiator)")
         } catch (e) {
           console.error("[v0] Error creating offer:", e)
         }
+      } else {
+        console.log("[v0] Waiting for offer (I am NOT initiator)")
       }
 
       return pc
@@ -665,6 +677,8 @@ export function VideoPage() {
 
   const startSearching = async () => {
     if (!currentUserId) return
+
+    matchHandledRef.current = false
 
     setIsLoading(true)
     setPermissionError(null)
@@ -698,8 +712,11 @@ export function VideoPage() {
     setIsLoading(false)
 
     if (result.matched && result.partnerId) {
+      // The person who created the room (user1) should be the initiator
+      console.log("[v0] Matched immediately - I joined an existing room, NOT initiator")
       handleMatch(result.partnerId, false)
     } else {
+      console.log("[v0] Created new room, waiting for partner - I will be initiator")
       startPollingForMatch()
     }
   }
@@ -709,20 +726,36 @@ export function VideoPage() {
 
     pollIntervalRef.current = setInterval(async () => {
       if (!roomIdRef.current) return
+      if (matchHandledRef.current) return
 
       const status = await checkRoomStatus(roomIdRef.current)
 
       if (status.matched && status.partnerId) {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+
+        if (matchHandledRef.current) return
+        matchHandledRef.current = true
+
         if (status.switchedRoom) {
           roomIdRef.current = status.roomId!
+          // If we switched rooms, we joined someone else's room, so NOT initiator
+          console.log("[v0] Switched to another room - NOT initiator")
+          handleMatch(status.partnerId, false)
+        } else {
+          // We were waiting and someone joined our room, so we ARE the initiator
+          console.log("[v0] Someone joined my room - I AM initiator")
+          handleMatch(status.partnerId, true)
         }
-        handleMatch(status.partnerId, true)
       }
     }, 2000)
   }
 
   const handleMatch = async (partnerId: string, isInitiator: boolean) => {
+    if (videoState === "connecting" || videoState === "connected") {
+      console.log("[v0] Already connecting/connected, ignoring duplicate handleMatch")
+      return
+    }
+
     setVideoState("connecting")
     setConnectionStatus("Conectando...")
 
@@ -733,6 +766,7 @@ export function VideoPage() {
       setCurrentPartner(partner as Profile)
     }
 
+    console.log("[v0] handleMatch called with isInitiator:", isInitiator)
     await setupWebRTC(partnerId, isInitiator)
   }
 
@@ -848,9 +882,26 @@ export function VideoPage() {
         <div className="flex min-h-[500px] flex-1 items-center justify-center">
           <div className="text-center">
             <h3 className="mb-4 text-xl font-semibold text-foreground">Chamada Encerrada</h3>
-            <Button onClick={handleNewCall} className="bg-primary hover:bg-primary/90">
+            <Button onClick={handleNewCall} className="bg-primary text-primary-foreground hover:bg-primary/90">
               <RefreshCw className="mr-2 h-4 w-4" />
               Nova Chamada
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (videoState === "permission_denied") {
+    return (
+      <div className="relative flex h-full flex-col bg-background">
+        <div className="flex min-h-[500px] flex-1 items-center justify-center p-4">
+          <div className="max-w-md text-center">
+            <AlertCircle className="mx-auto mb-4 h-16 w-16 text-destructive" />
+            <h3 className="mb-2 text-xl font-semibold text-foreground">Acesso Negado</h3>
+            <p className="mb-4 text-muted-foreground">{permissionError}</p>
+            <Button onClick={() => setVideoState("idle")} className="bg-primary text-primary-foreground">
+              Tentar Novamente
             </Button>
           </div>
         </div>
@@ -861,341 +912,309 @@ export function VideoPage() {
   return (
     <div className="relative flex h-full flex-col bg-background">
       {/* Filters */}
-      <div className="border-b border-border p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Estado</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
+      {videoState === "idle" && (
+        <div className="border-b border-border bg-background/95 p-3">
+          <div
+            className="flex cursor-pointer items-center justify-between"
             onClick={() => setShowFilters(!showFilters)}
-            className="text-muted-foreground md:hidden"
           >
-            {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </div>
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Filtros</span>
+            </div>
+            {showFilters ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
 
-        <div className={`mt-3 grid gap-4 md:grid-cols-2 ${showFilters ? "block" : "hidden md:grid"}`}>
-          <div>
-            <Select
-              value={locationFilter.state}
-              onValueChange={(value) => setLocationFilter((prev) => ({ ...prev, state: value }))}
-            >
-              <SelectTrigger className="border-border bg-card">
-                <SelectValue placeholder="Selecione o estado" />
-              </SelectTrigger>
-              <SelectContent>
-                {brazilianStates.map((state) => (
-                  <SelectItem key={state.value} value={state.value}>
-                    {state.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="mb-1 block text-xs text-muted-foreground">Cidade (opcional)</Label>
-            <Input
-              placeholder="Digite a cidade..."
-              value={locationFilter.city}
-              onChange={(e) => setLocationFilter((prev) => ({ ...prev, city: e.target.value }))}
-              className="border-border bg-card"
-            />
-          </div>
+          {showFilters && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <Label className="mb-1 block text-xs text-muted-foreground">Estado</Label>
+                <Select
+                  value={locationFilter.state}
+                  onValueChange={(value) => setLocationFilter((prev) => ({ ...prev, state: value }))}
+                >
+                  <SelectTrigger className="h-9 border-border bg-background text-foreground">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-background">
+                    {brazilianStates.map((state) => (
+                      <SelectItem key={state.value} value={state.value} className="text-foreground">
+                        {state.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs text-muted-foreground">Cidade (opcional)</Label>
+                <Input
+                  placeholder="Digite a cidade..."
+                  value={locationFilter.city}
+                  onChange={(e) => setLocationFilter((prev) => ({ ...prev, city: e.target.value }))}
+                  className="h-9 border-border bg-background text-foreground placeholder:text-muted-foreground"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Filtre por localização para encontrar profissionais perto de você
+                </p>
+              </div>
+            </div>
+          )}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Filtre por localização para encontrar profissionais perto de você
-        </p>
-      </div>
+      )}
 
       {/* Main content */}
-      <div className="relative flex min-h-[500px] flex-1 items-center justify-center bg-card/50 p-4">
-        {/* Permission denied */}
-        {videoState === "permission_denied" && (
-          <div className="text-center">
-            <AlertCircle className="mx-auto mb-4 h-16 w-16 text-destructive" />
-            <h3 className="mb-2 text-xl font-semibold text-foreground">Permissão Necessária</h3>
-            <p className="mb-4 max-w-md text-muted-foreground">{permissionError}</p>
-            <Button
-              onClick={() => {
-                setVideoState("idle")
-                setPermissionError(null)
-              }}
-            >
-              Tentar Novamente
-            </Button>
-          </div>
-        )}
-
-        {/* Limit reached */}
-        {limitReached && videoState === "idle" && (
-          <div className="text-center">
-            <Clock className="mx-auto mb-4 h-16 w-16 text-primary" />
-            <h3 className="mb-2 text-xl font-semibold text-foreground">Limite Diário Atingido</h3>
-            <p className="mb-4 text-muted-foreground">
-              Você atingiu seu limite de chamadas diárias. Reseta em {timeUntilReset}.
-            </p>
-            <Button className="bg-gradient-to-r from-primary to-pink-500">
-              <Sparkles className="mr-2 h-4 w-4" />
-              Fazer Upgrade para Pro
-            </Button>
-          </div>
-        )}
-
-        {/* Idle state */}
-        {videoState === "idle" && !limitReached && !permissionError && (
-          <div className="text-center">
-            <div className="mb-6">
-              <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
-                <Users className="h-10 w-10 text-primary" />
-              </div>
-              <h3 className="mb-2 text-xl font-semibold text-foreground">Videochamada com Profissionais</h3>
-              <p className="text-muted-foreground">Conecte-se instantaneamente com empreendedores</p>
-            </div>
-            {remainingCalls !== null && remainingCalls !== -1 && (
-              <p className="mb-4 text-sm text-muted-foreground">
-                {remainingCalls} chamada{remainingCalls !== 1 ? "s" : ""} restante{remainingCalls !== 1 ? "s" : ""} hoje
-              </p>
-            )}
-            <Button
-              size="lg"
-              onClick={startSearching}
-              disabled={isLoading}
-              className="bg-gradient-to-r from-primary to-pink-500 hover:from-primary/90 hover:to-pink-500/90"
-            >
-              {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />}
-              Iniciar Videochamada
-            </Button>
-          </div>
-        )}
-
-        {/* Searching / Connecting */}
-        {(videoState === "searching" || videoState === "connecting") && (
-          <>
-            {currentPartner && (
-              <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded-lg bg-card/90 p-3 backdrop-blur">
-                <Avatar className="h-10 w-10 border-2 border-primary">
-                  <AvatarImage src={currentPartner.avatar_url || ""} />
-                  <AvatarFallback className="bg-primary/20 text-primary">
-                    {currentPartner.full_name?.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium text-foreground">{currentPartner.full_name}</p>
-                  <p className="text-xs text-muted-foreground">{currentPartner.position}</p>
-                </div>
-                {connectionQuality && (
-                  <Badge
-                    className={
-                      connectionQuality === "good"
-                        ? "bg-green-500/20 text-green-400"
-                        : connectionQuality === "medium"
-                          ? "bg-yellow-500/20 text-yellow-400"
-                          : "bg-red-500/20 text-red-400"
-                    }
-                  >
-                    {connectionQuality === "good" ? (
-                      <Wifi className="mr-1 h-3 w-3" />
-                    ) : (
-                      <WifiOff className="mr-1 h-3 w-3" />
-                    )}
-                    {connectionQuality === "good" ? "Boa" : connectionQuality === "medium" ? "Média" : "Fraca"}
-                  </Badge>
-                )}
-              </div>
-            )}
-
+      <div className="relative flex flex-1 flex-col">
+        {/* Remote video */}
+        <div className="relative flex min-h-[400px] flex-1 items-center justify-center bg-muted/30">
+          {(videoState === "searching" || videoState === "connecting") && (
             <div className="text-center">
               <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-              <p className="text-foreground">{connectionStatus || "Procurando alguém para conectar..."}</p>
-              <p className="mt-2 text-sm text-muted-foreground">{waitTime}s</p>
+              <p className="text-lg font-medium text-foreground">
+                {videoState === "searching" ? "Procurando..." : "Conectando..."}
+              </p>
+              <p className="text-sm text-muted-foreground">{waitTime}s</p>
             </div>
+          )}
 
-            <div className="absolute bottom-24 right-4 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg md:h-40 md:w-32">
-              {isVideoOff ? (
-                <div className="flex h-full w-full items-center justify-center bg-card">
-                  <VideoOff className="h-8 w-8 text-muted-foreground" />
-                </div>
-              ) : localVideoReady ? (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="h-full w-full object-cover"
-                  style={{ transform: "scaleX(-1)" }}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-card">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          {(videoState === "connected" || (videoState === "connecting" && currentPartner)) && (
+            <>
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="h-full w-full object-cover"
+                style={{ display: remoteVideoReady ? "block" : "none" }}
+              />
+              {!remoteVideoReady && (
+                <div className="flex h-full w-full items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               )}
+            </>
+          )}
+
+          {videoState === "idle" && !limitReached && (
+            <div className="text-center">
+              <Users className="mx-auto mb-4 h-16 w-16 text-muted-foreground/50" />
+              <h3 className="mb-2 text-lg font-medium text-foreground">Pronto para conectar?</h3>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Clique em iniciar para encontrar alguém para conversar
+              </p>
               <Button
-                variant="ghost"
-                size="icon"
-                onClick={flipCamera}
-                className="absolute bottom-1 right-1 h-6 w-6 rounded-full bg-black/50 text-white hover:bg-black/70"
+                onClick={startSearching}
+                disabled={isLoading}
+                size="lg"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                <SwitchCamera className="h-3 w-3" />
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Iniciando...
+                  </>
+                ) : (
+                  <>
+                    <Video className="mr-2 h-5 w-5" />
+                    Iniciar Videochamada
+                  </>
+                )}
+              </Button>
+              {remainingCalls !== null && remainingCalls !== -1 && (
+                <p className="mt-2 text-xs text-muted-foreground">{remainingCalls} chamadas restantes hoje</p>
+              )}
+            </div>
+          )}
+
+          {videoState === "idle" && limitReached && (
+            <div className="p-6 text-center">
+              <Clock className="mx-auto mb-4 h-16 w-16 text-yellow-500" />
+              <h3 className="mb-2 text-lg font-semibold text-foreground">Limite Diário Atingido</h3>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Você usou todas as suas chamadas gratuitas de hoje.
+                <br />
+                Novas chamadas disponíveis em: <strong>{timeUntilReset}</strong>
+              </p>
+              <Button className="bg-gradient-to-r from-primary to-pink-500 text-white">
+                <Sparkles className="mr-2 h-4 w-4" />
+                Upgrade para Pro - Chamadas Ilimitadas
               </Button>
             </div>
-          </>
+          )}
+        </div>
+
+        {/* Partner info */}
+        {currentPartner && videoState !== "idle" && (
+          <div className="absolute left-3 top-3 z-10">
+            <div className="flex items-center gap-2 rounded-lg bg-background/90 px-3 py-2 backdrop-blur-sm">
+              <Avatar className="h-10 w-10 border-2 border-primary">
+                <AvatarImage src={currentPartner.avatar_url || ""} />
+                <AvatarFallback className="bg-primary text-primary-foreground">
+                  {(currentPartner.full_name || "U").charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-medium text-foreground">{currentPartner.full_name || "Usuário"}</p>
+                <p className="text-xs text-muted-foreground">{currentPartner.position || ""}</p>
+              </div>
+              {connectionQuality && (
+                <Badge
+                  variant="outline"
+                  className={`ml-2 ${
+                    connectionQuality === "good"
+                      ? "border-green-500 text-green-500"
+                      : connectionQuality === "medium"
+                        ? "border-yellow-500 text-yellow-500"
+                        : "border-red-500 text-red-500"
+                  }`}
+                >
+                  {connectionQuality === "good" ? (
+                    <Wifi className="mr-1 h-3 w-3" />
+                  ) : connectionQuality === "medium" ? (
+                    <Wifi className="mr-1 h-3 w-3" />
+                  ) : (
+                    <WifiOff className="mr-1 h-3 w-3" />
+                  )}
+                  {connectionQuality === "good" ? "Boa" : connectionQuality === "medium" ? "Média" : "Fraca"}
+                </Badge>
+              )}
+            </div>
+          </div>
         )}
 
-        {/* Connected */}
-        {videoState === "connected" && (
-          <>
-            <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
-
-            {currentPartner && (
-              <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded-lg bg-black/60 p-3 backdrop-blur">
-                <Avatar className="h-10 w-10 border-2 border-primary">
-                  <AvatarImage src={currentPartner.avatar_url || ""} />
-                  <AvatarFallback className="bg-primary/20 text-primary">
-                    {currentPartner.full_name?.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium text-white">{currentPartner.full_name}</p>
-                  <p className="text-xs text-gray-300">{currentPartner.position}</p>
-                </div>
-                {connectionQuality && (
-                  <Badge
-                    className={
-                      connectionQuality === "good"
-                        ? "bg-green-500/20 text-green-400"
-                        : connectionQuality === "medium"
-                          ? "bg-yellow-500/20 text-yellow-400"
-                          : "bg-red-500/20 text-red-400"
-                    }
-                  >
-                    {connectionQuality === "good" ? (
-                      <Wifi className="mr-1 h-3 w-3" />
-                    ) : (
-                      <WifiOff className="mr-1 h-3 w-3" />
-                    )}
-                    {connectionQuality === "good" ? "Boa" : connectionQuality === "medium" ? "Média" : "Fraca"}
-                  </Badge>
+        {/* Local video preview */}
+        {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
+          <div className="absolute bottom-20 right-3 z-10 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg sm:h-40 sm:w-32">
+            {localVideoReady && !isVideoOff ? (
+              <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-muted">
+                {isVideoOff ? (
+                  <VideoOff className="h-8 w-8 text-muted-foreground" />
+                ) : (
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 )}
               </div>
             )}
+            <button onClick={flipCamera} className="absolute bottom-1 right-1 rounded-full bg-background/80 p-1">
+              <SwitchCamera className="h-4 w-4 text-foreground" />
+            </button>
+          </div>
+        )}
 
-            <div className="absolute bottom-24 right-4 h-32 w-24 overflow-hidden rounded-lg border-2 border-primary shadow-lg md:h-40 md:w-32">
-              {isVideoOff ? (
-                <div className="flex h-full w-full items-center justify-center bg-card">
-                  <VideoOff className="h-8 w-8 text-muted-foreground" />
-                </div>
+        {/* Status */}
+        {connectionStatus && (
+          <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+            <div className="rounded-lg bg-background/90 px-4 py-2 text-sm text-foreground backdrop-blur-sm">
+              {connectionStatus}
+            </div>
+          </div>
+        )}
+
+        {/* Chat panel */}
+        {isChatOpen && (videoState === "connected" || videoState === "connecting") && (
+          <div className="absolute bottom-20 left-3 right-3 z-20 max-h-64 rounded-lg border border-border bg-background/95 shadow-lg backdrop-blur-sm sm:left-3 sm:right-auto sm:w-80">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="text-sm font-medium text-foreground">Chat</span>
+              <button onClick={() => setIsChatOpen(false)}>
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="h-40 overflow-y-auto p-3">
+              {chatMessages.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground">Nenhuma mensagem ainda</p>
               ) : (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="h-full w-full object-cover"
-                  style={{ transform: "scaleX(-1)" }}
-                />
+                chatMessages.map((msg) => (
+                  <div key={msg.id} className={`mb-2 ${msg.senderId === currentUserId ? "text-right" : "text-left"}`}>
+                    <span
+                      className={`inline-block rounded-lg px-3 py-1 text-sm ${
+                        msg.senderId === currentUserId
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-foreground"
+                      }`}
+                    >
+                      {msg.content}
+                    </span>
+                  </div>
+                ))
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={flipCamera}
-                className="absolute bottom-1 right-1 h-6 w-6 rounded-full bg-black/50 text-white hover:bg-black/70"
-              >
-                <SwitchCamera className="h-3 w-3" />
+              <div ref={chatEndRef} />
+            </div>
+            <div className="flex gap-2 border-t border-border p-2">
+              <Input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
+                placeholder="Digite uma mensagem..."
+                className="h-8 flex-1 text-sm"
+              />
+              <Button size="sm" onClick={sendChatMessage} className="h-8 w-8 p-0">
+                <Send className="h-4 w-4" />
               </Button>
             </div>
-
-            {isChatOpen && (
-              <div className="absolute bottom-24 left-4 z-10 flex h-80 w-72 flex-col rounded-lg bg-black/80 backdrop-blur">
-                <div className="flex items-center justify-between border-b border-white/20 p-3">
-                  <span className="font-medium text-white">Chat</span>
-                  <Button variant="ghost" size="icon" onClick={() => setIsChatOpen(false)} className="h-6 w-6">
-                    <X className="h-4 w-4 text-white" />
-                  </Button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3">
-                  {chatMessages.map((msg) => (
-                    <div key={msg.id} className={`mb-2 ${msg.senderId === currentUserId ? "text-right" : "text-left"}`}>
-                      <div
-                        className={`inline-block rounded-lg px-3 py-2 ${
-                          msg.senderId === currentUserId ? "bg-primary text-white" : "bg-white/20 text-white"
-                        }`}
-                      >
-                        <p className="text-sm">{msg.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={chatEndRef} />
-                </div>
-                <div className="flex gap-2 border-t border-white/20 p-3">
-                  <Input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
-                    placeholder="Digite uma mensagem..."
-                    className="border-white/20 bg-white/10 text-white placeholder:text-white/50"
-                  />
-                  <Button size="icon" onClick={sendChatMessage} className="bg-primary">
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
 
-      {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
-        <div className="flex flex-wrap items-center justify-center gap-2 border-t border-border bg-card/90 p-3 backdrop-blur sm:gap-3 sm:p-4">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleMute}
-            className={`h-10 w-10 shrink-0 ${isMuted ? "border-destructive text-destructive" : "border-border"}`}
-          >
-            {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </Button>
+      {/* Controls */}
+      {videoState !== "idle" && (
+        <div className="border-t border-border bg-background/95 p-3 backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={toggleMute}
+              className={`h-10 w-10 shrink-0 rounded-full ${isMuted ? "bg-destructive/20 text-destructive" : ""}`}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
 
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleVideo}
-            className={`h-10 w-10 shrink-0 ${isVideoOff ? "border-destructive text-destructive" : "border-border"}`}
-          >
-            {isVideoOff ? <VideoOff className="h-4 w-4" /> : <Video className="h-4 w-4" />}
-          </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={toggleVideo}
+              className={`h-10 w-10 shrink-0 rounded-full ${isVideoOff ? "bg-destructive/20 text-destructive" : ""}`}
+            >
+              {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+            </Button>
 
-          {videoState === "connected" && (
             <Button
               variant="outline"
               size="icon"
               onClick={() => setIsChatOpen(!isChatOpen)}
-              className="h-10 w-10 shrink-0 border-border"
+              className={`h-10 w-10 shrink-0 rounded-full ${isChatOpen ? "bg-primary/20 text-primary" : ""}`}
             >
-              <MessageCircle className="h-4 w-4" />
+              <MessageCircle className="h-5 w-5" />
             </Button>
-          )}
 
-          <Button variant="outline" onClick={handleSkip} className="h-10 shrink-0 border-border bg-transparent px-3">
-            <SkipForward className="h-4 w-4" />
-            <span className="ml-2 hidden sm:inline">Next</span>
-          </Button>
+            <Button
+              variant="outline"
+              onClick={handleSkip}
+              className="h-10 shrink-0 gap-1 rounded-full px-4 bg-transparent"
+            >
+              <SkipForward className="h-4 w-4" />
+              <span className="hidden sm:inline">Next</span>
+            </Button>
 
-          <Button variant="destructive" size="icon" onClick={handleEndCall} className="h-10 w-10 shrink-0">
-            <PhoneOff className="h-4 w-4" />
-          </Button>
+            <Button
+              variant="destructive"
+              size="icon"
+              onClick={handleEndCall}
+              className="h-10 w-10 shrink-0 rounded-full"
+            >
+              <PhoneOff className="h-5 w-5" />
+            </Button>
 
-          {videoState === "connected" && currentPartner && (
             <Button
               onClick={handleConnect}
-              className="h-10 shrink-0 bg-gradient-to-r from-primary to-pink-500 px-3 hover:from-primary/90 hover:to-pink-500/90"
+              className="h-10 shrink-0 gap-1 rounded-full bg-gradient-to-r from-primary to-pink-500 px-4 text-white"
             >
               <Sparkles className="h-4 w-4" />
-              <Heart className="ml-1 h-4 w-4" />
+              <Heart className="h-4 w-4" />
             </Button>
-          )}
+          </div>
         </div>
       )}
     </div>
