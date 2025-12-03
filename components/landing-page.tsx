@@ -186,7 +186,7 @@ export function LandingPage() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 <span className="text-sm text-primary font-medium">
-                  +{onlineCount1.toLocaleString("pt-BR")} empreendedores online agora
+                  +{onlineCount1.toLocaleString("pt-BR")} profissionais online agora
                 </span>
               </div>
 
@@ -202,8 +202,8 @@ export function LandingPage() {
               </h1>
 
               <p className="text-lg lg:text-xl text-muted-foreground mb-8 leading-relaxed max-w-xl">
-                Conecte-se instantaneamente com empreendedores da sua área. Match por interesses, videochamadas e
-                integração direta com WhatsApp.
+                Conecte-se instantaneamente com profissionais da sua área. Match por interesses, filtros de localização,
+                videochamadas e integração com WhatsApp.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-10">
@@ -321,7 +321,7 @@ export function LandingPage() {
       <section className="py-12 px-6 border-y border-border/50 bg-muted/30">
         <div className="max-w-7xl mx-auto">
           <p className="text-center text-sm text-muted-foreground mb-8">
-            Profissionais e empreendedores de empresas líderes confiam no Connext
+            Profissionais de empresas líderes confiam no Connext
           </p>
           <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-16 opacity-60">
             {["Google", "Microsoft", "Meta", "Amazon", "Nubank", "iFood"].map((company) => (
@@ -343,7 +343,7 @@ export function LandingPage() {
               Tudo que você precisa para fazer <span className="gradient-text">networking</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Ferramentas poderosas para conectar profissionais e empreendedores e criar oportunidades de negócio.
+              Ferramentas poderosas para conectar profissionais e criar oportunidades de negócio.
             </p>
           </div>
 
@@ -357,12 +357,11 @@ export function LandingPage() {
               {
                 icon: Users,
                 title: "Match Inteligente",
-                description:
-                  "Algoritmo avançado que conecta você com profissionais e empreendedores baseado em interesses e objetivos.",
+                description: "Algoritmo avançado que conecta você com profissionais baseado em interesses e objetivos.",
               },
               {
                 icon: MessageCircle,
-                title: "WhatsApp Direto",
+                title: "WhatsApp Integrado",
                 description: "Após o match, continue a conversa no WhatsApp para fechar negócios rapidamente.",
               },
               {
@@ -373,11 +372,11 @@ export function LandingPage() {
               {
                 icon: Globe,
                 title: "Filtro Geográfico",
-                description: "Encontre profissionais e empreendedores na sua cidade ou conecte-se globalmente.",
+                description: "Encontre profissionais na sua cidade ou conecte-se globalmente.",
               },
               {
                 icon: Shield,
-                title: "Setup em 2 Minutos",
+                title: "Perfil em 1 Minuto",
                 description: "Perfil rápido de configurar. Comece a fazer networking em minutos.",
               },
             ].map((feature, index) => (
@@ -418,8 +417,7 @@ export function LandingPage() {
               {
                 step: "02",
                 title: "Encontre matches",
-                description:
-                  "Navegue por profissionais e empreendedores compatíveis e inicie videochamadas instantâneas.",
+                description: "Navegue por profissionais compatíveis e inicie videochamadas instantâneas.",
                 icon: Users,
               },
               {
@@ -589,7 +587,7 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
             {[
-              { value: "50K+", label: "Empreendedores cadastrados" },
+              { value: "50K+", label: "Profissionais cadastrados" },
               { value: "150K+", label: "Conexões realizadas" },
               { value: "98%", label: "Taxa de satisfação" },
               { value: "45+", label: "Países" },
@@ -617,7 +615,7 @@ export function LandingPage() {
             {[
               {
                 q: "O que é o Connext?",
-                a: "O Connext é a primeira plataforma web de networking profissional via videochamada. Conectamos empreendedores em tempo real para gerar oportunidades de negócios.",
+                a: "O Connext é a primeira plataforma web de networking profissional via videochamada. Conectamos profissionais em tempo real para gerar oportunidades de negócios.",
               },
               {
                 q: "O plano Free é realmente gratuito?",

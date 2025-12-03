@@ -125,7 +125,7 @@ export function LoginForm() {
         </div>
       </div>
 
-      {/* Right Side - Visual */}
+      {/* Right Side - Visual - CHANGE: More realistic image */}
       <div className="hidden lg:flex flex-1 items-center justify-center p-8 relative">
         <div className="max-w-lg relative z-10">
           <div className="gradient-border rounded-3xl overflow-hidden bg-card/50 backdrop-blur-sm p-8">
@@ -133,11 +133,7 @@ export function LoginForm() {
               <Sparkles className="w-5 h-5 text-primary" />
               <span className="text-sm text-muted-foreground">Profissionais verificados</span>
             </div>
-            <img
-              src="/professional-networking-video-call-futuristic-neon.jpg"
-              alt="Networking"
-              className="rounded-2xl mb-6 w-full"
-            />
+            <img src="/professionals-networking-meeting-office-diverse-te.jpg" alt="Networking" className="rounded-2xl mb-6 w-full" />
             <h2 className="text-2xl font-bold text-foreground mb-4">
               Conecte-se com <span className="gradient-text">profissionais verificados</span>
             </h2>

@@ -91,7 +91,7 @@ export function MatchesPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Seus Matches</h1>
-            <p className="text-muted-foreground">Empreendedores que demonstraram interesse mútuo</p>
+            <p className="text-muted-foreground">Profissionais que demonstraram interesse mútuo</p>
           </div>
           <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
             <RefreshCw className="w-5 h-5" />
@@ -103,11 +103,11 @@ export function MatchesPage() {
             <Heart className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-foreground mb-2">Nenhum match ainda</h2>
             <p className="text-muted-foreground max-w-md mx-auto mb-6">
-              Continue explorando perfis na página Descobrir para encontrar empreendedores compatíveis com seus
+              Continue explorando perfis na página Descobrir para encontrar profissionais compatíveis com seus
               interesses.
             </p>
             <Link href="/dashboard">
-              <Button className="gradient-bg text-primary-foreground">Descobrir Empreendedores</Button>
+              <Button className="gradient-bg text-primary-foreground">Descobrir Profissionais</Button>
             </Link>
           </div>
         ) : (

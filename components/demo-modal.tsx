@@ -29,7 +29,7 @@ function SignupDemo() {
   const [email, setEmail] = useState("")
   const [typing, setTyping] = useState(true)
 
-  const targetEmail = "ana.silva@empresa.com.br"
+  const targetEmail = "ana.silva@gmail.com"
 
   useEffect(() => {
     if (step === 0 && typing) {
@@ -61,7 +61,7 @@ function SignupDemo() {
       <div className="w-full max-w-sm bg-card border border-border/50 rounded-2xl p-6 shadow-2xl">
         <div className="text-center mb-6">
           <h3 className="text-xl font-bold mb-1">Criar Conta</h3>
-          <p className="text-sm text-muted-foreground">Use seu email profissional</p>
+          <p className="text-sm text-muted-foreground">Cadastre-se gratuitamente</p>
         </div>
 
         <div className="space-y-4">
@@ -131,8 +131,8 @@ function ProfileDemo() {
     <div className="w-full h-full bg-gradient-to-br from-background via-background to-secondary/5 flex items-center justify-center p-8">
       <div className="w-full max-w-sm bg-card border border-border/50 rounded-2xl p-6 shadow-2xl">
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 rounded-full gradient-bg flex items-center justify-center text-2xl font-bold text-white">
-            A
+          <div className="w-16 h-16 rounded-full overflow-hidden">
+            <img src="/professional-woman-smiling-headshot.png" alt="Ana Silva" className="w-full h-full object-cover" />
           </div>
           <div>
             <h3 className="font-bold">Ana Silva</h3>
@@ -205,11 +205,7 @@ function DiscoverDemo() {
           style={{ transform: `translateX(${cardPosition}px) rotate(${cardPosition > 0 ? 15 : 0}deg)` }}
         >
           <div className="aspect-[3/4] bg-gradient-to-br from-primary/20 to-secondary/20 relative">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center text-4xl font-bold">
-                R
-              </div>
-            </div>
+            <img src="/professional-man-smiling-business-headshot.jpg" alt="Ricardo Lima" className="w-full h-full object-cover" />
           </div>
           <div className="p-4">
             <h3 className="font-bold text-lg">Ricardo Lima</h3>
@@ -224,13 +220,19 @@ function DiscoverDemo() {
 
       {/* Action buttons */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4">
-        <div className="w-14 h-14 rounded-full bg-card border border-border flex items-center justify-center">
-          <X className="w-6 h-6 text-muted-foreground" />
+        <div className="flex flex-col items-center">
+          <div className="w-14 h-14 rounded-full bg-card border border-border flex items-center justify-center">
+            <X className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <span className="text-xs text-muted-foreground mt-1">Next</span>
         </div>
-        <div
-          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${showHeart ? "gradient-bg scale-110" : "bg-card border border-border"}`}
-        >
-          <Heart className={`w-6 h-6 ${showHeart ? "text-white fill-white" : "text-pink-500"}`} />
+        <div className="flex flex-col items-center">
+          <div
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${showHeart ? "gradient-bg scale-110" : "bg-card border border-border"}`}
+          >
+            <Heart className={`w-6 h-6 ${showHeart ? "text-white fill-white" : "text-pink-500"}`} />
+          </div>
+          <span className="text-xs text-muted-foreground mt-1">Connect</span>
         </div>
       </div>
     </div>
@@ -266,22 +268,20 @@ function VideoCallDemo() {
       {/* Main video area */}
       <div className="flex-1 relative">
         {/* Remote video (simulated) */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center overflow-hidden">
           {!connected ? (
             <div className="text-center">
               <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-white/80">Conectando...</p>
             </div>
           ) : (
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-5xl font-bold text-white animate-pulse">
-              R
-            </div>
+            <img src="/professional-man-video-call-webcam-smiling.jpg" alt="Video call" className="w-full h-full object-cover" />
           )}
         </div>
 
         {/* Local video (small) */}
-        <div className="absolute bottom-4 right-4 w-24 h-32 bg-gradient-to-br from-gray-700 to-gray-800 rounded-xl border-2 border-white/20 flex items-center justify-center overflow-hidden">
-          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-xl font-bold">A</div>
+        <div className="absolute bottom-4 right-4 w-24 h-32 bg-gradient-to-br from-gray-700 to-gray-800 rounded-xl border-2 border-white/20 overflow-hidden">
+          <img src="/professional-woman-video-call-webcam.jpg" alt="You" className="w-full h-full object-cover" />
         </div>
 
         {/* Status bar */}
@@ -361,12 +361,12 @@ function MatchDemo() {
       >
         {/* Avatars */}
         <div className="flex items-center justify-center gap-4 mb-6">
-          <div className="w-24 h-24 rounded-full gradient-bg flex items-center justify-center text-3xl font-bold text-white ring-4 ring-white/20">
-            A
+          <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-white/20">
+            <img src="/professional-woman-smiling-headshot.png" alt="Você" className="w-full h-full object-cover" />
           </div>
           <Heart className="w-12 h-12 text-pink-500 fill-pink-500 animate-pulse" />
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-secondary to-primary flex items-center justify-center text-3xl font-bold text-white ring-4 ring-white/20">
-            R
+          <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-white/20">
+            <img src="/professional-man-smiling-business-headshot.jpg" alt="Ricardo" className="w-full h-full object-cover" />
           </div>
         </div>
 
@@ -394,8 +394,7 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
   const demoSteps = [
     {
       title: "Crie sua conta",
-      description:
-        "Use seu email profissional para garantir uma rede de qualidade. Emails como Gmail ou Hotmail não são aceitos.",
+      description: "Cadastre-se com seu email e crie sua conta em segundos. Comece gratuitamente.",
       component: SignupDemo,
     },
     {
@@ -406,7 +405,7 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
     {
       title: "Descubra profissionais",
       description:
-        "Navegue por cards de profissionais compatíveis com seus interesses. Deslize para a direita para curtir.",
+        "Navegue por cards de profissionais compatíveis com seus interesses. Clique em Connect para curtir ou Next para passar.",
       component: DiscoverDemo,
     },
     {

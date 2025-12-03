@@ -166,7 +166,7 @@ export function DiscoverPage() {
         <div className="text-center">
           <Sparkles className="w-16 h-16 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-foreground mb-2">Nenhum perfil encontrado</h2>
-          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos empreendedores.</p>
+          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos profissionais.</p>
           <Button onClick={fetchData} variant="outline" className="gap-2 bg-transparent">
             <RefreshCw className="w-4 h-4" />
             Atualizar
@@ -182,7 +182,7 @@ export function DiscoverPage() {
       <div className="hidden md:flex items-center justify-between p-4 md:p-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Descobrir</h1>
-          <p className="text-muted-foreground">Encontre empreendedores compatíveis</p>
+          <p className="text-muted-foreground">Encontre profissionais compatíveis</p>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">

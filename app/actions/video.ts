@@ -9,7 +9,7 @@ const PLAN_LIMITS = {
   pro: { dailyLikes: Number.POSITIVE_INFINITY, dailyCalls: Number.POSITIVE_INFINITY },
 }
 
-const ADMIN_EMAILS = ["matheus.maggioni@edu.pucrs.br"]
+const ADMIN_EMAILS = ["matheus.maggioni@edu.pucrs.br", "matheus.maggioni07@gmail.com"]
 
 function isAdmin(email: string | undefined): boolean {
   return email ? ADMIN_EMAILS.includes(email.toLowerCase()) : false
