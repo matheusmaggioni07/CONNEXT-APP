@@ -188,21 +188,37 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const getLocalStream = useCallback(async () => {
     try {
+      console.log("[v0] Getting local stream...")
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facingModeRef.current, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: { echoCancellation: true, noiseSuppression: true },
       })
 
+      console.log("[v0] Got stream:", stream)
+      console.log("[v0] Video tracks:", stream.getVideoTracks())
+      console.log("[v0] Audio tracks:", stream.getAudioTracks())
+
       localStreamRef.current = stream
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream
-        setLocalVideoReady(true)
-      }
+      // This ensures the video element exists before we try to assign the stream
+      setLocalVideoReady(true)
+
+      // Use setTimeout to ensure the video element is rendered
+      setTimeout(() => {
+        if (localVideoRef.current) {
+          console.log("[v0] Assigning stream to video element")
+          localVideoRef.current.srcObject = stream
+          // Force play on mobile
+          localVideoRef.current.play().catch((e) => console.log("[v0] Video play error:", e))
+        } else {
+          console.log("[v0] Video ref is null after timeout")
+        }
+      }, 100)
 
       return stream
     } catch (error: unknown) {
       const err = error as Error
+      console.log("[v0] getUserMedia error:", err.name, err.message)
       if (err.name === "NotAllowedError") {
         setPermissionError("Você precisa permitir o acesso à câmera e microfone para usar a videochamada.")
         setVideoState("permission_denied")
@@ -773,10 +789,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
           <div className="lg:w-[400px] flex flex-col border-t lg:border-t-0 lg:border-l border-border">
             <div className="relative flex-1 bg-gradient-to-br from-card to-background min-h-[200px] lg:min-h-[250px]">
-              {localVideoReady ? (
-                <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center flex-col gap-3">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`h-full w-full object-cover ${localVideoReady ? "block" : "hidden"}`}
+              />
+
+              {!localVideoReady && (
+                <div className="absolute inset-0 flex h-full w-full items-center justify-center flex-col gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className="text-sm text-muted-foreground">Carregando câmera...</p>
                 </div>
