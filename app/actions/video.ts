@@ -201,6 +201,16 @@ export async function checkRoomStatus(roomId: string) {
 }
 
 export async function leaveVideoQueue(userId: string, roomId: string) {
+  if (!roomId || roomId === "undefined") {
+    console.log("[v0] leaveVideoQueue called with invalid roomId, skipping cleanup")
+    return { success: true }
+  }
+
+  if (!userId || userId === "undefined") {
+    console.log("[v0] leaveVideoQueue called with invalid userId, skipping cleanup")
+    return { success: true }
+  }
+
   const supabase = await createClient()
 
   // End the room
@@ -214,6 +224,11 @@ export async function leaveVideoQueue(userId: string, roomId: string) {
 }
 
 export async function endVideoRoom(roomId: string) {
+  if (!roomId || roomId === "undefined") {
+    console.log("[v0] endVideoRoom called with invalid roomId, skipping")
+    return { success: true }
+  }
+
   const supabase = await createClient()
   const {
     data: { user },

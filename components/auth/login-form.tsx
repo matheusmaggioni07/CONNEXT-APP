@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { createClient } from "@/lib/supabase/client"
-import { Mail, Lock, AlertCircle, Sparkles, Eye, EyeOff } from "lucide-react"
+import { Mail, Lock, AlertCircle, Eye, EyeOff, Users, Zap } from "lucide-react"
 import Link from "next/link"
 import { OAuthButtons } from "./oauth-buttons"
 
@@ -133,25 +133,65 @@ export function LoginForm() {
         </div>
       </div>
 
-      {/* Right Side - Visual */}
       <div className="hidden lg:flex flex-1 items-center justify-center p-8 relative">
-        <div className="max-w-lg relative z-10">
-          <div className="gradient-border rounded-3xl overflow-hidden bg-card/50 backdrop-blur-sm p-8">
-            <div className="flex items-center gap-2 mb-6">
-              <Sparkles className="w-5 h-5 text-primary" />
-              <span className="text-sm text-muted-foreground">Profissionais verificados</span>
+        <div className="relative max-w-lg w-full">
+          {/* Main image card */}
+          <div className="gradient-border rounded-3xl overflow-hidden bg-card/80 backdrop-blur-sm shadow-2xl">
+            <div className="aspect-[4/5] relative">
+              <img
+                src="/professional-networking-video-call-futuristic-neon.jpg"
+                alt="Networking profissional"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
+
+              {/* Live indicator */}
+              <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                <span className="text-xs font-medium text-foreground">Ao vivo</span>
+              </div>
+
+              {/* Bottom profile card */}
+              <div className="absolute bottom-0 left-0 right-0 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-primary">
+                      <img
+                        src="/professional-woman-smiling-headshot.png"
+                        alt="Ana Rodrigues"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground">Ana Rodrigues</p>
+                      <p className="text-sm text-muted-foreground">CFO @ FinancePlus</p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="gradient-bg text-white">
+                    Conectar
+                  </Button>
+                </div>
+              </div>
             </div>
-            <img
-              src="/professionals-networking-meeting-office-diverse-te.jpg"
-              alt="Networking"
-              className="rounded-2xl mb-6 w-full"
-            />
-            <h2 className="text-2xl font-bold text-foreground mb-4">
-              Conecte-se com <span className="gradient-text">profissionais verificados</span>
-            </h2>
-            <p className="text-muted-foreground">
-              O Connext conecta você com profissionais reais através de videochamadas e networking inteligente.
-            </p>
+          </div>
+
+          {/* Floating badge - Novo Match */}
+          <div className="absolute -bottom-6 -left-6 gradient-border rounded-xl bg-card/95 backdrop-blur-sm p-4 shadow-xl animate-float">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-white text-sm">Novo Match!</p>
+                <p className="text-xs text-gray-300 flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  847 online
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

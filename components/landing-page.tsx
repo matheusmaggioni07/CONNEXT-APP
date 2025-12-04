@@ -255,7 +255,7 @@ export function LandingPage() {
               <div className="relative gradient-border rounded-3xl overflow-hidden bg-card/80 backdrop-blur-sm shadow-2xl">
                 <div className="aspect-[4/3] relative">
                   <img
-                    src="/professional-video-call-interface-dark-theme-futur.jpg"
+                    src="/professional-networking-video-call-futuristic-neon.jpg"
                     alt="Connext App Interface"
                     className="w-full h-full object-cover"
                   />
@@ -275,7 +275,11 @@ export function LandingPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-full bg-muted overflow-hidden ring-2 ring-primary">
-                          <img src="/professional-woman-tech.jpg" alt="User" className="w-full h-full object-cover" />
+                          <img
+                            src="/professional-woman-smiling-headshot.png"
+                            alt="User"
+                            className="w-full h-full object-cover"
+                          />
                         </div>
                         <div>
                           <p className="font-semibold text-foreground">Ana Rodrigues</p>
@@ -290,15 +294,14 @@ export function LandingPage() {
                 </div>
               </div>
 
-              {/* Floating Cards */}
               <div className="absolute -bottom-4 -left-4 gradient-border rounded-xl bg-card/95 backdrop-blur-sm p-4 shadow-xl animate-float">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
                     <Zap className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <p className="font-semibold text-foreground text-sm">Novo Match!</p>
-                    <p className="text-xs text-muted-foreground">Interesses: IA, Startups</p>
+                    <p className="font-semibold text-white text-sm">Novo Match!</p>
+                    <p className="text-xs text-gray-300">Interesses: IA, Startups</p>
                   </div>
                 </div>
               </div>
@@ -309,7 +312,9 @@ export function LandingPage() {
               >
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-secondary" />
-                  <span className="text-sm font-semibold">{onlineCount2.toLocaleString("pt-BR")} online</span>
+                  <span className="text-sm font-semibold text-white">
+                    {onlineCount2.toLocaleString("pt-BR")} online
+                  </span>
                 </div>
               </div>
             </div>
@@ -439,7 +444,7 @@ export function LandingPage() {
                 <span className="text-6xl font-bold text-muted/20 absolute -top-4 left-1/2 -translate-x-1/2">
                   {item.step}
                 </span>
-                <h3 className="text-xl font-semibold text-foreground mb-2">{item.title}</h3>
+                <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
                 <p className="text-muted-foreground">{item.description}</p>
               </div>
             ))}

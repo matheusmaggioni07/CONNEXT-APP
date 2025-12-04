@@ -13,7 +13,6 @@ export default async function VideoRoute() {
     redirect("/login")
   }
 
-  // Also removed redirect to onboarding - allow users to access video even without complete profile
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, avatar_url, city, interests")
