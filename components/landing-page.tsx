@@ -23,6 +23,7 @@ import {
   X,
   Instagram,
   Linkedin,
+  Phone,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -32,6 +33,8 @@ export function LandingPage() {
 
   const [onlineCount1, setOnlineCount1] = useState(2500)
   const [onlineCount2, setOnlineCount2] = useState(847)
+  const [matchCount, setMatchCount] = useState(0)
+  const [showNewMatch, setShowNewMatch] = useState(true)
 
   useEffect(() => {
     const updateCount1 = () => {
@@ -50,13 +53,21 @@ export function LandingPage() {
       })
     }
 
-    // Initial faster intervals
+    const matchInterval = setInterval(() => {
+      setShowNewMatch(false)
+      setTimeout(() => {
+        setMatchCount((prev) => prev + 1)
+        setShowNewMatch(true)
+      }, 200)
+    }, 3000)
+
     const interval1 = setInterval(updateCount1, 1200) // Every 1.2 seconds
     const interval2 = setInterval(updateCount2, 800) // Every 0.8 seconds
 
     return () => {
       clearInterval(interval1)
       clearInterval(interval2)
+      clearInterval(matchInterval)
     }
   }, [])
 
@@ -249,72 +260,105 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Hero Visual */}
+            {/* Right Column - Hero Visual */}
             <div className="relative lg:pl-8">
-              <div className="absolute inset-0 gradient-bg rounded-3xl blur-3xl opacity-20" />
-              <div className="relative gradient-border rounded-3xl overflow-hidden bg-card/80 backdrop-blur-sm shadow-2xl">
-                <div className="aspect-[4/3] relative">
-                  <img
-                    src="/professional-networking-video-call-futuristic-neon.jpg"
-                    alt="Connext App Interface"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
-
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 via-transparent to-purple-500/20 rounded-3xl blur-3xl" />
+              <div className="relative">
+                {/* Main Card - Video Call Interface */}
+                <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#0d0d14]">
                   {/* Live indicator */}
-                  <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                    </span>
-                    <span className="text-xs font-medium">Ao vivo</span>
+                  <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
+                    <div className="relative">
+                      <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      <div className="absolute inset-0 w-2 h-2 bg-green-500 rounded-full animate-ping" />
+                    </div>
+                    <span className="text-white text-sm font-medium">Ao vivo</span>
                   </div>
 
-                  {/* Bottom overlay info */}
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <div className="flex items-center justify-between">
+                  {/* Top bar */}
+                  <div className="bg-[#1a1a2e] px-4 py-3 flex items-center justify-between border-b border-white/5">
+                    <span className="text-gray-400 text-sm">Video Call</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                        A
+                      </div>
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                        M
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Video Grid - 3x3 */}
+                  <div className="p-6 bg-[#0d0d14]">
+                    <div className="grid grid-cols-3 gap-3">
+                      {[...Array(9)].map((_, i) => (
+                        <div
+                          key={i}
+                          className={`aspect-square rounded-xl ${i === 4 ? "bg-gradient-to-br from-purple-500/30 to-pink-500/30 border-2 border-purple-500/50 flex items-center justify-center" : "bg-[#1a1a2e]/80"}`}
+                        >
+                          {i === 4 && (
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                              <Phone className="w-6 h-6 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Profile Card */}
+                  <div className="px-6 pb-6">
+                    <div className="flex items-center justify-between bg-[#1a1a2e]/50 rounded-2xl p-4 border border-white/5">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-muted overflow-hidden ring-2 ring-primary">
-                          <img
-                            src="/professional-woman-smiling-headshot.png"
-                            alt="User"
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
+                          <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center text-white font-bold">
+                            AR
+                          </div>
                         </div>
                         <div>
-                          <p className="font-semibold text-foreground">Ana Rodrigues</p>
-                          <p className="text-sm text-muted-foreground">CFO @ FinancePlus</p>
+                          <p className="text-white font-semibold">Ana Rodrigues</p>
+                          <p className="text-gray-400 text-sm">CFO @ FinancePlus</p>
                         </div>
                       </div>
-                      <Button size="sm" className="gradient-bg text-white">
+                      <button className="bg-gradient-to-r from-orange-500 to-pink-500 text-white px-5 py-2 rounded-full text-sm font-medium">
                         Conectar
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="absolute -bottom-4 -left-4 gradient-border rounded-xl bg-card/95 backdrop-blur-sm p-4 shadow-xl animate-float">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white text-sm">Novo Match!</p>
-                    <p className="text-xs text-gray-300">Interesses: IA, Startups</p>
-                  </div>
-                </div>
-              </div>
+                {/* Floating Badge - Novo Match */}
+                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-64">
+                  <div className="relative bg-[#1a1a2e] rounded-2xl p-4 border border-purple-500/30 shadow-xl shadow-purple-500/10">
+                    {/* Gradient glow */}
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-sm -z-10" />
 
-              <div
-                className="absolute -top-4 -right-4 gradient-border rounded-xl bg-card/95 backdrop-blur-sm p-3 shadow-xl animate-float"
-                style={{ animationDelay: "1s" }}
-              >
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-secondary" />
-                  <span className="text-sm font-semibold text-white">
-                    {onlineCount2.toLocaleString("pt-BR")} online
-                  </span>
+                    <div className="flex items-center gap-3">
+                      {/* Avatar with notification */}
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
+                          <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center">
+                            <Zap className="w-5 h-5 text-orange-400" />
+                          </div>
+                        </div>
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-[#1a1a2e]">
+                          <span className="text-[8px] text-white font-bold">+</span>
+                        </div>
+                      </div>
+
+                      <div className="flex-1">
+                        <p
+                          className={`text-white font-semibold text-sm transition-all duration-200 ${showNewMatch ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"}`}
+                        >
+                          Novo Match!
+                        </p>
+                        <p className="text-gray-400 text-xs flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" />
+                          <span className="tabular-nums">{onlineCount2.toLocaleString("pt-BR")}</span> online
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

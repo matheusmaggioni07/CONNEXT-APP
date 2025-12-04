@@ -80,6 +80,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
   const [limitReached, setLimitReached] = useState(false)
   const [timeUntilReset, setTimeUntilReset] = useState("")
+  const [showPermissionRequest, setShowPermissionRequest] = useState(false)
 
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -587,6 +588,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
   }, [currentPartner])
 
+  const handleStartClick = useCallback(() => {
+    setShowPermissionRequest(true)
+  }, [])
+
+  const handlePermissionConfirm = useCallback(async () => {
+    setShowPermissionRequest(false)
+    await startSearching()
+  }, [])
+
   // RENDER - Permission Denied
   if (videoState === "permission_denied") {
     return (
@@ -635,17 +645,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-80px)] flex-col bg-background">
+    <div className="flex min-h-[calc(100vh-80px)] flex-col bg-background overflow-y-auto">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-border">
+      <div className="px-4 md:px-6 py-4 border-b border-border shrink-0">
         <h1 className="text-xl font-bold text-foreground">Videochamada</h1>
         <p className="text-sm text-muted-foreground">Conecte-se instantaneamente com profissionais</p>
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col lg:flex-row">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* Left side - Main video area */}
-        <div className="relative flex-1 flex items-center justify-center p-6">
+        <div className="relative flex-1 flex items-center justify-center p-4 md:p-6 min-h-[300px] lg:min-h-0">
           {videoState === "connected" && remoteVideoReady ? (
             <div className="relative w-full h-full rounded-2xl overflow-hidden border border-border bg-card">
               <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
@@ -669,20 +679,20 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
             </div>
           ) : (
-            <div className="w-full max-w-2xl rounded-2xl border border-border bg-card/50 p-12 flex flex-col items-center justify-center text-center">
+            <div className="w-full max-w-2xl rounded-2xl border border-border bg-card/50 p-8 md:p-12 flex flex-col items-center justify-center text-center">
               {videoState === "idle" && (
                 <>
-                  <div className="mb-6 h-24 w-24 rounded-full gradient-bg flex items-center justify-center shadow-lg shadow-primary/25">
-                    <Video className="h-12 w-12 text-white" />
+                  <div className="mb-6 h-20 w-20 md:h-24 md:w-24 rounded-full gradient-bg flex items-center justify-center shadow-lg shadow-primary/25">
+                    <Video className="h-10 w-10 md:h-12 md:w-12 text-white" />
                   </div>
-                  <h2 className="text-2xl font-bold text-foreground mb-3">Pronto para conectar?</h2>
-                  <p className="text-muted-foreground mb-6 max-w-md">
+                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-3">Pronto para conectar?</h2>
+                  <p className="text-muted-foreground mb-6 max-w-md text-sm md:text-base">
                     Clique no botão abaixo para ser conectado com um profissional aleatório baseado nos seus interesses.
                   </p>
                   <Button
-                    onClick={startSearching}
+                    onClick={handleStartClick}
                     disabled={isLoading}
-                    className="px-8 py-6 text-lg rounded-xl gradient-bg text-white hover:opacity-90 shadow-lg shadow-primary/25"
+                    className="px-6 md:px-8 py-5 md:py-6 text-base md:text-lg rounded-xl gradient-bg text-white hover:opacity-90 shadow-lg shadow-primary/25"
                   >
                     {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />}
                     Iniciar Videochamada
@@ -699,15 +709,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               {videoState === "searching" && (
                 <>
                   <div className="mb-6 relative">
-                    <div className="h-24 w-24 rounded-full border-4 border-primary/30 flex items-center justify-center bg-card/50 backdrop-blur-sm">
-                      <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                    <div className="h-20 w-20 md:h-24 md:w-24 rounded-full border-4 border-primary/30 flex items-center justify-center bg-card/50 backdrop-blur-sm">
+                      <Loader2 className="h-10 w-10 md:h-12 md:w-12 animate-spin text-primary" />
                     </div>
                     <div
                       className="absolute inset-0 rounded-full border-4 border-transparent border-t-secondary animate-spin"
                       style={{ animationDuration: "1.5s" }}
                     />
                   </div>
-                  <h2 className="text-2xl font-bold text-foreground mb-3">Buscando profissional...</h2>
+                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-3">Buscando profissional...</h2>
                   <p className="text-muted-foreground flex items-center gap-2 mb-6">
                     <Clock className="h-4 w-4 text-primary" />
                     Tempo de espera: {formatWaitTime(waitTime)}
@@ -724,9 +734,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
               {videoState === "connecting" && (
                 <>
-                  <Avatar className="h-24 w-24 mb-6 ring-4 ring-primary shadow-lg shadow-primary/25">
+                  <Avatar className="h-20 w-20 md:h-24 md:w-24 mb-6 ring-4 ring-primary shadow-lg shadow-primary/25">
                     <AvatarImage src={currentPartner?.avatar_url || "/placeholder.svg"} className="object-cover" />
-                    <AvatarFallback className="gradient-bg text-white text-3xl font-bold">
+                    <AvatarFallback className="gradient-bg text-white text-2xl md:text-3xl font-bold">
                       {currentPartner?.full_name?.charAt(0) || "?"}
                     </AvatarFallback>
                   </Avatar>
@@ -740,15 +750,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
               {videoState === "ended" && (
                 <>
-                  <div className="mb-6 h-24 w-24 rounded-full bg-muted/50 border-2 border-border flex items-center justify-center">
-                    <PhoneOff className="h-12 w-12 text-muted-foreground" />
+                  <div className="mb-6 h-20 w-20 md:h-24 md:w-24 rounded-full bg-muted/50 border-2 border-border flex items-center justify-center">
+                    <PhoneOff className="h-10 w-10 md:h-12 md:w-12 text-muted-foreground" />
                   </div>
-                  <h2 className="text-2xl font-bold text-foreground mb-3">Chamada encerrada</h2>
+                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-3">Chamada encerrada</h2>
                   <p className="text-muted-foreground mb-6">Deseja conectar com outro profissional?</p>
                   <Button
-                    onClick={startSearching}
+                    onClick={handleStartClick}
                     disabled={isLoading}
-                    className="px-8 py-6 text-lg rounded-xl gradient-bg text-white hover:opacity-90"
+                    className="px-6 md:px-8 py-5 md:py-6 text-base md:text-lg rounded-xl gradient-bg text-white hover:opacity-90"
                   >
                     <Video className="mr-2 h-5 w-5" />
                     Iniciar Novamente
@@ -760,109 +770,112 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         </div>
 
         {/* Right side - Your video preview */}
-        <div className="lg:w-[400px] flex flex-col border-l border-border">
-          <div className="relative flex-1 bg-gradient-to-br from-card to-background min-h-[250px]">
-            {localVideoReady ? (
-              <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
+          <div className="lg:w-[400px] flex flex-col border-t lg:border-t-0 lg:border-l border-border">
+            <div className="relative flex-1 bg-gradient-to-br from-card to-background min-h-[200px] lg:min-h-[250px]">
+              {localVideoReady ? (
+                <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center flex-col gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Carregando câmera...</p>
+                </div>
+              )}
+
+              <button
+                onClick={flipCamera}
+                className="absolute bottom-3 right-3 rounded-full bg-card/80 backdrop-blur-sm p-2.5 text-foreground hover:bg-card transition-all border border-border"
+              >
+                <SwitchCamera className="h-5 w-5" />
+              </button>
+
+              <div className="absolute top-3 left-3 flex gap-2">
+                {isMuted && (
+                  <div className="rounded-full bg-red-500/90 p-2">
+                    <MicOff className="h-4 w-4 text-white" />
+                  </div>
+                )}
+                {isVideoOff && (
+                  <div className="rounded-full bg-red-500/90 p-2">
+                    <VideoOff className="h-4 w-4 text-white" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Chat area - only show when connected */}
+            {videoState === "connected" && (
+              <div className="h-48 lg:h-64 bg-card border-t border-border flex flex-col">
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={currentPartner?.avatar_url || "/placeholder.svg"} />
+                    <AvatarFallback className="gradient-bg text-white text-sm">
+                      {currentPartner?.full_name?.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground text-sm">{currentPartner?.full_name}</p>
+                    <p className="text-xs text-muted-foreground">{currentPartner?.city || "Brasil"}</p>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {chatMessages.length === 0 && (
+                    <p className="text-center text-sm text-muted-foreground py-4">
+                      Envie uma mensagem para iniciar o chat
+                    </p>
+                  )}
+                  {chatMessages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+                        msg.senderId === userId ? "ml-auto gradient-bg text-white" : "bg-muted text-foreground"
+                      }`}
+                    >
+                      <p className="text-sm">{msg.content}</p>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div className="p-3 border-t border-border">
+                  <div className="flex gap-2">
+                    <Input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
+                      placeholder="Escreva uma mensagem..."
+                      className="flex-1 rounded-full"
+                    />
+                    <Button
+                      size="icon"
+                      onClick={sendChatMessage}
+                      className="rounded-full shrink-0 gradient-bg hover:opacity-90"
+                    >
+                      <Send className="h-4 w-4 text-white" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
-
-            <button
-              onClick={flipCamera}
-              className="absolute bottom-3 right-3 rounded-full bg-card/80 backdrop-blur-sm p-2.5 text-foreground hover:bg-card transition-all border border-border"
-            >
-              <SwitchCamera className="h-5 w-5" />
-            </button>
-
-            <div className="absolute top-3 left-3 flex gap-2">
-              {isMuted && (
-                <div className="rounded-full bg-red-500/90 p-2">
-                  <MicOff className="h-4 w-4 text-white" />
-                </div>
-              )}
-              {isVideoOff && (
-                <div className="rounded-full bg-red-500/90 p-2">
-                  <VideoOff className="h-4 w-4 text-white" />
-                </div>
-              )}
-            </div>
           </div>
-
-          {/* Chat area - only show when connected */}
-          {videoState === "connected" && (
-            <div className="h-64 bg-card border-t border-border flex flex-col">
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={currentPartner?.avatar_url || "/placeholder.svg"} />
-                  <AvatarFallback className="gradient-bg text-white text-sm">
-                    {currentPartner?.full_name?.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <p className="font-medium text-foreground text-sm">{currentPartner?.full_name}</p>
-                  <p className="text-xs text-muted-foreground">{currentPartner?.city || "Brasil"}</p>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {chatMessages.length === 0 && (
-                  <p className="text-center text-sm text-muted-foreground py-4">
-                    Envie uma mensagem para iniciar o chat
-                  </p>
-                )}
-                {chatMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                      msg.senderId === userId ? "ml-auto gradient-bg text-white" : "bg-muted text-foreground"
-                    }`}
-                  >
-                    <p className="text-sm">{msg.content}</p>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="p-3 border-t border-border">
-                <div className="flex gap-2">
-                  <Input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
-                    placeholder="Escreva uma mensagem..."
-                    className="flex-1 rounded-full"
-                  />
-                  <Button
-                    size="icon"
-                    onClick={sendChatMessage}
-                    className="rounded-full shrink-0 gradient-bg hover:opacity-90"
-                  >
-                    <Send className="h-4 w-4 text-white" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Bottom control buttons - only show when connected */}
       {videoState === "connected" && (
-        <div className="flex items-center justify-center gap-4 p-4 bg-card border-t border-border">
+        <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4 p-4 bg-card border-t border-border shrink-0">
           <Button
             onClick={skipToNext}
-            className="h-14 px-8 rounded-xl gradient-bg text-white hover:opacity-90 shadow-lg shadow-primary/25"
+            className="h-12 md:h-14 px-4 md:px-8 rounded-xl gradient-bg text-white hover:opacity-90 shadow-lg shadow-primary/25"
           >
             <SkipForward className="mr-2 h-5 w-5" />
-            Próximo
+            <span className="hidden sm:inline">Próximo</span>
           </Button>
 
           <Button
             onClick={handleLike}
-            className="h-14 px-8 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white hover:opacity-90 shadow-lg shadow-pink-500/25"
+            className="h-12 md:h-14 px-4 md:px-8 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white hover:opacity-90 shadow-lg shadow-pink-500/25"
           >
             <Heart className="mr-2 h-5 w-5" />
             Match
@@ -871,20 +884,24 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={endCall}
             variant="outline"
-            className="h-14 px-8 rounded-xl border-border hover:bg-muted bg-transparent"
+            className="h-12 md:h-14 px-4 md:px-8 rounded-xl border-border hover:bg-muted bg-transparent"
           >
             <PhoneOff className="mr-2 h-5 w-5" />
-            Encerrar
+            <span className="hidden sm:inline">Encerrar</span>
           </Button>
 
-          <Button onClick={toggleMute} variant={isMuted ? "destructive" : "outline"} className="h-14 w-14 rounded-xl">
+          <Button
+            onClick={toggleMute}
+            variant={isMuted ? "destructive" : "outline"}
+            className="h-12 md:h-14 w-12 md:w-14 rounded-xl"
+          >
             {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </Button>
 
           <Button
             onClick={toggleVideo}
             variant={isVideoOff ? "destructive" : "outline"}
-            className="h-14 w-14 rounded-xl"
+            className="h-12 md:h-14 w-12 md:w-14 rounded-xl"
           >
             {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </Button>
@@ -893,34 +910,34 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       {/* Tips cards at bottom - only show when idle */}
       {(videoState === "idle" || videoState === "ended") && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 border-t border-border bg-card/50">
-          <div className="flex items-start gap-4 p-4 rounded-xl bg-card border border-border">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Video className="h-5 w-5 text-primary" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 p-4 md:p-6 border-t border-border bg-card/50 shrink-0">
+          <div className="flex items-start gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-card border border-border">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Video className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Câmera ligada</h3>
-              <p className="text-sm text-muted-foreground">Mantenha sua câmera ligada para melhor conexão</p>
+              <h3 className="font-semibold text-foreground text-sm md:text-base">Câmera ligada</h3>
+              <p className="text-xs md:text-sm text-muted-foreground">Mantenha sua câmera ligada para melhor conexão</p>
             </div>
           </div>
 
-          <div className="flex items-start gap-4 p-4 rounded-xl bg-card border border-border">
-            <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
-              <Sparkles className="h-5 w-5 text-secondary" />
+          <div className="flex items-start gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-card border border-border">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+              <Sparkles className="h-4 w-4 md:h-5 md:w-5 text-secondary" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Seja profissional</h3>
-              <p className="text-sm text-muted-foreground">Apresente-se e fale sobre seus objetivos</p>
+              <h3 className="font-semibold text-foreground text-sm md:text-base">Seja profissional</h3>
+              <p className="text-xs md:text-sm text-muted-foreground">Apresente-se e fale sobre seus objetivos</p>
             </div>
           </div>
 
-          <div className="flex items-start gap-4 p-4 rounded-xl bg-card border border-border">
-            <div className="w-10 h-10 rounded-lg bg-pink-500/10 flex items-center justify-center shrink-0">
-              <Heart className="h-5 w-5 text-pink-500" />
+          <div className="flex items-start gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-card border border-border">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-pink-500/10 flex items-center justify-center shrink-0">
+              <Heart className="h-4 w-4 md:h-5 md:w-5 text-pink-500" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Match mútuo</h3>
-              <p className="text-sm text-muted-foreground">Curta para conectar no WhatsApp após a chamada</p>
+              <h3 className="font-semibold text-foreground text-sm md:text-base">Match mútuo</h3>
+              <p className="text-xs md:text-sm text-muted-foreground">Curta para conectar no WhatsApp após a chamada</p>
             </div>
           </div>
         </div>
@@ -976,6 +993,37 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 className="w-full rounded-xl gradient-bg text-white hover:opacity-90"
               >
                 Aplicar Filtros
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPermissionRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 md:p-8 shadow-xl border border-border text-center">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full gradient-bg shadow-lg shadow-primary/25">
+              <Video className="h-10 w-10 text-white" />
+            </div>
+            <h2 className="mb-3 text-xl md:text-2xl font-bold text-foreground">Permitir câmera e microfone?</h2>
+            <p className="mb-8 text-muted-foreground text-sm md:text-base">
+              Para iniciar a videochamada, precisamos acessar sua câmera e microfone. Clique em "Permitir" quando o
+              navegador solicitar.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                onClick={() => setShowPermissionRequest(false)}
+                variant="outline"
+                className="flex-1 py-5 rounded-xl border-border"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handlePermissionConfirm}
+                className="flex-1 py-5 rounded-xl gradient-bg text-white hover:opacity-90"
+              >
+                <Video className="mr-2 h-5 w-5" />
+                Ligar Câmera
               </Button>
             </div>
           </div>
