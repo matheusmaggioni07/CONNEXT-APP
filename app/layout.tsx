@@ -9,12 +9,21 @@ const _inter = Inter({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Connext - Networking Profissional via Videochamadas",
+  title: "Connext - 1° Plataforma Web de Networking Profissional via Videochamada",
   description:
-    "Conecte-se instantaneamente com profissionais da sua área através de videochamadas 1v1. Faça networking de verdade, expanda sua rede e crie oportunidades de negócio em tempo real.",
+    "1° plataforma web de networking profissional via videochamada. Conecte-se instantaneamente com profissionais da sua área e crie oportunidades de negócio em tempo real.",
   generator: "v0.app",
   manifest: "/manifest.json",
-  keywords: ["networking", "profissional", "videochamada", "negócios", "conexões", "carreira", "empreendedorismo"],
+  keywords: [
+    "networking",
+    "profissional",
+    "videochamada",
+    "negócios",
+    "conexões",
+    "carreira",
+    "empreendedorismo",
+    "connext",
+  ],
   authors: [{ name: "Connext App" }],
   creator: "Connext",
   publisher: "Connext",
@@ -22,30 +31,28 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://www.connextapp.com.br",
   },
-  // Open Graph - para Facebook, WhatsApp, LinkedIn, etc.
   openGraph: {
     type: "website",
     locale: "pt_BR",
     url: "https://www.connextapp.com.br",
     siteName: "Connext",
-    title: "Connext - Networking Profissional via Videochamadas",
+    title: "Connext - 1° Plataforma Web de Networking Profissional via Videochamada",
     description:
-      "Conecte-se instantaneamente com profissionais da sua área através de videochamadas 1v1. Faça networking de verdade e crie oportunidades de negócio.",
+      "1° plataforma web de networking profissional via videochamada. Conecte-se instantaneamente com profissionais e crie oportunidades de negócio.",
     images: [
       {
-        url: "/og-image.jpg",
+        url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Connext - Networking Profissional",
+        alt: "Connext - Networking Profissional via Videochamada",
       },
     ],
   },
-  // Twitter Card
   twitter: {
     card: "summary_large_image",
-    title: "Connext - Networking Profissional via Videochamadas",
-    description: "Conecte-se instantaneamente com profissionais através de videochamadas 1v1.",
-    images: ["/og-image.jpg"],
+    title: "Connext - 1° Plataforma Web de Networking Profissional via Videochamada",
+    description: "1° plataforma web de networking profissional via videochamada.",
+    images: ["/og-image.png"],
     creator: "@connextapp",
   },
   appleWebApp: {
@@ -56,12 +63,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-16x16.jpg", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.jpg", sizes: "32x32", type: "image/png" },
-      { url: "/icon-192.jpg", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.jpg", sizes: "512x512", type: "image/png" },
+      { url: "/connext-logo-icon.png", sizes: "32x32", type: "image/png" },
+      { url: "/connext-logo-icon.png", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.jpg",
+    apple: "/connext-logo-icon.png",
     shortcut: "/favicon.ico",
   },
   robots: {

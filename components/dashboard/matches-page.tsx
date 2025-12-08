@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, Video, MapPin, Clock, Heart, AlertCircle, RefreshCw } from "lucide-react"
+import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw } from "lucide-react"
 import { getMatches } from "@/app/actions/likes"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
@@ -17,11 +17,10 @@ export function MatchesPage() {
     setIsLoading(true)
     try {
       const [fetchedMatches, online] = await Promise.all([getMatches(), getOnlineUserIds()])
-      console.log("[v0] Matches fetched:", fetchedMatches.length)
       setMatches(fetchedMatches)
       setOnlineUsers(online)
     } catch (error) {
-      console.error("[v0] Error fetching matches:", error)
+      console.error("Error fetching matches:", error)
     } finally {
       setIsLoading(false)
     }
@@ -37,15 +36,12 @@ export function MatchesPage() {
       return
     }
 
-    // Clean phone number - remove all non-digits
     let cleanPhone = phone.replace(/\D/g, "")
 
-    // Add Brazil country code if not present
     if (cleanPhone.length === 11 || cleanPhone.length === 10) {
       cleanPhone = "55" + cleanPhone
     }
 
-    // Create message
     const message = encodeURIComponent(`Olá ${name}! Nos conectamos pelo Connext e gostaria de conversar com você.`)
 
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
@@ -178,26 +174,16 @@ export function MatchesPage() {
                     </div>
                   )}
 
-                  {/* Actions - Fixed WhatsApp and camera buttons */}
                   <div className="flex gap-2 mt-4">
                     <Button
                       size="sm"
-                      className={`flex-1 ${hasPhone ? "bg-[#25D366] hover:bg-[#25D366]/90" : "bg-gray-500 hover:bg-gray-600"} text-white`}
+                      className={`w-full ${hasPhone ? "bg-[#25D366] hover:bg-[#25D366]/90" : "bg-gray-500 hover:bg-gray-600"} text-white`}
                       onClick={() => openWhatsApp(profile.phone, profile.full_name)}
                     >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       WhatsApp
                       {!hasPhone && <AlertCircle className="w-3 h-3 ml-1" />}
                     </Button>
-                    <Link href="/dashboard/video">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white bg-transparent"
-                      >
-                        <Video className="w-4 h-4" />
-                      </Button>
-                    </Link>
                   </div>
 
                   {/* Phone warning */}

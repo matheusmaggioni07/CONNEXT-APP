@@ -4,9 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Video,
   VideoOff,
@@ -15,11 +12,8 @@ import {
   PhoneOff,
   SkipForward,
   Heart,
-  X,
   AlertCircle,
   Loader2,
-  Send,
-  Filter,
   Clock,
   Sparkles,
   SwitchCamera,
@@ -27,7 +21,6 @@ import {
 } from "lucide-react"
 import { joinVideoQueue, leaveVideoQueue, checkRoomStatus, getRemainingCalls } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/likes"
-import { brazilianStates } from "@/lib/brazilian-states"
 
 interface VideoPageProps {
   userId: string
@@ -80,7 +73,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
   const [limitReached, setLimitReached] = useState(false)
   const [timeUntilReset, setTimeUntilReset] = useState("")
-  const [showPermissionRequest, setShowPermissionRequest] = useState(false)
 
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -188,37 +180,37 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const getLocalStream = useCallback(async () => {
     try {
-      console.log("[v0] Getting local stream...")
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingModeRef.current, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      })
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
-      console.log("[v0] Got stream:", stream)
-      console.log("[v0] Video tracks:", stream.getVideoTracks())
-      console.log("[v0] Audio tracks:", stream.getAudioTracks())
+      const constraints = {
+        video: {
+          facingMode: facingModeRef.current,
+          width: { ideal: isMobile ? 640 : 1280 },
+          height: { ideal: isMobile ? 480 : 720 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
 
       localStreamRef.current = stream
-
-      // This ensures the video element exists before we try to assign the stream
       setLocalVideoReady(true)
 
       // Use setTimeout to ensure the video element is rendered
       setTimeout(() => {
         if (localVideoRef.current) {
-          console.log("[v0] Assigning stream to video element")
           localVideoRef.current.srcObject = stream
-          // Force play on mobile
-          localVideoRef.current.play().catch((e) => console.log("[v0] Video play error:", e))
-        } else {
-          console.log("[v0] Video ref is null after timeout")
+          localVideoRef.current.play().catch((e) => console.error("Video play error:", e))
         }
       }, 100)
 
       return stream
     } catch (error: unknown) {
       const err = error as Error
-      console.log("[v0] getUserMedia error:", err.name, err.message)
       if (err.name === "NotAllowedError") {
         setPermissionError("Você precisa permitir o acesso à câmera e microfone para usar a videochamada.")
         setVideoState("permission_denied")
@@ -235,7 +227,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const setupWebRTC = useCallback(
     async (roomId: string, isInitiator: boolean) => {
-      let iceServers: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }]
+      let iceServers: RTCIceServer[] = [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+      ]
 
       try {
         const response = await fetch("/api/turn-credentials")
@@ -315,7 +311,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         if (event.candidate) {
           await supabase.from("ice_candidates").insert({
             room_id: roomId,
-            sender_id: userId,
+            from_user_id: userId,
+            to_user_id: currentPartner?.id || null,
             candidate: JSON.stringify(event.candidate.toJSON()),
           })
         }
@@ -332,8 +329,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             filter: `room_id=eq.${roomId}`,
           },
           async (payload) => {
-            const record = payload.new as { sender_id: string; type: string; sdp: string }
-            if (record.sender_id === userId) return
+            const record = payload.new as { from_user_id: string; type: string; sdp: string }
+            if (record.from_user_id === userId) return
 
             if (record.type === "offer" && !isInitiator) {
               await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: record.sdp }))
@@ -349,7 +346,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
               await supabase.from("signaling").insert({
                 room_id: roomId,
-                sender_id: userId,
+                from_user_id: userId,
                 type: "answer",
                 sdp: answer.sdp,
               })
@@ -373,8 +370,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             filter: `room_id=eq.${roomId}`,
           },
           async (payload) => {
-            const record = payload.new as { sender_id: string; candidate: string }
-            if (record.sender_id === userId) return
+            const record = payload.new as { from_user_id: string; candidate: string }
+            if (record.from_user_id === userId) return
 
             const candidate = new RTCIceCandidate(JSON.parse(record.candidate))
 
@@ -395,13 +392,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         await supabase.from("signaling").insert({
           room_id: roomId,
-          sender_id: userId,
+          from_user_id: userId,
           type: "offer",
           sdp: offer.sdp,
         })
       }
     },
-    [userId],
+    [userId, currentPartner],
   )
 
   const handleMatch = useCallback(
@@ -594,24 +591,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     const result = await likeUser(currentPartner.id)
 
     if (result.error) {
-      console.error("[v0] Like error:", result.error)
+      console.error("Like error:", result.error)
       return
     }
 
     if (result.isMatch) {
-      // Show match modal or notification
-      console.log("[v0] It's a match!")
+      console.log("It's a match!")
     }
   }, [currentPartner])
-
-  const handleStartClick = useCallback(() => {
-    setShowPermissionRequest(true)
-  }, [])
-
-  const handlePermissionConfirm = useCallback(async () => {
-    setShowPermissionRequest(false)
-    await startSearching()
-  }, [])
 
   // RENDER - Permission Denied
   if (videoState === "permission_denied") {
@@ -661,17 +648,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-80px)] flex-col bg-background overflow-y-auto">
-      {/* Header */}
-      <div className="px-4 md:px-6 py-4 border-b border-border shrink-0">
+    <div className="flex h-[calc(100vh-60px)] md:h-[calc(100vh-80px)] flex-col bg-background overflow-hidden">
+      {/* Header - Hidden on mobile for more space */}
+      <div className="hidden md:block px-4 md:px-6 py-4 border-b border-border shrink-0">
         <h1 className="text-xl font-bold text-foreground">Videochamada</h1>
         <p className="text-sm text-muted-foreground">Conecte-se instantaneamente com profissionais</p>
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
         {/* Left side - Main video area */}
-        <div className="relative flex-1 flex items-center justify-center p-4 md:p-6 min-h-[300px] lg:min-h-0">
+        <div className="relative flex-1 flex items-center justify-center p-2 md:p-6 min-h-0">
           {videoState === "connected" && remoteVideoReady ? (
             <div className="relative w-full h-full rounded-2xl overflow-hidden border border-border bg-card">
               <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
@@ -695,18 +682,18 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
             </div>
           ) : (
-            <div className="w-full max-w-2xl rounded-2xl border border-border bg-card/50 p-8 md:p-12 flex flex-col items-center justify-center text-center">
+            <div className="w-full max-w-2xl rounded-2xl border border-border bg-card/50 p-6 md:p-12 flex flex-col items-center justify-center text-center">
               {videoState === "idle" && (
                 <>
-                  <div className="mb-6 h-20 w-20 md:h-24 md:w-24 rounded-full gradient-bg flex items-center justify-center shadow-lg shadow-primary/25">
-                    <Video className="h-10 w-10 md:h-12 md:w-12 text-white" />
+                  <div className="mb-6 h-16 w-16 md:h-24 md:w-24 rounded-full gradient-bg flex items-center justify-center shadow-lg shadow-primary/25">
+                    <Video className="h-8 w-8 md:h-12 md:w-12 text-white" />
                   </div>
-                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-3">Pronto para conectar?</h2>
+                  <h2 className="text-lg md:text-2xl font-bold text-foreground mb-3">Pronto para conectar?</h2>
                   <p className="text-muted-foreground mb-6 max-w-md text-sm md:text-base">
                     Clique no botão abaixo para ser conectado com um profissional aleatório baseado nos seus interesses.
                   </p>
                   <Button
-                    onClick={handleStartClick}
+                    onClick={startSearching}
                     disabled={isLoading}
                     className="px-6 md:px-8 py-5 md:py-6 text-base md:text-lg rounded-xl gradient-bg text-white hover:opacity-90 shadow-lg shadow-primary/25"
                   >
@@ -714,7 +701,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     Iniciar Videochamada
                   </Button>
                   {remainingCalls !== null && remainingCalls > 0 && (
-                    <p className="mt-4 text-sm text-primary font-medium">{remainingCalls} chamadas restantes</p>
+                    <p className="mt-4 text-sm text-primary font-medium">Chamadas ilimitadas</p>
                   )}
                   {remainingCalls === -1 && (
                     <p className="mt-4 text-sm text-primary font-medium">Chamadas ilimitadas</p>
@@ -725,16 +712,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               {videoState === "searching" && (
                 <>
                   <div className="mb-6 relative">
-                    <div className="h-20 w-20 md:h-24 md:w-24 rounded-full border-4 border-primary/30 flex items-center justify-center bg-card/50 backdrop-blur-sm">
-                      <Loader2 className="h-10 w-10 md:h-12 md:w-12 animate-spin text-primary" />
+                    <div className="h-16 w-16 md:h-24 md:w-24 rounded-full border-4 border-primary/30 flex items-center justify-center bg-card/50 backdrop-blur-sm">
+                      <Loader2 className="h-8 w-8 md:h-12 md:w-12 animate-spin text-primary" />
                     </div>
                     <div
                       className="absolute inset-0 rounded-full border-4 border-transparent border-t-secondary animate-spin"
                       style={{ animationDuration: "1.5s" }}
                     />
                   </div>
-                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-3">Buscando profissional...</h2>
-                  <p className="text-muted-foreground flex items-center gap-2 mb-6">
+                  <h2 className="text-lg md:text-2xl font-bold text-foreground mb-3">Buscando profissional...</h2>
+                  <p className="text-muted-foreground flex items-center gap-2 mb-6 text-sm">
                     <Clock className="h-4 w-4 text-primary" />
                     Tempo de espera: {formatWaitTime(waitTime)}
                   </p>
@@ -750,9 +737,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
               {videoState === "connecting" && (
                 <>
-                  <Avatar className="h-20 w-20 md:h-24 md:w-24 mb-6 ring-4 ring-primary shadow-lg shadow-primary/25">
+                  <Avatar className="h-16 w-16 md:h-24 md:w-24 mb-6 ring-4 ring-primary shadow-lg shadow-primary/25">
                     <AvatarImage src={currentPartner?.avatar_url || "/placeholder.svg"} className="object-cover" />
-                    <AvatarFallback className="gradient-bg text-white text-2xl md:text-3xl font-bold">
+                    <AvatarFallback className="gradient-bg text-white text-xl md:text-3xl font-bold">
                       {currentPartner?.full_name?.charAt(0) || "?"}
                     </AvatarFallback>
                   </Avatar>
@@ -766,13 +753,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
               {videoState === "ended" && (
                 <>
-                  <div className="mb-6 h-20 w-20 md:h-24 md:w-24 rounded-full bg-muted/50 border-2 border-border flex items-center justify-center">
-                    <PhoneOff className="h-10 w-10 md:h-12 md:w-12 text-muted-foreground" />
+                  <div className="mb-6 h-16 w-16 md:h-24 md:w-24 rounded-full bg-muted/50 border-2 border-border flex items-center justify-center">
+                    <PhoneOff className="h-8 w-8 md:h-12 md:w-12 text-muted-foreground" />
                   </div>
-                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-3">Chamada encerrada</h2>
+                  <h2 className="text-lg md:text-2xl font-bold text-foreground mb-3">Chamada encerrada</h2>
                   <p className="text-muted-foreground mb-6">Deseja conectar com outro profissional?</p>
                   <Button
-                    onClick={handleStartClick}
+                    onClick={startSearching}
                     disabled={isLoading}
                     className="px-6 md:px-8 py-5 md:py-6 text-base md:text-lg rounded-xl gradient-bg text-white hover:opacity-90"
                   >
@@ -787,8 +774,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         {/* Right side - Your video preview */}
         {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
-          <div className="lg:w-[400px] flex flex-col border-t lg:border-t-0 lg:border-l border-border">
-            <div className="relative flex-1 bg-gradient-to-br from-card to-background min-h-[200px] lg:min-h-[250px]">
+          <div className="h-[180px] md:h-auto lg:w-[350px] flex flex-col border-t lg:border-t-0 lg:border-l border-border shrink-0">
+            <div className="relative flex-1 bg-gradient-to-br from-card to-background min-h-0">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -798,255 +785,120 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               />
 
               {!localVideoReady && (
-                <div className="absolute inset-0 flex h-full w-full items-center justify-center flex-col gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">Carregando câmera...</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                  <span className="text-sm text-muted-foreground">Carregando câmera...</span>
                 </div>
               )}
 
-              <button
-                onClick={flipCamera}
-                className="absolute bottom-3 right-3 rounded-full bg-card/80 backdrop-blur-sm p-2.5 text-foreground hover:bg-card transition-all border border-border"
-              >
-                <SwitchCamera className="h-5 w-5" />
-              </button>
-
-              <div className="absolute top-3 left-3 flex gap-2">
-                {isMuted && (
-                  <div className="rounded-full bg-red-500/90 p-2">
-                    <MicOff className="h-4 w-4 text-white" />
-                  </div>
-                )}
-                {isVideoOff && (
-                  <div className="rounded-full bg-red-500/90 p-2">
-                    <VideoOff className="h-4 w-4 text-white" />
-                  </div>
-                )}
-              </div>
+              {/* Camera controls */}
+              {localVideoReady && (
+                <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2 md:gap-3 px-2">
+                  <Button
+                    size="icon"
+                    variant={isMuted ? "destructive" : "secondary"}
+                    onClick={toggleMute}
+                    className="rounded-full h-10 w-10 md:h-12 md:w-12"
+                  >
+                    {isMuted ? <MicOff className="h-4 w-4 md:h-5 md:w-5" /> : <Mic className="h-4 w-4 md:h-5 md:w-5" />}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant={isVideoOff ? "destructive" : "secondary"}
+                    onClick={toggleVideo}
+                    className="rounded-full h-10 w-10 md:h-12 md:w-12"
+                  >
+                    {isVideoOff ? (
+                      <VideoOff className="h-4 w-4 md:h-5 md:w-5" />
+                    ) : (
+                      <Video className="h-4 w-4 md:h-5 md:w-5" />
+                    )}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    onClick={flipCamera}
+                    className="rounded-full h-10 w-10 md:h-12 md:w-12"
+                  >
+                    <SwitchCamera className="h-4 w-4 md:h-5 md:w-5" />
+                  </Button>
+                </div>
+              )}
             </div>
-
-            {/* Chat area - only show when connected */}
-            {videoState === "connected" && (
-              <div className="h-48 lg:h-64 bg-card border-t border-border flex flex-col">
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={currentPartner?.avatar_url || "/placeholder.svg"} />
-                    <AvatarFallback className="gradient-bg text-white text-sm">
-                      {currentPartner?.full_name?.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground text-sm">{currentPartner?.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{currentPartner?.city || "Brasil"}</p>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {chatMessages.length === 0 && (
-                    <p className="text-center text-sm text-muted-foreground py-4">
-                      Envie uma mensagem para iniciar o chat
-                    </p>
-                  )}
-                  {chatMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                        msg.senderId === userId ? "ml-auto gradient-bg text-white" : "bg-muted text-foreground"
-                      }`}
-                    >
-                      <p className="text-sm">{msg.content}</p>
-                    </div>
-                  ))}
-                  <div ref={chatEndRef} />
-                </div>
-
-                <div className="p-3 border-t border-border">
-                  <div className="flex gap-2">
-                    <Input
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
-                      placeholder="Escreva uma mensagem..."
-                      className="flex-1 rounded-full"
-                    />
-                    <Button
-                      size="icon"
-                      onClick={sendChatMessage}
-                      className="rounded-full shrink-0 gradient-bg hover:opacity-90"
-                    >
-                      <Send className="h-4 w-4 text-white" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Bottom control buttons - only show when connected */}
+      {/* Bottom action bar - Only in connected state */}
       {videoState === "connected" && (
-        <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4 p-4 bg-card border-t border-border shrink-0">
-          <Button
-            onClick={skipToNext}
-            className="h-12 md:h-14 px-4 md:px-8 rounded-xl gradient-bg text-white hover:opacity-90 shadow-lg shadow-primary/25"
-          >
-            <SkipForward className="mr-2 h-5 w-5" />
-            <span className="hidden sm:inline">Próximo</span>
-          </Button>
+        <div className="shrink-0 border-t border-border bg-card/50 backdrop-blur-sm p-3 md:p-4">
+          <div className="flex items-center justify-center gap-3 md:gap-4">
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={skipToNext}
+              className="rounded-full h-12 md:h-14 px-4 md:px-6 border-border hover:bg-muted bg-transparent"
+            >
+              <SkipForward className="h-5 w-5 mr-2" />
+              <span className="hidden md:inline">Próximo</span>
+            </Button>
 
-          <Button
-            onClick={handleLike}
-            className="h-12 md:h-14 px-4 md:px-8 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white hover:opacity-90 shadow-lg shadow-pink-500/25"
-          >
-            <Heart className="mr-2 h-5 w-5" />
-            Match
-          </Button>
+            <Button
+              size="lg"
+              onClick={handleLike}
+              className="rounded-full h-12 md:h-14 px-4 md:px-6 bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:opacity-90"
+            >
+              <Heart className="h-5 w-5 mr-2" />
+              <span className="hidden md:inline">Match</span>
+            </Button>
 
-          <Button
-            onClick={endCall}
-            variant="outline"
-            className="h-12 md:h-14 px-4 md:px-8 rounded-xl border-border hover:bg-muted bg-transparent"
-          >
-            <PhoneOff className="mr-2 h-5 w-5" />
-            <span className="hidden sm:inline">Encerrar</span>
-          </Button>
-
-          <Button
-            onClick={toggleMute}
-            variant={isMuted ? "destructive" : "outline"}
-            className="h-12 md:h-14 w-12 md:w-14 rounded-xl"
-          >
-            {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-          </Button>
-
-          <Button
-            onClick={toggleVideo}
-            variant={isVideoOff ? "destructive" : "outline"}
-            className="h-12 md:h-14 w-12 md:w-14 rounded-xl"
-          >
-            {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-          </Button>
-        </div>
-      )}
-
-      {/* Tips cards at bottom - only show when idle */}
-      {(videoState === "idle" || videoState === "ended") && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 p-4 md:p-6 border-t border-border bg-card/50 shrink-0">
-          <div className="flex items-start gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-card border border-border">
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Video className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-sm md:text-base">Câmera ligada</h3>
-              <p className="text-xs md:text-sm text-muted-foreground">Mantenha sua câmera ligada para melhor conexão</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-card border border-border">
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
-              <Sparkles className="h-4 w-4 md:h-5 md:w-5 text-secondary" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-sm md:text-base">Seja profissional</h3>
-              <p className="text-xs md:text-sm text-muted-foreground">Apresente-se e fale sobre seus objetivos</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-card border border-border">
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-pink-500/10 flex items-center justify-center shrink-0">
-              <Heart className="h-4 w-4 md:h-5 md:w-5 text-pink-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-sm md:text-base">Match mútuo</h3>
-              <p className="text-xs md:text-sm text-muted-foreground">Curta para conectar no WhatsApp após a chamada</p>
-            </div>
+            <Button
+              size="lg"
+              variant="destructive"
+              onClick={endCall}
+              className="rounded-full h-12 md:h-14 px-4 md:px-6"
+            >
+              <PhoneOff className="h-5 w-5 mr-2" />
+              <span className="hidden md:inline">Encerrar</span>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Filters modal */}
-      {showFilters && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl border border-border">
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                <Filter className="h-5 w-5 text-primary" />
-                Filtros de Busca
-              </h3>
-              <button
-                onClick={() => setShowFilters(false)}
-                className="text-muted-foreground hover:text-foreground rounded-full p-1 hover:bg-muted transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-5">
-              <div>
-                <Label className="text-foreground font-medium">Estado</Label>
-                <Select
-                  value={locationFilter.state}
-                  onValueChange={(value) => setLocationFilter((prev) => ({ ...prev, state: value, city: "" }))}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Todos os Estados" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os Estados</SelectItem>
-                    {brazilianStates.map((state) => (
-                      <SelectItem key={state.value} value={state.value}>
-                        {state.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      {/* Tips - Only in idle state on mobile */}
+      {videoState === "idle" && (
+        <div className="shrink-0 p-4 border-t border-border">
+          <div className="grid grid-cols-3 gap-2 md:gap-4 max-w-4xl mx-auto">
+            <div className="bg-card/50 rounded-xl p-3 md:p-4 border border-border">
+              <div className="flex items-center gap-2 mb-1 md:mb-2">
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Video className="w-3 h-3 md:w-4 md:h-4 text-primary" />
+                </div>
+                <span className="text-xs md:text-sm font-medium text-foreground">Câmera ligada</span>
               </div>
-              <div>
-                <Label className="text-foreground font-medium">Cidade</Label>
-                <Input
-                  value={locationFilter.city}
-                  onChange={(e) => setLocationFilter((prev) => ({ ...prev, city: e.target.value }))}
-                  placeholder="Digite a cidade..."
-                  className="mt-2"
-                />
+              <p className="text-xs text-muted-foreground hidden md:block">
+                Mantenha sua câmera ligada para melhor conexão
+              </p>
+            </div>
+            <div className="bg-card/50 rounded-xl p-3 md:p-4 border border-border">
+              <div className="flex items-center gap-2 mb-1 md:mb-2">
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-secondary/50 flex items-center justify-center">
+                  <Sparkles className="w-3 h-3 md:w-4 md:h-4 text-secondary-foreground" />
+                </div>
+                <span className="text-xs md:text-sm font-medium text-foreground">Seja profissional</span>
               </div>
-              <Button
-                onClick={() => setShowFilters(false)}
-                className="w-full rounded-xl gradient-bg text-white hover:opacity-90"
-              >
-                Aplicar Filtros
-              </Button>
+              <p className="text-xs text-muted-foreground hidden md:block">Apresente-se e fale sobre seus objetivos</p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showPermissionRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-card p-6 md:p-8 shadow-xl border border-border text-center">
-            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full gradient-bg shadow-lg shadow-primary/25">
-              <Video className="h-10 w-10 text-white" />
-            </div>
-            <h2 className="mb-3 text-xl md:text-2xl font-bold text-foreground">Permitir câmera e microfone?</h2>
-            <p className="mb-8 text-muted-foreground text-sm md:text-base">
-              Para iniciar a videochamada, precisamos acessar sua câmera e microfone. Clique em "Permitir" quando o
-              navegador solicitar.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                onClick={() => setShowPermissionRequest(false)}
-                variant="outline"
-                className="flex-1 py-5 rounded-xl border-border"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handlePermissionConfirm}
-                className="flex-1 py-5 rounded-xl gradient-bg text-white hover:opacity-90"
-              >
-                <Video className="mr-2 h-5 w-5" />
-                Ligar Câmera
-              </Button>
+            <div className="bg-card/50 rounded-xl p-3 md:p-4 border border-border">
+              <div className="flex items-center gap-2 mb-1 md:mb-2">
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-pink-500/10 flex items-center justify-center">
+                  <Heart className="w-3 h-3 md:w-4 md:h-4 text-pink-500" />
+                </div>
+                <span className="text-xs md:text-sm font-medium text-foreground">Match mútuo</span>
+              </div>
+              <p className="text-xs text-muted-foreground hidden md:block">
+                Curta para conectar no WhatsApp após a chamada
+              </p>
             </div>
           </div>
         </div>

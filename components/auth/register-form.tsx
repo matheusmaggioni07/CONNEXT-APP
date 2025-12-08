@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -138,9 +139,10 @@ export function RegisterForm() {
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false) // Password visibility toggle
   const [showConfirmPassword, setShowConfirmPassword] = useState(false) // Confirm password visibility toggle
+  const [termsAccepted, setTermsAccepted] = useState(false) // Added terms acceptance state
   const router = useRouter()
 
-  const totalSteps = 6
+  const totalSteps = 7 // Added step for terms (now 7 steps total)
 
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -215,6 +217,12 @@ export function RegisterForm() {
     if (step === 5) {
       if (!avatarFile) {
         setError("Adicione uma foto de perfil")
+        return
+      }
+    }
+    if (step === 6) {
+      if (!termsAccepted) {
+        setError("Você precisa aceitar os termos de uso para continuar")
         return
       }
     }
@@ -304,6 +312,8 @@ export function RegisterForm() {
         looking_for: formData.lookingFor,
         avatar_url: avatarUrl,
         onboarding_completed: true,
+        terms_accepted: true,
+        terms_accepted_at: new Date().toISOString(),
       }
 
       const { error: profileError } = await supabase.from("profiles").upsert(profileData, {
@@ -311,18 +321,17 @@ export function RegisterForm() {
       })
 
       if (profileError) {
-        console.error("[v0] Profile upsert error:", profileError)
+        console.error("Profile upsert error:", profileError)
         // Try one more time with a longer wait
         await new Promise((resolve) => setTimeout(resolve, 2000))
         const { error: retryError } = await supabase.from("profiles").upsert(profileData, {
           onConflict: "id",
         })
         if (retryError) {
-          console.error("[v0] Profile retry error:", retryError)
+          console.error("Profile retry error:", retryError)
         }
       }
 
-      // 4. Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
       console.error(err)
@@ -742,8 +751,71 @@ export function RegisterForm() {
           </>
         )}
 
-        {/* Step 6: Confirmation */}
         {step === 6 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">Termos de Uso</h1>
+              <p className="text-muted-foreground text-sm mt-1">Leia e aceite os termos para continuar.</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-card/50 border border-border rounded-xl p-4 max-h-64 overflow-y-auto text-sm text-muted-foreground">
+                <h3 className="font-semibold text-foreground mb-2">Termos de Uso do Connext</h3>
+                <p className="mb-3">
+                  Bem-vindo ao Connext! Ao usar nossa plataforma, você concorda com os seguintes termos:
+                </p>
+
+                <h4 className="font-medium text-foreground mt-4 mb-2">1. Idade Mínima</h4>
+                <p className="mb-3">
+                  <strong className="text-primary">Você deve ter pelo menos 18 anos de idade</strong> para usar o
+                  Connext. Ao criar uma conta, você confirma que possui idade igual ou superior a 18 anos.
+                </p>
+
+                <h4 className="font-medium text-foreground mt-4 mb-2">2. Uso Adequado</h4>
+                <p className="mb-3">O Connext é uma plataforma profissional de networking. Você concorda em:</p>
+                <ul className="list-disc pl-5 space-y-1 mb-3">
+                  <li>Usar a plataforma apenas para fins profissionais legítimos</li>
+                  <li>Fornecer informações verdadeiras sobre sua identidade e carreira</li>
+                  <li>Tratar outros usuários com respeito e profissionalismo</li>
+                  <li>Não enviar conteúdo impróprio, ofensivo ou ilegal</li>
+                </ul>
+
+                <h4 className="font-medium text-foreground mt-4 mb-2">3. Videochamadas</h4>
+                <p className="mb-3">
+                  Durante as videochamadas, você concorda em manter um comportamento profissional. Qualquer
+                  comportamento inadequado resultará em banimento da plataforma.
+                </p>
+
+                <h4 className="font-medium text-foreground mt-4 mb-2">4. Privacidade</h4>
+                <p className="mb-3">
+                  Suas informações pessoais são protegidas conforme nossa Política de Privacidade. Não compartilhamos
+                  seus dados com terceiros sem seu consentimento.
+                </p>
+
+                <h4 className="font-medium text-foreground mt-4 mb-2">5. Responsabilidade</h4>
+                <p>
+                  Você é responsável por todas as ações realizadas em sua conta. O Connext não se responsabiliza por
+                  interações entre usuários fora da plataforma.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-card/30 rounded-xl border border-border">
+                <Checkbox
+                  id="terms"
+                  checked={termsAccepted}
+                  onCheckedChange={(checked) => setTermsAccepted(checked as boolean)}
+                  className="mt-1"
+                />
+                <label htmlFor="terms" className="text-sm text-foreground cursor-pointer">
+                  Li e aceito os <span className="text-primary font-medium">Termos de Uso</span> e confirmo que tenho{" "}
+                  <span className="text-primary font-medium">18 anos ou mais</span>.
+                </label>
+              </div>
+            </div>
+          </>
+        )}
+
+        {step === 7 && (
           <>
             <div className="text-center mb-6">
               <h1 className="text-2xl font-bold text-foreground">Tudo pronto!</h1>
