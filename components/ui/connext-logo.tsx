@@ -11,17 +11,16 @@ interface ConnextLogoProps {
 
 export function ConnextLogo({ size = "md", showText = true, className }: ConnextLogoProps) {
   const sizes = {
-    sm: { icon: 28, text: "text-lg", tagline: "text-[9px]" },
-    md: { icon: 36, text: "text-xl", tagline: "text-[10px]" },
-    lg: { icon: 48, text: "text-2xl", tagline: "text-xs" },
+    sm: { icon: 32, text: "text-lg", tagline: "text-[9px]" },
+    md: { icon: 40, text: "text-xl", tagline: "text-[10px]" },
+    lg: { icon: 56, text: "text-2xl", tagline: "text-xs" },
   }
 
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      {/* New 3D Crystal C Logo */}
       <div className={cn("relative flex-shrink-0")}>
         <Image
-          src="/connext-logo-icon.png"
+          src="/connext-logo-3d.png"
           alt="Connext Logo"
           width={sizes[size].icon}
           height={sizes[size].icon}
