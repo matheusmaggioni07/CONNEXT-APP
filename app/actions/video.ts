@@ -107,9 +107,7 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
 
   if (waitingRooms && waitingRooms.length > 0) {
     const roomToJoin = waitingRooms[0]
-    console.log("[v0] Found waiting room:", roomToJoin.id)
 
-    // Get partner profile BEFORE joining
     const { data: partnerProfile } = await supabase
       .from("profiles")
       .select("id, full_name, avatar_url, bio, city, position, company")
@@ -127,14 +125,12 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
         await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
       }
 
-      console.log("[v0] Joined room successfully, partner:", partnerProfile?.full_name)
-
       return {
         success: true,
         roomId: roomToJoin.id,
         partnerId: roomToJoin.user1_id,
         matched: true,
-        partnerProfile: partnerProfile || { full_name: "Usuário" },
+        partnerProfile: partnerProfile || { full_name: "Usuário", avatar_url: null },
       }
     }
   }
@@ -155,7 +151,6 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
     await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
   }
 
-  console.log("[v0] Created new room:", room.id)
   return { success: true, roomId: room.id, waiting: true, matched: false }
 }
 
@@ -186,13 +181,11 @@ export async function checkRoomStatus(roomId: string) {
       .eq("id", partnerId)
       .single()
 
-    console.log("[v0] Room active, partner:", partnerProfile?.full_name)
-
     return {
       status: "active",
       partnerId,
       roomId: room.id,
-      partnerProfile: partnerProfile || { full_name: "Usuário" },
+      partnerProfile: partnerProfile || { full_name: "Usuário", avatar_url: null },
     }
   }
 
@@ -200,14 +193,8 @@ export async function checkRoomStatus(roomId: string) {
   return { status: "waiting" }
 }
 
-export async function leaveVideoQueue(userId: string, roomId: string) {
+export async function leaveVideoQueue(roomId: string) {
   if (!roomId || roomId === "undefined") {
-    console.log("[v0] leaveVideoQueue called with invalid roomId, skipping cleanup")
-    return { success: true }
-  }
-
-  if (!userId || userId === "undefined") {
-    console.log("[v0] leaveVideoQueue called with invalid userId, skipping cleanup")
     return { success: true }
   }
 
@@ -225,7 +212,6 @@ export async function leaveVideoQueue(userId: string, roomId: string) {
 
 export async function endVideoRoom(roomId: string) {
   if (!roomId || roomId === "undefined") {
-    console.log("[v0] endVideoRoom called with invalid roomId, skipping")
     return { success: true }
   }
 
@@ -418,7 +404,7 @@ export async function getAvailableUsersForVideo() {
   return profiles || []
 }
 
-export async function getRemainingCalls(userId: string) {
+export async function getRemainingCalls() {
   const supabase = await createClient()
   const {
     data: { user },
@@ -482,6 +468,7 @@ export async function getRemainingCalls(userId: string) {
       success: true,
       remaining: 0,
       resetTime: tomorrow.toISOString(),
+      resetIn: "24 horas",
       isPro: false,
     }
   }
