@@ -22,28 +22,28 @@ export function MobileBottomNav() {
   const pathname = usePathname()
 
   const mobileNavItems = [
-    { href: "/dashboard", icon: Compass, label: "Descobrir" },
+    { href: "/dashboard", icon: Compass, label: "Início" },
     { href: "/dashboard/matches", icon: Heart, label: "Matches" },
-    { href: "/dashboard/video", icon: Video, label: "Videochamada" },
+    { href: "/dashboard/video", icon: Video, label: "Vídeo" },
     { href: "/dashboard/builder", icon: Wand2, label: "Builder" },
     { href: "/dashboard/profile", icon: User, label: "Perfil" },
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/50 md:hidden safe-area-bottom">
-      <ul className="flex justify-around items-center h-16 px-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/50 md:hidden">
+      <ul className="flex justify-around items-center h-16 px-1">
         {mobileNavItems.map((item) => {
           const isActive = pathname === item.href
           return (
-            <li key={item.href}>
+            <li key={item.href} className="flex-1">
               <Link
                 href={item.href}
-                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all ${
+                className={`flex flex-col items-center gap-0.5 py-2 rounded-xl transition-all ${
                   isActive ? "text-primary" : "text-muted-foreground"
                 }`}
               >
                 <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : ""}`} />
-                <span className="text-xs">{item.label}</span>
+                <span className="text-[10px] leading-tight text-center">{item.label}</span>
               </Link>
             </li>
           )

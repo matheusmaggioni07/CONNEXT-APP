@@ -729,10 +729,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         </div>
       </div>
 
-      {/* Video Area - Mobile optimized 50/50 split */}
-      <div className="flex flex-1 flex-col lg:flex-row lg:gap-4 lg:p-4">
-        {/* Remote Video / Search Status */}
-        <div className="relative flex h-1/2 flex-1 items-center justify-center overflow-hidden bg-card lg:h-auto lg:rounded-xl lg:border lg:border-border">
+      {/* Video Area - TRUE 50/50 split on desktop */}
+      <div className="flex flex-1 flex-col lg:flex-row lg:gap-0 overflow-hidden">
+        {/* Remote Video - 50% on mobile, 50% on desktop */}
+        <div className="relative flex h-1/2 lg:h-full lg:w-1/2 items-center justify-center overflow-hidden bg-card border-b lg:border-b-0 lg:border-r border-border">
           {videoState === "idle" && (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20">
@@ -828,16 +828,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     onClick={handleLike}
                     disabled={isLiked}
                     size="icon"
-                    className={`h-14 w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
+                    className={`h-12 w-12 lg:h-14 lg:w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
                   >
-                    <Heart className={`h-7 w-7 ${isLiked ? "fill-white" : ""}`} />
+                    <Heart className={`h-6 w-6 lg:h-7 lg:w-7 ${isLiked ? "fill-white" : ""}`} />
                   </Button>
                   <Button
                     onClick={skipToNext}
                     size="icon"
-                    className="h-14 w-14 rounded-full bg-blue-500 hover:bg-blue-600"
+                    className="h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-blue-500 hover:bg-blue-600"
                   >
-                    <SkipForward className="h-7 w-7" />
+                    <SkipForward className="h-6 w-6 lg:h-7 lg:w-7" />
                   </Button>
                 </div>
               )}
@@ -847,9 +847,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 <Button
                   onClick={endCall}
                   size="icon"
-                  className="absolute left-4 bottom-4 h-12 w-12 rounded-full bg-red-500 hover:bg-red-600"
+                  className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600"
                 >
-                  <PhoneOff className="h-6 w-6" />
+                  <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
                 </Button>
               )}
             </>
@@ -875,8 +875,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           )}
         </div>
 
-        {/* Local Video - 50% height on mobile */}
-        <div className="relative h-1/2 w-full overflow-hidden bg-card lg:h-auto lg:w-80 lg:rounded-xl lg:border lg:border-border">
+        {/* Local Video - TRUE 50% on mobile and desktop */}
+        <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden bg-card">
           <video
             ref={localVideoRef}
             autoPlay
