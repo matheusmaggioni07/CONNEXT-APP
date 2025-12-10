@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth-context"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ConnextLogo } from "@/components/ui/connext-logo"
-import { User, LogOut, Compass, Heart, Video, Menu, X, Gift } from "lucide-react"
+import { User, LogOut, Compass, Heart, Video, Menu, X, Gift, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { NotificationsDropdown } from "@/components/notifications-dropdown"
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/dashboard", icon: Compass, label: "Descobrir" },
   { href: "/dashboard/matches", icon: Heart, label: "Matches" },
   { href: "/dashboard/video", icon: Video, label: "Videochamada" },
+  { href: "/dashboard/builder", icon: Wand2, label: "Builder" },
   { href: "/dashboard/referral", icon: Gift, label: "Indicar Amigos" },
   { href: "/dashboard/profile", icon: User, label: "Perfil" },
 ]
@@ -24,6 +25,7 @@ export function MobileBottomNav() {
     { href: "/dashboard", icon: Compass, label: "Descobrir" },
     { href: "/dashboard/matches", icon: Heart, label: "Matches" },
     { href: "/dashboard/video", icon: Video, label: "Videochamada" },
+    { href: "/dashboard/builder", icon: Wand2, label: "Builder" },
     { href: "/dashboard/profile", icon: User, label: "Perfil" },
   ]
 
