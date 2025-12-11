@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import type { User } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,6 +43,8 @@ import {
   ExternalLink,
   MessageSquare,
   Maximize2,
+  Minimize2,
+  Play,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -74,20 +76,24 @@ interface ThoughtStep {
   status: "pending" | "active" | "done"
 }
 
-interface Project {
-  id: string
-  name: string
-  description: string
-  files: ProjectFile[]
-  createdAt: Date
-  updatedAt: Date
-}
-
 interface ProjectFile {
+  id?: string
   name: string
   path: string
   content: string
   language: string
+  created_at?: string
+  updated_at?: string
+}
+
+interface Project {
+  id: string
+  name: string
+  description: string
+  user_id: string
+  created_at: string
+  updated_at: string
+  builder_files?: ProjectFile[]
 }
 
 export function BuilderPage({ user, profile }: BuilderPageProps) {
@@ -105,6 +111,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [editingProjectName, setEditingProjectName] = useState("")
   const [copiedCode, setCopiedCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -115,38 +123,34 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [shareLinkCopied, setShareLinkCopied] = useState(false)
+  const [publishSuccess, setPublishSuccess] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const previewRef = useRef<HTMLDivElement>(null)
+  const previewContainerRef = useRef<HTMLDivElement>(null)
 
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat")
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
-
-  useEffect(() => {
-    const saved = localStorage.getItem("connext_builder_projects")
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setProjects(
-          parsed.map((p: any) => ({
-            ...p,
-            createdAt: new Date(p.createdAt),
-            updatedAt: new Date(p.updatedAt),
-          })),
-        )
-      } catch (e) {
-        console.error("Failed to load projects:", e)
+  const loadProjects = useCallback(async () => {
+    setIsLoadingProjects(true)
+    try {
+      const res = await fetch("/api/builder/projects")
+      if (res.ok) {
+        const data = await res.json()
+        setProjects(data.projects || [])
       }
+    } catch (err) {
+      console.error("Error loading projects:", err)
+    } finally {
+      setIsLoadingProjects(false)
     }
   }, [])
 
   useEffect(() => {
-    if (projects.length > 0) {
-      localStorage.setItem("connext_builder_projects", JSON.stringify(projects))
-    }
-  }, [projects])
+    loadProjects()
+  }, [loadProjects])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
   useEffect(() => {
     if (profile?.plan === "pro") {
@@ -172,12 +176,18 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   }, [generatedCode])
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
+    if (activeProject?.builder_files && activeProject.builder_files.length > 0) {
+      // Get most recent file
+      const sortedFiles = [...activeProject.builder_files].sort(
+        (a, b) =>
+          new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
+      )
+      const latestFile = sortedFiles[0]
+      if (latestFile?.content) {
+        setGeneratedCode(latestFile.content)
+      }
     }
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
-  }, [])
+  }, [activeProject])
 
   const addThought = (type: ThoughtStep["type"], message: string) => {
     const id = Math.random().toString(36).substring(7)
@@ -199,37 +209,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       lowerPrompt.includes("site") ||
       lowerPrompt.includes("startup")
     ) {
-      // Extract business type from prompt
-      const businessKeywords = {
-        tecnologia: "tech",
-        technology: "tech",
-        tech: "tech",
-        saas: "saas",
-        software: "saas",
-        ecommerce: "ecommerce",
-        loja: "ecommerce",
-        "e-commerce": "ecommerce",
-        restaurante: "restaurant",
-        restaurant: "restaurant",
-        fitness: "fitness",
-        academia: "fitness",
-        gym: "fitness",
-        agência: "agency",
-        agency: "agency",
-        marketing: "agency",
-        imobiliária: "realestate",
-        "real estate": "realestate",
-        imóveis: "realestate",
-      }
-
-      let businessType = "tech"
-      for (const [keyword, type] of Object.entries(businessKeywords)) {
-        if (lowerPrompt.includes(keyword)) {
-          businessType = type
-          break
-        }
-      }
-
       return `export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#030014] text-white overflow-hidden">
@@ -249,20 +228,20 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">NexaBrand</span>
+            <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">SeuBrand</span>
           </div>
           
           <div className="hidden md:flex items-center gap-10">
-            <a href="#features" className="text-sm text-gray-400 hover:text-white transition-colors">Features</a>
-            <a href="#pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</a>
-            <a href="#testimonials" className="text-sm text-gray-400 hover:text-white transition-colors">Testimonials</a>
+            <a href="#features" className="text-sm text-gray-400 hover:text-white transition-colors">Recursos</a>
+            <a href="#pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Preços</a>
+            <a href="#testimonials" className="text-sm text-gray-400 hover:text-white transition-colors">Depoimentos</a>
             <a href="#faq" className="text-sm text-gray-400 hover:text-white transition-colors">FAQ</a>
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="hidden sm:block text-sm text-gray-400 hover:text-white transition-colors">Sign in</button>
+            <button className="hidden sm:block text-sm text-gray-400 hover:text-white transition-colors">Entrar</button>
             <button className="px-5 py-2.5 bg-white text-black text-sm font-semibold rounded-full hover:bg-gray-100 transition-all hover:scale-105 shadow-lg shadow-white/10">
-              Get Started Free
+              Começar Grátis
             </button>
           </div>
         </div>
@@ -277,26 +256,26 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
               </span>
-              <span className="text-sm text-purple-300">Now available worldwide</span>
+              <span className="text-sm text-purple-300">Disponível em todo Brasil</span>
             </div>
             
             <h1 className="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold leading-[1.1] tracking-tight mb-8">
-              Build products
+              Crie produtos
               <br />
               <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
-                people love
+                incríveis
               </span>
             </h1>
             
             <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-              The all-in-one platform that helps you create, launch, and scale your digital products. 
-              Trusted by 10,000+ companies worldwide.
+              A plataforma completa que ajuda você a criar, lançar e escalar seus produtos digitais. 
+              Confiada por mais de 10.000 empresas.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
               <button className="group relative px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full font-semibold text-lg overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/25">
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  Start Free Trial
+                  Começar Agora
                   <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
@@ -306,7 +285,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z"/>
                 </svg>
-                Watch Demo
+                Ver Demo
               </button>
             </div>
 
@@ -314,7 +293,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-3xl mx-auto pt-8 border-t border-white/5">
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">10K+</div>
-                <div className="text-sm text-gray-500 mt-1">Active Users</div>
+                <div className="text-sm text-gray-500 mt-1">Usuários Ativos</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">99.9%</div>
@@ -322,11 +301,11 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
               </div>
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">150+</div>
-                <div className="text-sm text-gray-500 mt-1">Countries</div>
+                <div className="text-sm text-gray-500 mt-1">Países</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">4.9</div>
-                <div className="text-sm text-gray-500 mt-1">User Rating</div>
+                <div className="text-sm text-gray-500 mt-1">Avaliação</div>
               </div>
             </div>
           </div>
@@ -337,10 +316,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       <section id="features" className="relative z-10 py-24 px-6 border-t border-white/5">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-20">
-            <span className="text-purple-400 text-sm font-semibold tracking-wider uppercase mb-4 block">Features</span>
-            <h2 className="text-4xl sm:text-5xl font-bold mb-6">Everything you need to succeed</h2>
+            <span className="text-purple-400 text-sm font-semibold tracking-wider uppercase mb-4 block">Recursos</span>
+            <h2 className="text-4xl sm:text-5xl font-bold mb-6">Tudo que você precisa</h2>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Powerful tools designed to help you build, launch, and grow your business.
+              Ferramentas poderosas para construir, lançar e crescer seu negócio.
             </p>
           </div>
 
@@ -351,8 +330,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold mb-3">Lightning Fast</h3>
-              <p className="text-gray-400 leading-relaxed">Optimized for speed. Get instant results with our cutting-edge infrastructure.</p>
+              <h3 className="text-xl font-bold mb-3">Ultra Rápido</h3>
+              <p className="text-gray-400 leading-relaxed">Otimizado para velocidade. Resultados instantâneos com nossa infraestrutura de ponta.</p>
             </div>
             
             <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
@@ -361,8 +340,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold mb-3">Bank-Level Security</h3>
-              <p className="text-gray-400 leading-relaxed">Enterprise-grade encryption keeps your data safe and protected 24/7.</p>
+              <h3 className="text-xl font-bold mb-3">Segurança Total</h3>
+              <p className="text-gray-400 leading-relaxed">Criptografia de nível bancário mantém seus dados seguros 24/7.</p>
             </div>
             
             <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
@@ -371,8 +350,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold mb-3">Advanced Analytics</h3>
-              <p className="text-gray-400 leading-relaxed">Deep insights and real-time data to make smarter decisions.</p>
+              <h3 className="text-xl font-bold mb-3">Analytics Avançado</h3>
+              <p className="text-gray-400 leading-relaxed">Insights profundos e dados em tempo real para decisões inteligentes.</p>
             </div>
           </div>
         </div>
@@ -384,16 +363,16 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           <div className="relative p-12 rounded-[2.5rem] bg-gradient-to-b from-purple-500/10 to-transparent border border-purple-500/20 text-center overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-transparent to-pink-600/10"></div>
             <div className="relative z-10">
-              <h2 className="text-4xl sm:text-5xl font-bold mb-6">Ready to get started?</h2>
+              <h2 className="text-4xl sm:text-5xl font-bold mb-6">Pronto para começar?</h2>
               <p className="text-xl text-gray-400 mb-10 max-w-xl mx-auto">
-                Join thousands of companies already growing with our platform.
+                Junte-se a milhares de empresas que já estão crescendo conosco.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button className="px-8 py-4 bg-white text-black font-semibold rounded-full text-lg hover:bg-gray-100 transition-all hover:scale-105 shadow-lg shadow-white/10">
-                  Start Free Trial
+                  Começar Gratuitamente
                 </button>
                 <button className="px-8 py-4 border border-white/20 rounded-full font-semibold text-lg hover:bg-white/5 transition-all">
-                  Contact Sales
+                  Falar com Vendas
                 </button>
               </div>
             </div>
@@ -407,37 +386,17 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500"></div>
-              <span className="font-bold">NexaBrand</span>
+              <span className="font-bold">SeuBrand</span>
             </div>
             <div className="flex items-center gap-8 text-sm text-gray-400">
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
-              <a href="#" className="hover:text-white transition-colors">Support</a>
+              <a href="#" className="hover:text-white transition-colors">Privacidade</a>
+              <a href="#" className="hover:text-white transition-colors">Termos</a>
+              <a href="#" className="hover:text-white transition-colors">Suporte</a>
             </div>
-            <p className="text-sm text-gray-500">© 2025 NexaBrand. All rights reserved.</p>
+            <p className="text-sm text-gray-500">© 2025 SeuBrand. Todos os direitos reservados.</p>
           </div>
         </div>
       </footer>
-    </div>
-  )
-}`
-    }
-
-    if (lowerPrompt.includes("botão") || lowerPrompt.includes("button")) {
-      return `export default function Buttons() {
-  return (
-    <div className="min-h-screen bg-[#030014] flex items-center justify-center p-8">
-      <div className="flex flex-wrap gap-6 justify-center">
-        <button className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full text-white font-semibold hover:shadow-2xl hover:shadow-purple-500/25 transition-all hover:scale-105">
-          Primary Button
-        </button>
-        <button className="px-8 py-4 border border-white/20 rounded-full text-white font-semibold hover:bg-white/5 transition-all">
-          Secondary Button
-        </button>
-        <button className="px-8 py-4 bg-white text-black font-semibold rounded-full hover:bg-gray-100 transition-all">
-          White Button
-        </button>
-      </div>
     </div>
   )
 }`
@@ -452,10 +411,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <h1 className="text-5xl font-bold text-white mb-6">Welcome</h1>
-        <p className="text-xl text-gray-400 mb-8">Describe what you want to create and the AI will generate it for you.</p>
+        <h1 className="text-5xl font-bold text-white mb-6">Bem-vindo</h1>
+        <p className="text-xl text-gray-400 mb-8">Descreva o que você quer criar e a IA vai gerar para você.</p>
         <button className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full text-white font-semibold hover:shadow-2xl hover:shadow-purple-500/25 transition-all hover:scale-105">
-          Get Started
+          Começar
         </button>
       </div>
     </div>
@@ -510,7 +469,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: input.trim(),
-          projectContext: activeProject?.files || [],
+          projectContext: activeProject?.builder_files || [],
           history: messages.slice(-6),
           userId: user.id,
         }),
@@ -540,6 +499,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
       setGeneratedCode(data.code)
 
+      if (activeProject) {
+        autoSaveToProject(data.code)
+      }
+
       const assistantMessage: Message = {
         id: Math.random().toString(36).substring(7),
         role: "assistant",
@@ -563,6 +526,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
         setUserCredits((prev) => Math.max(0, prev - 1))
       }
 
+      if (activeProject) {
+        autoSaveToProject(code)
+      }
+
       const completedId = addThought("completed", "Código gerado com sucesso!")
       updateThought(completedId, "done")
 
@@ -580,42 +547,130 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     setIsLoading(false)
   }
 
-  const createNewProject = () => {
-    const newProject: Project = {
-      id: Math.random().toString(36).substring(7),
-      name: `Projeto ${projects.length + 1}`,
-      description: "Novo projeto",
-      files: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+  const autoSaveToProject = async (code: string) => {
+    if (!activeProject) return
+
+    try {
+      await fetch(`/api/builder/projects/${activeProject.id}/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "component.tsx",
+          path: "/component.tsx",
+          content: code,
+          language: "tsx",
+        }),
+      })
+    } catch (err) {
+      console.error("Auto-save error:", err)
     }
-    setProjects((prev) => [...prev, newProject])
-    setActiveProject(newProject)
   }
 
-  const deleteProject = (id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id))
-    if (activeProject?.id === id) {
-      setActiveProject(null)
+  const createNewProject = async () => {
+    try {
+      const res = await fetch("/api/builder/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Projeto ${projects.length + 1}`,
+          description: "Novo projeto criado com Connext Builder",
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setProjects((prev) => [data.project, ...prev])
+        setActiveProject(data.project)
+        setGeneratedCode("")
+        setMessages([])
+      }
+    } catch (err) {
+      console.error("Error creating project:", err)
     }
   }
 
-  const saveCodeToProject = () => {
+  const deleteProject = async (id: string) => {
+    try {
+      const res = await fetch(`/api/builder/projects/${id}`, {
+        method: "DELETE",
+      })
+
+      if (res.ok) {
+        setProjects((prev) => prev.filter((p) => p.id !== id))
+        if (activeProject?.id === id) {
+          setActiveProject(null)
+          setGeneratedCode("")
+        }
+      }
+    } catch (err) {
+      console.error("Error deleting project:", err)
+    }
+  }
+
+  const saveCodeToProject = async () => {
     if (!activeProject || !generatedCode) return
 
-    const fileName = `component-${Date.now()}.tsx`
-    const newFile: ProjectFile = {
-      name: fileName,
-      path: `/${fileName}`,
-      content: generatedCode,
-      language: "tsx",
+    setIsSaving(true)
+    try {
+      await fetch(`/api/builder/projects/${activeProject.id}/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "component.tsx",
+          path: "/component.tsx",
+          content: generatedCode,
+          language: "tsx",
+        }),
+      })
+
+      // Reload projects to get updated files
+      await loadProjects()
+    } catch (err) {
+      console.error("Error saving file:", err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const saveProjectName = async (id: string) => {
+    if (!editingProjectName.trim()) {
+      setEditingProjectId(null)
+      return
     }
 
-    setProjects((prev) =>
-      prev.map((p) => (p.id === activeProject.id ? { ...p, files: [...p.files, newFile], updatedAt: new Date() } : p)),
-    )
+    try {
+      const res = await fetch(`/api/builder/projects/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editingProjectName.trim() }),
+      })
 
-    setActiveProject((prev) => (prev ? { ...prev, files: [...prev.files, newFile], updatedAt: new Date() } : null))
+      if (res.ok) {
+        setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name: editingProjectName.trim() } : p)))
+      }
+    } catch (err) {
+      console.error("Error updating project name:", err)
+    }
+
+    setEditingProjectId(null)
+    setEditingProjectName("")
+  }
+
+  const selectProject = async (project: Project) => {
+    setActiveProject(project)
+
+    // If project doesn't have files loaded, fetch them
+    if (!project.builder_files || project.builder_files.length === 0) {
+      try {
+        const res = await fetch(`/api/builder/projects/${project.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setActiveProject(data.project)
+        }
+      } catch (err) {
+        console.error("Error loading project:", err)
+      }
+    }
   }
 
   const copyCode = () => {
@@ -650,23 +705,62 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const copyShareLink = () => {
-    const link = `https://connext.app/share/${activeProject?.id || "preview"}`
+    const link = `${window.location.origin}/share/${activeProject?.id || "preview"}`
     navigator.clipboard.writeText(link)
     setShareLinkCopied(true)
     setTimeout(() => setShareLinkCopied(false), 2000)
   }
 
-  const toggleFullscreen = () => {
-    if (!previewRef.current) return
+  const toggleFullscreen = async () => {
+    const container = previewContainerRef.current
+    if (!container) return
 
-    if (!document.fullscreenElement) {
-      previewRef.current.requestFullscreen().catch((err) => {
-        console.error("Erro ao entrar em tela cheia:", err)
-      })
-    } else {
-      document.exitFullscreen()
+    try {
+      if (!document.fullscreenElement) {
+        // Try standard fullscreen API first
+        if (container.requestFullscreen) {
+          await container.requestFullscreen()
+        } else if ((container as any).webkitRequestFullscreen) {
+          // Safari
+          await (container as any).webkitRequestFullscreen()
+        } else if ((container as any).msRequestFullscreen) {
+          // IE11
+          await (container as any).msRequestFullscreen()
+        }
+        setIsFullscreen(true)
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen()
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen()
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen()
+        }
+        setIsFullscreen(false)
+      }
+    } catch (err) {
+      console.error("Fullscreen error:", err)
+      // Fallback: use CSS-based fullscreen for mobile
+      setIsFullscreen(!isFullscreen)
     }
   }
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange)
+    document.addEventListener("msfullscreenchange", handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange)
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange)
+      document.removeEventListener("msfullscreenchange", handleFullscreenChange)
+    }
+  }, [])
 
   const getDeviceWidth = () => {
     switch (deviceView) {
@@ -684,16 +778,13 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
     let jsxContent = generatedCode
 
-    // Remove everything before the return statement
     const returnMatch = jsxContent.match(/return\s*$$\s*([\s\S]*)\s*$$\s*;?\s*\}[\s\S]*$/)
     if (returnMatch) {
       jsxContent = returnMatch[1]
     } else {
-      // If no return match, try to find the JSX content after function declaration
       jsxContent = jsxContent.replace(/^[\s\S]*?(?=<div|<section|<main|<nav|<header)/m, "")
     }
 
-    // Convert JSX to HTML
     let html = jsxContent
       .replace(/className=/g, "class=")
       .replace(/\{`([^`]*)`\}/g, "$1")
@@ -709,7 +800,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       .replace(/<>/g, "<div>")
       .replace(/<\/>/g, "</div>")
 
-    // Clean up any remaining JSX expressions
     html = html.replace(/\{[^}]*\}/g, "")
 
     return `<!DOCTYPE html>
@@ -737,14 +827,6 @@ ${html}
     setEditingProjectName(name)
   }
 
-  const saveProjectName = (id: string) => {
-    if (editingProjectName.trim()) {
-      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name: editingProjectName.trim() } : p)))
-    }
-    setEditingProjectId(null)
-    setEditingProjectName("")
-  }
-
   const getPlanDisplayName = () => {
     if (!profile?.plan) return "Gratuito"
     switch (profile.plan) {
@@ -764,7 +846,7 @@ ${html}
       case "pro":
         return "Créditos ilimitados"
       case "premium":
-        return "Videochamadas e likes ilimitados + Builder ilimitado"
+        return "Videochamadas, likes e Builder ilimitados"
       case "free":
       default:
         return `${userCredits} créditos restantes`
@@ -839,6 +921,32 @@ ${html}
       <ScrollArea className="flex-1 p-4">
         {activeTab === "chat" && (
           <div className="space-y-4">
+            {/* Show active project indicator */}
+            {activeProject && (
+              <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-purple-400" />
+                    <span className="text-sm text-white font-medium truncate">{activeProject.name}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs text-gray-400 hover:text-white"
+                    onClick={() => {
+                      setActiveProject(null)
+                      setGeneratedCode("")
+                    }}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {activeProject.builder_files?.length || 0} arquivo(s) • Alterações salvas automaticamente
+                </p>
+              </div>
+            )}
+
             {messages.length === 0 && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 font-medium">EXEMPLOS</p>
@@ -923,76 +1031,103 @@ ${html}
               Novo Projeto
             </Button>
 
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                className={cn(
-                  "p-3 rounded-lg border cursor-pointer transition-all",
-                  activeProject?.id === project.id
-                    ? "bg-purple-600/20 border-purple-500"
-                    : "bg-[#1a1a2e] border-purple-500/20 hover:border-purple-500/50",
-                )}
-                onClick={() => setActiveProject(project)}
-              >
-                <div className="flex items-center justify-between">
-                  {editingProjectId === project.id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <Input
-                        value={editingProjectName}
-                        onChange={(e) => setEditingProjectName(e.target.value)}
-                        className="h-7 text-sm bg-[#0d0d14] border-purple-500/30"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveProjectName(project.id)
-                          if (e.key === "Escape") setEditingProjectId(null)
-                        }}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          saveProjectName(project.id)
-                        }}
-                      >
-                        <Check className="w-4 h-4 text-green-400" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        className="flex items-center gap-2 flex-1 min-w-0"
-                        onDoubleClick={(e) => {
-                          e.stopPropagation()
-                          startEditingProject(project.id, project.name)
-                        }}
-                      >
-                        <FileCode className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                        <span className="text-sm text-white truncate">{project.name}</span>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 hover:bg-red-500/20 flex-shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteProject(project.id)
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 text-red-400" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                  <span>{project.files.length} arquivos</span>
-                  <span>•</span>
-                  <span>{new Date(project.updatedAt).toLocaleDateString()}</span>
-                </div>
+            {isLoadingProjects ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
               </div>
-            ))}
+            ) : projects.length === 0 ? (
+              <div className="text-center py-8">
+                <FolderOpen className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400 text-sm">Nenhum projeto ainda</p>
+                <p className="text-gray-500 text-xs mt-1">Crie seu primeiro projeto para começar</p>
+              </div>
+            ) : (
+              projects.map((project) => (
+                <div
+                  key={project.id}
+                  className={cn(
+                    "p-3 rounded-lg border cursor-pointer transition-all",
+                    activeProject?.id === project.id
+                      ? "bg-purple-600/20 border-purple-500"
+                      : "bg-[#1a1a2e] border-purple-500/20 hover:border-purple-500/50",
+                  )}
+                  onClick={() => selectProject(project)}
+                >
+                  <div className="flex items-center justify-between">
+                    {editingProjectId === project.id ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <Input
+                          value={editingProjectName}
+                          onChange={(e) => setEditingProjectName(e.target.value)}
+                          className="h-7 text-sm bg-[#0d0d14] border-purple-500/30"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveProjectName(project.id)
+                            if (e.key === "Escape") setEditingProjectId(null)
+                          }}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            saveProjectName(project.id)
+                          }}
+                        >
+                          <Check className="w-4 h-4 text-green-400" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            startEditingProject(project.id, project.name)
+                          }}
+                        >
+                          <FileCode className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                          <span className="text-sm text-white truncate">{project.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 hover:bg-purple-500/20 flex-shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              selectProject(project)
+                              setActiveTab("chat")
+                            }}
+                            title="Continuar editando"
+                          >
+                            <Play className="w-4 h-4 text-green-400" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 hover:bg-red-500/20 flex-shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteProject(project.id)
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-400" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                    <span>{project.builder_files?.length || 0} arquivos</span>
+                    <span>•</span>
+                    <span>{new Date(project.updated_at).toLocaleDateString("pt-BR")}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -1127,7 +1262,6 @@ ${html}
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Claude Sonnet 4 with official Anthropic logo - only this and Plus button */}
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#1a1a2e]/50">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path d="M16.5 3L21 12L16.5 21H7.5L3 12L7.5 3H16.5Z" fill="#D97706" fillOpacity="0.9" />
@@ -1204,9 +1338,9 @@ ${html}
                 variant="ghost"
                 onClick={toggleFullscreen}
                 className="text-gray-400 hover:text-white"
-                title="Tela cheia"
+                title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
               >
-                <Maximize2 className="w-4 h-4" />
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </Button>
               <Button size="sm" variant="ghost" onClick={shareProject} className="text-gray-400 hover:text-white">
                 <Share2 className="w-4 h-4" />
@@ -1225,8 +1359,9 @@ ${html}
                   variant="ghost"
                   onClick={saveCodeToProject}
                   className="text-gray-400 hover:text-white"
+                  disabled={isSaving}
                 >
-                  <Save className="w-4 h-4" />
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 </Button>
               )}
               <Button size="sm" variant="ghost" onClick={copyCode} className="text-gray-400 hover:text-white">
@@ -1241,8 +1376,26 @@ ${html}
       </div>
 
       {/* Preview Area */}
-      <div className="flex-1 p-2 md:p-4 overflow-auto" ref={previewRef}>
-        <div className={cn("mx-auto h-full transition-all duration-300", getDeviceWidth())}>
+      <div
+        ref={previewContainerRef}
+        className={cn("flex-1 p-2 md:p-4 overflow-auto bg-[#1a1a2e]", isFullscreen && "fixed inset-0 z-50 p-0")}
+      >
+        {/* Fullscreen close button */}
+        {isFullscreen && (
+          <button
+            onClick={toggleFullscreen}
+            className="fixed top-4 right-4 z-50 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+          >
+            <Minimize2 className="w-6 h-6" />
+          </button>
+        )}
+
+        <div
+          className={cn(
+            "mx-auto h-full transition-all duration-300",
+            isFullscreen ? "w-full max-w-none" : getDeviceWidth(),
+          )}
+        >
           {previewMode === "preview" ? (
             <div className="w-full h-full bg-white rounded-lg overflow-hidden shadow-2xl">
               {generatedCode ? (
@@ -1325,7 +1478,7 @@ ${html}
         </div>
       )}
 
-      {/* Share Modal - Updated with working copy feedback */}
+      {/* Share Modal */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-6 max-w-md w-full">
@@ -1338,7 +1491,7 @@ ${html}
             <p className="text-gray-400 mb-4 text-sm">Compartilhe seu projeto com outras pessoas</p>
             <div className="flex gap-2 mb-4">
               <Input
-                value={`https://connext.app/share/${activeProject?.id || "preview"}`}
+                value={`${typeof window !== "undefined" ? window.location.origin : ""}/share/${activeProject?.id || "preview"}`}
                 readOnly
                 className="bg-[#0d0d14] border-purple-500/30"
               />
@@ -1360,7 +1513,7 @@ ${html}
         </div>
       )}
 
-      {/* Publish Modal - Updated with Registro BR link */}
+      {/* Publish Modal */}
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-6 max-w-md w-full">
@@ -1370,48 +1523,78 @@ ${html}
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-gray-400 mb-4 text-sm">Publique seu projeto para o mundo ver</p>
-            <div className="p-4 bg-[#0d0d14] rounded-lg border border-purple-500/20 mb-4">
-              <p className="text-white font-medium mb-1">{activeProject?.name || "Meu Projeto"}</p>
-              <p className="text-gray-500 text-sm">connext.app/{activeProject?.id || "meu-projeto"}</p>
-            </div>
-            <div className="p-4 bg-purple-500/10 rounded-lg border border-purple-500/20 mb-4">
-              <p className="text-purple-300 font-medium mb-2 text-sm">Quer um domínio personalizado?</p>
-              <p className="text-gray-400 text-xs mb-3">
-                Compre seu domínio .com.br ou .com no Registro BR e conecte ao seu projeto.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full border-purple-500/30 bg-transparent text-purple-300 hover:bg-purple-500/20"
-                onClick={() => window.open("https://registro.br", "_blank")}
-              >
-                <Globe className="w-4 h-4 mr-2" />
-                Comprar Domínio no Registro BR
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1 border-purple-500/30 bg-transparent"
-                onClick={() => setShowPublishModal(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
-                onClick={() => {
-                  // Simulate publishing
-                  alert(
-                    `Projeto "${activeProject?.name || "Meu Projeto"}" publicado com sucesso!\n\nAcesse: connext.app/${activeProject?.id || "meu-projeto"}`,
-                  )
-                  setShowPublishModal(false)
-                }}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Publicar
-              </Button>
-            </div>
+
+            {publishSuccess ? (
+              <div className="text-center py-4">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                  <Check className="w-8 h-8 text-green-400" />
+                </div>
+                <h4 className="text-lg font-bold text-white mb-2">Publicado com Sucesso!</h4>
+                <p className="text-gray-400 text-sm mb-4">Seu projeto está disponível em:</p>
+                <div className="p-3 bg-[#0d0d14] rounded-lg border border-purple-500/20 mb-4">
+                  <p className="text-purple-400 text-sm break-all">
+                    {typeof window !== "undefined" ? window.location.origin : ""}/share/{activeProject?.id || "preview"}
+                  </p>
+                </div>
+                <Button
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600"
+                  onClick={() => {
+                    setShowPublishModal(false)
+                    setPublishSuccess(false)
+                  }}
+                >
+                  Fechar
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-gray-400 mb-4 text-sm">Publique seu projeto para o mundo ver</p>
+                <div className="p-4 bg-[#0d0d14] rounded-lg border border-purple-500/20 mb-4">
+                  <p className="text-white font-medium mb-1">{activeProject?.name || "Meu Projeto"}</p>
+                  <p className="text-gray-500 text-sm">
+                    {typeof window !== "undefined" ? window.location.host : "connext.app"}/share/
+                    {activeProject?.id || "preview"}
+                  </p>
+                </div>
+                <div className="p-4 bg-purple-500/10 rounded-lg border border-purple-500/20 mb-4">
+                  <p className="text-purple-300 font-medium mb-2 text-sm">Quer um domínio personalizado?</p>
+                  <p className="text-gray-400 text-xs mb-3">
+                    Compre seu domínio .com.br ou .com no Registro BR e conecte ao seu projeto.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-purple-500/30 bg-transparent text-purple-300 hover:bg-purple-500/20"
+                    onClick={() => window.open("https://registro.br", "_blank")}
+                  >
+                    <Globe className="w-4 h-4 mr-2" />
+                    Comprar Domínio no Registro BR
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-purple-500/30 bg-transparent"
+                    onClick={() => setShowPublishModal(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
+                    onClick={async () => {
+                      // Save project before publishing
+                      if (activeProject && generatedCode) {
+                        await saveCodeToProject()
+                      }
+                      setPublishSuccess(true)
+                    }}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Publicar
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
