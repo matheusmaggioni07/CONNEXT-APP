@@ -24,11 +24,18 @@ import {
   Instagram,
   Linkedin,
   Phone,
+  Code2,
+  Sparkles,
+  Rocket,
+  Layers,
+  Wand2,
+  Eye,
 } from "lucide-react"
 import Link from "next/link"
 
 export function LandingPage() {
   const [demoOpen, setDemoOpen] = useState(false)
+  const [builderDemoOpen, setBuilderDemoOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const [onlineCount1, setOnlineCount1] = useState(2500)
@@ -36,10 +43,14 @@ export function LandingPage() {
   const [matchCount, setMatchCount] = useState(0)
   const [showNewMatch, setShowNewMatch] = useState(true)
 
+  const [builderTyping, setBuilderTyping] = useState("")
+  const [builderStep, setBuilderStep] = useState(0)
+  const builderPrompt = "Crie uma landing page para minha startup de IA"
+
   useEffect(() => {
     const updateCount1 = () => {
       setOnlineCount1((prev) => {
-        const change = Math.floor(Math.random() * 80) - 30 // -30 to +50
+        const change = Math.floor(Math.random() * 80) - 30
         const newValue = prev + change
         return Math.max(2200, Math.min(3100, newValue))
       })
@@ -47,7 +58,7 @@ export function LandingPage() {
 
     const updateCount2 = () => {
       setOnlineCount2((prev) => {
-        const change = Math.floor(Math.random() * 40) - 15 // -15 to +25
+        const change = Math.floor(Math.random() * 40) - 15
         const newValue = prev + change
         return Math.max(650, Math.min(1200, newValue))
       })
@@ -61,8 +72,8 @@ export function LandingPage() {
       }, 200)
     }, 3000)
 
-    const interval1 = setInterval(updateCount1, 1200) // Every 1.2 seconds
-    const interval2 = setInterval(updateCount2, 800) // Every 0.8 seconds
+    const interval1 = setInterval(updateCount1, 1200)
+    const interval2 = setInterval(updateCount2, 800)
 
     return () => {
       clearInterval(interval1)
@@ -70,6 +81,28 @@ export function LandingPage() {
       clearInterval(matchInterval)
     }
   }, [])
+
+  useEffect(() => {
+    let index = 0
+    const typeInterval = setInterval(() => {
+      if (index <= builderPrompt.length) {
+        setBuilderTyping(builderPrompt.slice(0, index))
+        index++
+      } else {
+        clearInterval(typeInterval)
+        setTimeout(() => setBuilderStep(1), 500)
+        setTimeout(() => setBuilderStep(2), 1500)
+        setTimeout(() => setBuilderStep(3), 2500)
+        setTimeout(() => {
+          setBuilderStep(0)
+          setBuilderTyping("")
+          index = 0
+        }, 5000)
+      }
+    }, 80)
+
+    return () => clearInterval(typeInterval)
+  }, [builderStep])
 
   const socialProofAvatars = [
     "/professional-man-smiling-headshot.png",
@@ -100,6 +133,13 @@ export function LandingPage() {
         "Como investidor, uso o Connext para descobrir startups promissoras. A qualidade dos profissionais é impressionante.",
       avatar: "/brazilian-man-investor-suit-professional-headshot.jpg",
     },
+    {
+      name: "Juliana Santos",
+      role: "Founder @ StartupHub",
+      quote:
+        "Usei o Connext Builder para criar a landing page da minha startup em 30 segundos. Impressionante a qualidade! Já publiquei e está convertendo.",
+      avatar: "/brazilian-woman-founder-professional-headshot.jpg",
+    },
   ]
 
   return (
@@ -119,6 +159,9 @@ export function LandingPage() {
           <nav className="hidden lg:flex items-center gap-8">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Recursos
+            </a>
+            <a href="#builder" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Builder
             </a>
             <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Como Funciona
@@ -157,6 +200,9 @@ export function LandingPage() {
             <nav className="flex flex-col gap-4">
               <a href="#features" className="text-muted-foreground hover:text-foreground">
                 Recursos
+              </a>
+              <a href="#builder" className="text-muted-foreground hover:text-foreground">
+                Builder
               </a>
               <a href="#how-it-works" className="text-muted-foreground hover:text-foreground">
                 Como Funciona
@@ -197,7 +243,7 @@ export function LandingPage() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 <span className="text-sm text-primary font-medium">
-                  +{onlineCount1.toLocaleString("pt-BR")} profissionais online agora
+                  +{onlineCount1.toLocaleString("pt-BR")} empreendedores online agora
                 </span>
               </div>
 
@@ -212,9 +258,14 @@ export function LandingPage() {
                 Networking profissional via <span className="gradient-text">vídeo em tempo real</span>
               </h1>
 
-              <p className="text-lg lg:text-xl text-muted-foreground mb-8 leading-relaxed max-w-xl">
-                Conecte-se instantaneamente com profissionais da sua área. Match por interesses, filtros de localização,
-                videochamadas e integração com WhatsApp.
+              <p className="text-lg lg:text-xl text-muted-foreground mb-4 leading-relaxed max-w-xl">
+                Conecte-se instantaneamente com empreendedores da sua área. Match por interesses, filtros de
+                localização, videochamadas, integração com WhatsApp e criação de sites com IA.
+              </p>
+
+              <p className="text-base text-primary/80 mb-8 leading-relaxed max-w-xl flex items-center gap-2">
+                <Code2 className="w-5 h-5" />
+                <span>Novo: Crie sites profissionais com o Connext Builder</span>
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-10">
@@ -330,11 +381,8 @@ export function LandingPage() {
                 {/* Floating Badge - Novo Match */}
                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-64">
                   <div className="relative bg-[#1a1a2e] rounded-2xl p-4 border border-purple-500/30 shadow-xl shadow-purple-500/10">
-                    {/* Gradient glow */}
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-sm -z-10" />
-
                     <div className="flex items-center gap-3">
-                      {/* Avatar with notification */}
                       <div className="relative">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
                           <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center">
@@ -345,7 +393,6 @@ export function LandingPage() {
                           <span className="text-[8px] text-white font-bold">+</span>
                         </div>
                       </div>
-
                       <div className="flex-1">
                         <p
                           className={`text-white font-semibold text-sm transition-all duration-200 ${showNewMatch ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"}`}
@@ -383,16 +430,182 @@ export function LandingPage() {
         </div>
       </section>
 
+      <section id="builder" className="py-20 lg:py-28 px-6 bg-gradient-to-b from-background to-muted/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-full mb-6 border border-primary/20">
+              <Wand2 className="w-4 h-4 text-primary" />
+              <span className="text-sm text-primary font-medium">Novo Recurso</span>
+            </div>
+            <h2 className="text-3xl lg:text-5xl font-bold mb-4">
+              Crie sites profissionais com <span className="gradient-text">IA em segundos</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              O Connext Builder transforma suas ideias em sites reais usando inteligência artificial. Descreva o que
+              você quer e veja a mágica acontecer.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Builder Demo Visual */}
+            <div className="relative order-2 lg:order-1">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 via-transparent to-pink-500/20 rounded-3xl blur-3xl" />
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#0d0d14]">
+                {/* Builder Header */}
+                <div className="bg-[#1a1a2e] px-4 py-3 flex items-center justify-between border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-white font-semibold">Connext Builder</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                      AI Powered
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chat Area */}
+                <div className="p-4 min-h-[200px] bg-[#0d0d14]">
+                  {/* User Message */}
+                  <div className="flex gap-3 mb-4">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      U
+                    </div>
+                    <div className="bg-[#1a1a2e] rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
+                      <p className="text-white text-sm">
+                        {builderTyping}
+                        <span className="animate-pulse">|</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* AI Response */}
+                  {builderStep >= 1 && (
+                    <div className="flex gap-3 justify-end mb-4">
+                      <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] border border-purple-500/30">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Sparkles className="w-4 h-4 text-purple-400" />
+                          <span className="text-purple-400 text-xs font-medium">Gerando código...</span>
+                        </div>
+                        {builderStep >= 2 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-green-400 text-xs">
+                              <Check className="w-3 h-3" />
+                              <span>Analisando requisitos</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-green-400 text-xs">
+                              <Check className="w-3 h-3" />
+                              <span>Criando estrutura</span>
+                            </div>
+                            {builderStep >= 3 && (
+                              <div className="flex items-center gap-2 text-green-400 text-xs">
+                                <Check className="w-3 h-3" />
+                                <span>Site pronto!</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preview Area */}
+                {builderStep >= 3 && (
+                  <div className="border-t border-white/5 p-4">
+                    <div className="bg-[#1a1a2e] rounded-xl p-4 border border-white/5">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-gray-400 text-xs">Preview</span>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                          <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                          <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                        </div>
+                      </div>
+                      <div className="bg-gradient-to-br from-[#030014] to-[#1a1a2e] rounded-lg p-4 min-h-[100px]">
+                        <div className="text-center">
+                          <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500"></div>
+                          <div className="h-3 w-32 mx-auto bg-gradient-to-r from-purple-400 to-pink-400 rounded mb-2"></div>
+                          <div className="h-2 w-48 mx-auto bg-gray-600 rounded mb-3"></div>
+                          <div className="h-6 w-24 mx-auto bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Builder Features */}
+            <div className="order-1 lg:order-2">
+              <h3 className="text-2xl font-bold mb-6">
+                Do prompt ao site publicado em <span className="gradient-text">30 segundos</span>
+              </h3>
+              <div className="space-y-4">
+                {[
+                  {
+                    icon: Wand2,
+                    title: "Descreva sua ideia",
+                    description: "Digite o que você quer criar e a IA faz o resto automaticamente.",
+                  },
+                  {
+                    icon: Eye,
+                    title: "Preview ao vivo",
+                    description: "Veja seu site sendo criado em tempo real com visualização instantânea.",
+                  },
+                  {
+                    icon: Layers,
+                    title: "Sites profissionais",
+                    description: "Designs modernos com gradientes, animações e layouts responsivos.",
+                  },
+                  {
+                    icon: Rocket,
+                    title: "Publique em 1 clique",
+                    description: "Exporte o código ou publique diretamente na web.",
+                  },
+                ].map((feature, i) => (
+                  <div
+                    key={i}
+                    className="flex gap-4 p-4 rounded-xl bg-card/50 border border-border/50 hover:border-primary/30 transition-all"
+                  >
+                    <div className="w-10 h-10 rounded-lg gradient-bg flex items-center justify-center shrink-0">
+                      <feature.icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold mb-1">{feature.title}</h4>
+                      <p className="text-sm text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-8">
+                <Link href="/register">
+                  <Button className="gradient-bg text-white hover:opacity-90 px-8 h-12">
+                    Experimentar o Builder Grátis
+                    <ArrowRight className="ml-2 w-5 h-5" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section id="features" className="py-20 lg:py-28 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <span className="text-sm font-medium text-primary mb-4 block">RECURSOS</span>
             <h2 className="text-3xl lg:text-5xl font-bold mb-4">
-              Tudo que você precisa para fazer <span className="gradient-text">networking</span>
+              Tudo que você precisa para <span className="gradient-text">conectar e criar</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Ferramentas poderosas para conectar profissionais e criar oportunidades de negócio.
+              Encontre empreendedores compatíveis, faça videochamadas e crie sites profissionais com IA.
             </p>
           </div>
 
@@ -406,7 +619,8 @@ export function LandingPage() {
               {
                 icon: Users,
                 title: "Match Inteligente",
-                description: "Algoritmo avançado que conecta você com profissionais baseado em interesses e objetivos.",
+                description:
+                  "Algoritmo avançado que conecta você com empreendedores baseado em interesses e objetivos.",
               },
               {
                 icon: MessageCircle,
@@ -414,19 +628,20 @@ export function LandingPage() {
                 description: "Após o match, continue a conversa no WhatsApp para fechar negócios rapidamente.",
               },
               {
-                icon: Zap,
-                title: "Indique e Ganhe",
-                description: "Indique amigos e ganhe R$10 em créditos para cada cadastro. Acumule até R$200 por mês!",
+                icon: Code2,
+                title: "Connext Builder",
+                description:
+                  "Crie sites profissionais do zero usando IA. Descreva sua ideia e tenha um site em segundos.",
               },
               {
                 icon: Globe,
                 title: "Filtro Geográfico",
-                description: "Encontre profissionais na sua cidade ou conecte-se globalmente.",
+                description: "Encontre empreendedores na sua cidade ou conecte-se globalmente.",
               },
               {
                 icon: Shield,
-                title: "Perfil em 1 Minuto",
-                description: "Perfil rápido de configurar. Comece a fazer networking em minutos.",
+                title: "Segurança Total",
+                description: "Criptografia de ponta a ponta em videochamadas e dados protegidos.",
               },
             ].map((feature, index) => (
               <div
@@ -444,44 +659,48 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* How It Works */}
+      {/* How It Works - Updated with Builder */}
       <section id="how-it-works" className="py-20 lg:py-28 px-6 bg-muted/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <span className="text-sm font-medium text-primary mb-4 block">COMO FUNCIONA</span>
             <h2 className="text-3xl lg:text-5xl font-bold mb-4">
-              Comece em <span className="gradient-text">3 passos</span>
+              Conecte, crie e <span className="gradient-text">execute</span>
             </h2>
-            <p className="text-lg text-muted-foreground">Simples, rápido e eficiente.</p>
+            <p className="text-lg text-muted-foreground">Do networking à execução em poucos passos.</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 lg:gap-12">
+          <div className="grid md:grid-cols-4 gap-8 lg:gap-6">
             {[
               {
                 step: "01",
                 title: "Crie seu perfil",
-                description: "Cadastre-se com seu email e configure seus interesses e objetivos.",
+                description: "Cadastre-se e configure seus interesses e objetivos profissionais.",
                 icon: Briefcase,
               },
               {
                 step: "02",
-                title: "Encontre matches",
-                description: "Navegue por profissionais compatíveis e inicie videochamadas instantâneas.",
+                title: "Conecte-se",
+                description: "Encontre profissionais compatíveis e inicie videochamadas instantâneas.",
                 icon: Users,
               },
               {
                 step: "03",
-                title: "Conecte e negocie",
-                description: "Após match mútuo, continue no WhatsApp e transforme conexões em negócios.",
+                title: "Crie suas ideias",
+                description: "Use o Connext Builder para transformar ideias em sites reais com IA.",
+                icon: Code2,
+              },
+              {
+                step: "04",
+                title: "Execute projetos",
+                description: "Transforme conexões em negócios e publique seus projetos.",
                 icon: TrendingUp,
               },
             ].map((item, index) => (
               <div key={index} className="relative text-center">
-                {/* Connector line */}
-                {index < 2 && (
+                {index < 3 && (
                   <div className="hidden md:block absolute top-16 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-primary/50 to-secondary/50" />
                 )}
-
                 <div className="relative z-10 w-16 h-16 rounded-2xl gradient-bg mx-auto mb-6 flex items-center justify-center">
                   <item.icon className="w-7 h-7 text-white" />
                 </div>
@@ -489,14 +708,14 @@ export function LandingPage() {
                   {item.step}
                 </span>
                 <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
-                <p className="text-muted-foreground">{item.description}</p>
+                <p className="text-muted-foreground text-sm">{item.description}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
+      {/* Pricing Section - Updated with Builder */}
       <section id="pricing" className="py-20 lg:py-28 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
@@ -510,11 +729,11 @@ export function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {/* Free Plan */}
+            {/* Free Plan - Updated */}
             <div className="relative rounded-2xl border border-border bg-card p-8">
               <div className="mb-6">
                 <h3 className="text-xl font-semibold mb-2">Free</h3>
-                <p className="text-muted-foreground text-sm">Perfeito para começar a fazer networking</p>
+                <p className="text-muted-foreground text-sm">Perfeito para começar</p>
               </div>
 
               <div className="mb-6">
@@ -527,9 +746,9 @@ export function LandingPage() {
                   "5 videochamadas por dia",
                   "10 matches por dia",
                   "Perfil básico",
-                  "Filtro por localização",
-                  "Chat durante videochamada",
+                  "20 créditos/mês no Builder",
                   "Integração WhatsApp",
+                  "Filtro por localização",
                 ].map((feature, i) => (
                   <li key={i} className="flex items-center gap-3">
                     <Check className="w-5 h-5 text-primary shrink-0" />
@@ -545,9 +764,8 @@ export function LandingPage() {
               </Link>
             </div>
 
-            {/* Pro Plan */}
+            {/* Pro Plan - Updated */}
             <div className="relative rounded-2xl border-2 border-primary bg-card p-8 shadow-lg shadow-primary/10">
-              {/* Popular badge */}
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 gradient-bg px-4 py-1 rounded-full">
                 <span className="text-xs font-semibold text-white">MAIS POPULAR</span>
               </div>
@@ -555,7 +773,7 @@ export function LandingPage() {
               <div className="mb-6">
                 <h3 className="text-xl font-semibold mb-2">Pro</h3>
                 <p className="text-muted-foreground text-sm">
-                  Para profissionais e empreendedores que levam networking a sério
+                  Para empreendedores que levam networking e criação a sério
                 </p>
               </div>
 
@@ -569,10 +787,10 @@ export function LandingPage() {
                   "Videochamadas ilimitadas",
                   "Matches ilimitados",
                   "Perfil verificado com selo",
-                  "Filtros avançados (cargo, empresa, setor)",
+                  "Builder ilimitado",
+                  "Publicação de sites",
                   "Prioridade na fila de matching",
-                  "Estatísticas de conexões",
-                  "Modo invisível",
+                  "Filtros avançados",
                   "Suporte prioritário 24/7",
                   "Sem anúncios",
                 ].map((feature, i) => (
@@ -593,7 +811,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
+      {/* Testimonials - Updated with Builder testimonial */}
       <section id="testimonials" className="py-20 lg:py-28 px-6 bg-muted/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
@@ -603,7 +821,7 @@ export function LandingPage() {
             </h2>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {testimonials.map((testimonial, i) => (
               <div key={i} className="rounded-2xl border border-border/50 bg-card p-6">
                 <div className="flex items-center gap-1 mb-4">
@@ -611,7 +829,7 @@ export function LandingPage() {
                     <Star key={star} className="w-4 h-4 fill-primary text-primary" />
                   ))}
                 </div>
-                <p className="text-foreground mb-6 leading-relaxed">"{testimonial.quote}"</p>
+                <p className="text-foreground mb-6 leading-relaxed text-sm">"{testimonial.quote}"</p>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-muted overflow-hidden">
                     <img
@@ -636,9 +854,9 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
             {[
-              { value: "50K+", label: "Profissionais cadastrados" },
+              { value: "50K+", label: "Empreendedores cadastrados" },
               { value: "150K+", label: "Conexões realizadas" },
-              { value: "98%", label: "Taxa de satisfação" },
+              { value: "10K+", label: "Sites criados no Builder" },
               { value: "45+", label: "Países" },
             ].map((stat, i) => (
               <div key={i}>
@@ -650,7 +868,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* FAQ Section */}
+      {/* FAQ Section - Updated with Builder questions */}
       <section id="faq" className="py-20 lg:py-28 px-6 bg-muted/30">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-16">
@@ -664,27 +882,35 @@ export function LandingPage() {
             {[
               {
                 q: "O que é o Connext?",
-                a: "O Connext é a primeira plataforma web de networking profissional via videochamada. Conectamos profissionais em tempo real para gerar oportunidades de negócios.",
+                a: "O Connext é uma plataforma completa de networking profissional via videochamada e criação de sites com IA. Conectamos empreendedores em tempo real através de matches inteligentes, videochamadas HD e oferecemos o Connext Builder para criar sites profissionais em segundos.",
               },
               {
-                q: "O plano Free é realmente gratuito?",
-                a: "Sim! O plano Free é 100% gratuito e não pedimos cartão de crédito. Você pode fazer networking sem pagar nada.",
+                q: "Como funciona o sistema de matches?",
+                a: "Nosso algoritmo analisa seus interesses, área de atuação e objetivos profissionais para sugerir empreendedores compatíveis. Você pode filtrar por localização, setor e tipo de conexão. Quando ambos demonstram interesse, um match acontece!",
+              },
+              {
+                q: "As videochamadas são seguras?",
+                a: "Absolutamente! Usamos criptografia de ponta a ponta em todas as videochamadas. Suas conversas são 100% privadas e seguras. A qualidade é HD e não precisa baixar nenhum aplicativo.",
               },
               {
                 q: "Como funciona a integração com WhatsApp?",
-                a: "Quando você e outro empreendedor dão match, um botão aparece para iniciar conversa no WhatsApp usando o número cadastrado na plataforma.",
+                a: "Quando você e outro empreendedor dão match, um botão aparece para iniciar conversa no WhatsApp usando o número cadastrado na plataforma. Isso facilita continuar a conversa e fechar negócios.",
               },
               {
-                q: "Posso cancelar o plano Pro a qualquer momento?",
-                a: "Sim, você pode cancelar quando quiser. Não há multas ou taxas de cancelamento. Seu acesso Pro continua até o fim do período pago.",
+                q: "O que é o Connext Builder?",
+                a: "O Connext Builder é nossa ferramenta de criação de sites com inteligência artificial. Você descreve o que quer criar e a IA gera um site profissional completo em segundos. Você pode visualizar, editar e publicar diretamente.",
               },
               {
-                q: "A videochamada é segura?",
-                a: "Absolutamente. Usamos criptografia de ponta a ponta em todas as videochamadas. Suas conversas são privadas e seguras.",
+                q: "Quantos sites posso criar no plano Free?",
+                a: "No plano Free você recebe 20 créditos por mês para criar sites no Builder. Cada geração consome 1 crédito. No plano Pro, a criação é ilimitada e você pode publicar os sites diretamente.",
               },
               {
-                q: "Como posso indicar amigos?",
-                a: "Na área logada, acesse a seção 'Indicar Amigos' e compartilhe seu link exclusivo. Você ganha R$10 em créditos para cada amigo que se cadastrar!",
+                q: "Posso fazer videochamadas ilimitadas?",
+                a: "No plano Free você tem 5 videochamadas por dia. No plano Pro, as videochamadas são ilimitadas, com qualidade HD prioritária e sem anúncios.",
+              },
+              {
+                q: "Como cancelar minha assinatura Pro?",
+                a: "Você pode cancelar a qualquer momento nas configurações da sua conta. Após o cancelamento, você mantém acesso aos benefícios Pro até o final do período pago.",
               },
             ].map((faq, i) => (
               <details key={i} className="group rounded-xl border border-border/50 bg-card">
@@ -705,15 +931,13 @@ export function LandingPage() {
           <div className="relative rounded-3xl overflow-hidden">
             <div className="absolute inset-0 gradient-bg opacity-90" />
             <div className="relative z-10 p-12 lg:p-16 text-center">
-              <h2 className="text-3xl lg:text-5xl font-bold mb-4 text-white">
-                Pronto para transformar seu networking?
-              </h2>
+              <h2 className="text-3xl lg:text-5xl font-bold mb-4 text-white">Pronto para conectar e criar?</h2>
               <p className="text-lg text-white/80 mb-8 max-w-xl mx-auto">
-                Junte-se a milhares de profissionais que já estão expandindo suas redes e fechando negócios.
+                Junte-se a milhares de empreendedores que já estão expandindo suas redes e criando projetos incríveis.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/register">
-                  <Button size="lg" className="bg-white text-foreground hover:bg-white/90 px-8 h-12">
+                  <Button size="lg" className="bg-white text-black font-semibold hover:bg-gray-100 px-8 h-12">
                     Criar Conta Grátis
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
@@ -724,14 +948,18 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Footer - Updated with motivational phrase */}
       <footer className="py-12 px-6 border-t border-border/50">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div className="md:col-span-2">
               <ConnextLogo size="lg" className="mb-4" />
               <p className="text-muted-foreground max-w-xs mb-4">
-                A primeira plataforma de networking via vídeo. Conecte-se, faça match e feche negócios.
+                O lugar onde pessoas se conectam, criam e transformam ideias em realidade. Networking profissional via
+                video chamada + matches + criação de sites com IA.
+              </p>
+              <p className="text-sm text-primary font-medium mb-4">
+                "Conecte-se e crie — o lugar onde conexões viram ideias e saiem do papel."
               </p>
               <p className="text-sm text-muted-foreground mb-4">
                 Contato:{" "}
@@ -769,6 +997,11 @@ export function LandingPage() {
                   </a>
                 </li>
                 <li>
+                  <a href="#builder" className="hover:text-foreground transition-colors">
+                    Builder
+                  </a>
+                </li>
+                <li>
                   <a href="#pricing" className="hover:text-foreground transition-colors">
                     Preços
                   </a>
@@ -776,11 +1009,6 @@ export function LandingPage() {
                 <li>
                   <a href="#" className="hover:text-foreground transition-colors">
                     Segurança
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Empresas
                   </a>
                 </li>
               </ul>
@@ -799,34 +1027,26 @@ export function LandingPage() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Contato
-                  </a>
+                  <Link href="/termos" className="hover:text-foreground transition-colors">
+                    Termos de Uso
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Status
-                  </a>
+                  <Link href="/privacidade" className="hover:text-foreground transition-colors">
+                    Privacidade
+                  </Link>
                 </li>
               </ul>
             </div>
           </div>
 
-          <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="border-t border-border/50 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2025 Connext App. Todos os direitos reservados. Desenvolvido por{" "}
-              <span className="text-foreground font-medium">Matheus Maggioni</span>
+              © {new Date().getFullYear()} Connext. Todos os direitos reservados.
             </p>
-            <div className="flex gap-6 text-sm text-muted-foreground">
-              <Link href="/termos" className="hover:text-foreground transition-colors">
-                Termos de Uso
-              </Link>
-              <Link href="/privacidade" className="hover:text-foreground transition-colors">
-                Privacidade
-              </Link>
-              <Link href="/cookies" className="hover:text-foreground transition-colors">
-                Cookies
-              </Link>
+            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+              <p className="text-sm text-muted-foreground">Desenvolvido por Matheus Maggioni</p>
+              <p className="text-sm text-muted-foreground">Feito com ❤️ no Brasil</p>
             </div>
           </div>
         </div>

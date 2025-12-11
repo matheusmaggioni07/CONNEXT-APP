@@ -15,6 +15,7 @@ import {
   ChevronUp,
   ChevronDown,
   RefreshCw,
+  Target,
 } from "lucide-react"
 import { likeUser, checkLikeLimit } from "@/app/actions/likes"
 import { getProfilesToDiscover } from "@/app/actions/profile"
@@ -39,18 +40,16 @@ export function DiscoverPage() {
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     try {
-      console.log("[v0] Fetching profiles...")
       const [fetchedProfiles, online, limitStatus] = await Promise.all([
         getProfilesToDiscover(),
         getOnlineUserIds(),
         checkLikeLimit(),
       ])
-      console.log("[v0] Fetched profiles:", fetchedProfiles.length)
       setProfiles(fetchedProfiles)
       setOnlineUsers(online)
       setLikeStatus(limitStatus as { canLike: boolean; remaining: number; isPro?: boolean })
     } catch (error) {
-      console.error("[v0] Error fetching data:", error)
+      console.error("Error fetching data:", error)
     } finally {
       setIsLoading(false)
     }
@@ -120,10 +119,8 @@ export function DiscoverPage() {
       return
     }
 
-    // Clean phone number - remove all non-digits
     let cleanPhone = phone.replace(/\D/g, "")
 
-    // Add Brazil country code if not present
     if (cleanPhone.length === 11 || cleanPhone.length === 10) {
       cleanPhone = "55" + cleanPhone
     }
@@ -139,13 +136,6 @@ export function DiscoverPage() {
     if (profile.avatar_url && profile.avatar_url.startsWith("http")) {
       return profile.avatar_url
     }
-    // Generate placeholder based on name
-    const initials = profile.full_name
-      ?.split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
     return `/placeholder.svg?height=600&width=400&query=${encodeURIComponent(profile.full_name || "professional")} portrait photo`
   }
 
@@ -166,7 +156,7 @@ export function DiscoverPage() {
         <div className="text-center">
           <Sparkles className="w-16 h-16 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-foreground mb-2">Nenhum perfil encontrado</h2>
-          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos profissionais.</p>
+          <p className="text-muted-foreground mb-4">Volte mais tarde para encontrar novos empreendedores.</p>
           <Button onClick={fetchData} variant="outline" className="gap-2 bg-transparent">
             <RefreshCw className="w-4 h-4" />
             Atualizar
@@ -182,7 +172,7 @@ export function DiscoverPage() {
       <div className="hidden md:flex items-center justify-between p-4 md:p-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Descobrir</h1>
-          <p className="text-muted-foreground">Encontre profissionais compatíveis</p>
+          <p className="text-muted-foreground">Encontre empreendedores compatíveis</p>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
@@ -218,7 +208,7 @@ export function DiscoverPage() {
         <div className="relative flex-1 max-w-lg mx-auto w-full">
           {/* Card */}
           <div className="absolute inset-0 bg-card rounded-2xl border border-border overflow-hidden shadow-2xl">
-            {/* Full Photo - Use proper avatar URL */}
+            {/* Full Photo */}
             <div className="absolute inset-0">
               <img
                 src={getAvatarUrl(currentProfile) || "/placeholder.svg"}
@@ -286,22 +276,31 @@ export function DiscoverPage() {
                   {currentProfile.bio && <p className="text-white/90 text-sm leading-relaxed">{currentProfile.bio}</p>}
 
                   {currentProfile.interests && currentProfile.interests.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {currentProfile.interests.slice(0, 4).map((interest) => (
-                        <span key={interest} className="px-2 py-0.5 bg-white/20 text-white rounded-full text-xs">
-                          {interest}
-                        </span>
-                      ))}
+                    <div>
+                      <p className="text-white/60 text-xs mb-1">Interesses:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {currentProfile.interests.slice(0, 4).map((interest) => (
+                          <span key={interest} className="px-2 py-0.5 bg-white/20 text-white rounded-full text-xs">
+                            {interest}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
 
                   {currentProfile.looking_for && currentProfile.looking_for.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {currentProfile.looking_for.slice(0, 3).map((item) => (
-                        <span key={item} className="px-2 py-0.5 bg-primary/50 text-white rounded-full text-xs">
-                          {item}
-                        </span>
-                      ))}
+                    <div>
+                      <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
+                        <Target className="w-3 h-3" />
+                        Procura:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {currentProfile.looking_for.slice(0, 3).map((item) => (
+                          <span key={item} className="px-2 py-0.5 bg-primary/50 text-white rounded-full text-xs">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -347,7 +346,7 @@ export function DiscoverPage() {
         </div>
       </div>
 
-      {/* Match Modal - Use proper phone from matchedProfile */}
+      {/* Match Modal */}
       {showMatchModal && matchedProfile && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-2xl border border-border p-6 md:p-8 max-w-md w-full text-center animate-in zoom-in-95 duration-300">

@@ -42,6 +42,7 @@ import {
   Upload,
   ExternalLink,
   MessageSquare,
+  Maximize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -112,7 +113,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
   const [showPublishModal, setShowPublishModal] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [shareLinkCopied, setShareLinkCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
 
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat")
 
@@ -166,6 +170,14 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       setMobileView("preview")
     }
   }, [generatedCode])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
+  }, [])
 
   const addThought = (type: ThoughtStep["type"], message: string) => {
     const id = Math.random().toString(36).substring(7)
@@ -361,36 +373,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
               </div>
               <h3 className="text-xl font-bold mb-3">Advanced Analytics</h3>
               <p className="text-gray-400 leading-relaxed">Deep insights and real-time data to make smarter decisions.</p>
-            </div>
-            
-            <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500/20 to-red-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <svg className="w-7 h-7 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Customer Support</h3>
-              <p className="text-gray-400 leading-relaxed">24/7 dedicated support team ready to help you succeed.</p>
-            </div>
-            
-            <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-500/20 to-rose-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <svg className="w-7 h-7 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Team Collaboration</h3>
-              <p className="text-gray-400 leading-relaxed">Work together seamlessly with built-in collaboration tools.</p>
-            </div>
-            
-            <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <svg className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Global CDN</h3>
-              <p className="text-gray-400 leading-relaxed">Lightning-fast delivery worldwide with our global network.</p>
             </div>
           </div>
         </div>
@@ -670,6 +652,20 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const copyShareLink = () => {
     const link = `https://connext.app/share/${activeProject?.id || "preview"}`
     navigator.clipboard.writeText(link)
+    setShareLinkCopied(true)
+    setTimeout(() => setShareLinkCopied(false), 2000)
+  }
+
+  const toggleFullscreen = () => {
+    if (!previewRef.current) return
+
+    if (!document.fullscreenElement) {
+      previewRef.current.requestFullscreen().catch((err) => {
+        console.error("Erro ao entrar em tela cheia:", err)
+      })
+    } else {
+      document.exitFullscreen()
+    }
   }
 
   const getDeviceWidth = () => {
@@ -749,6 +745,32 @@ ${html}
     setEditingProjectName("")
   }
 
+  const getPlanDisplayName = () => {
+    if (!profile?.plan) return "Gratuito"
+    switch (profile.plan) {
+      case "pro":
+        return "PRO"
+      case "premium":
+        return "Premium"
+      case "free":
+      default:
+        return "Gratuito"
+    }
+  }
+
+  const getPlanDescription = () => {
+    if (!profile?.plan) return "20 créditos/mês"
+    switch (profile.plan) {
+      case "pro":
+        return "Créditos ilimitados"
+      case "premium":
+        return "Videochamadas e likes ilimitados + Builder ilimitado"
+      case "free":
+      default:
+        return `${userCredits} créditos restantes`
+    }
+  }
+
   const renderChatContent = () => (
     <>
       {/* Header */}
@@ -761,10 +783,10 @@ ${html}
             <span className="font-bold text-white">Connext Builder</span>
           </div>
           <span className="text-xs text-purple-400 bg-purple-500/20 px-2 py-1 rounded-full flex items-center gap-1">
-            {profile?.plan === "pro" ? (
+            {profile?.plan === "pro" || profile?.plan === "premium" ? (
               <>
                 <Crown className="w-3 h-3" />
-                PRO
+                {getPlanDisplayName()}
               </>
             ) : (
               <>
@@ -782,7 +804,7 @@ ${html}
           </div>
         )}
 
-        {profile?.plan !== "pro" && userCredits <= 5 && userCredits > 0 && (
+        {profile?.plan !== "pro" && profile?.plan !== "premium" && userCredits <= 5 && userCredits > 0 && (
           <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
             <p className="text-xs text-orange-400 mb-2">Poucos créditos restantes!</p>
             <Button
@@ -982,10 +1004,9 @@ ${html}
             </div>
             <div className="p-4 bg-[#1a1a2e] rounded-lg border border-purple-500/20">
               <h3 className="font-medium text-white mb-2">Plano</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                {profile?.plan === "pro" ? "PRO - Ilimitado" : `Gratuito - ${userCredits} créditos restantes`}
-              </p>
-              {profile?.plan !== "pro" && (
+              <p className="text-sm text-white font-semibold">{getPlanDisplayName()}</p>
+              <p className="text-sm text-gray-400 mb-3">{getPlanDescription()}</p>
+              {profile?.plan !== "pro" && profile?.plan !== "premium" && (
                 <Button
                   className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
                   onClick={() => setShowUpgradeModal(true)}
@@ -994,6 +1015,21 @@ ${html}
                   Upgrade para PRO
                 </Button>
               )}
+            </div>
+            <div className="p-4 bg-[#1a1a2e] rounded-lg border border-purple-500/20">
+              <h3 className="font-medium text-white mb-2">Assinatura</h3>
+              <p className="text-sm text-white font-semibold">
+                {profile?.plan === "pro"
+                  ? "Plano PRO"
+                  : profile?.plan === "premium"
+                    ? "Plano Premium"
+                    : "Plano Gratuito"}
+              </p>
+              <p className="text-sm text-gray-400">
+                {profile?.plan === "pro" || profile?.plan === "premium"
+                  ? "Videochamadas, likes e Builder ilimitados"
+                  : "Videochamadas e likes limitados + 20 créditos Builder/mês"}
+              </p>
             </div>
             <Button onClick={clearChat} variant="outline" className="w-full border-purple-500/30 bg-transparent">
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -1071,15 +1107,15 @@ ${html}
               <DropdownMenuContent align="start" className="bg-[#1a1a2e] border-purple-500/30">
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
                   <ImageIcon className="w-4 h-4 mr-2" />
-                  Upload Image
+                  Enviar Imagem
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
                   <Camera className="w-4 h-4 mr-2" />
-                  Clone Screenshot
+                  Clonar Screenshot
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
                   <Upload className="w-4 h-4 mr-2" />
-                  Upload Project
+                  Enviar Projeto
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => setInput("Crie uma landing page moderna com hero, features e pricing")}
@@ -1163,6 +1199,15 @@ ${html}
 
           {generatedCode && (
             <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={toggleFullscreen}
+                className="text-gray-400 hover:text-white"
+                title="Tela cheia"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </Button>
               <Button size="sm" variant="ghost" onClick={shareProject} className="text-gray-400 hover:text-white">
                 <Share2 className="w-4 h-4" />
               </Button>
@@ -1196,7 +1241,7 @@ ${html}
       </div>
 
       {/* Preview Area */}
-      <div className="flex-1 p-2 md:p-4 overflow-auto">
+      <div className="flex-1 p-2 md:p-4 overflow-auto" ref={previewRef}>
         <div className={cn("mx-auto h-full transition-all duration-300", getDeviceWidth())}>
           {previewMode === "preview" ? (
             <div className="w-full h-full bg-white rounded-lg overflow-hidden shadow-2xl">
@@ -1280,7 +1325,7 @@ ${html}
         </div>
       )}
 
-      {/* Share Modal */}
+      {/* Share Modal - Updated with working copy feedback */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-6 max-w-md w-full">
@@ -1298,9 +1343,12 @@ ${html}
                 className="bg-[#0d0d14] border-purple-500/30"
               />
               <Button onClick={copyShareLink} className="bg-purple-600 hover:bg-purple-700">
-                <Copy className="w-4 h-4" />
+                {shareLinkCopied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
               </Button>
             </div>
+            {shareLinkCopied && (
+              <p className="text-green-400 text-sm mb-4">Link copiado para a área de transferência!</p>
+            )}
             <Button
               variant="outline"
               className="w-full border-purple-500/30 bg-transparent"
@@ -1312,7 +1360,7 @@ ${html}
         </div>
       )}
 
-      {/* Publish Modal */}
+      {/* Publish Modal - Updated with Registro BR link */}
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-6 max-w-md w-full">
@@ -1327,6 +1375,21 @@ ${html}
               <p className="text-white font-medium mb-1">{activeProject?.name || "Meu Projeto"}</p>
               <p className="text-gray-500 text-sm">connext.app/{activeProject?.id || "meu-projeto"}</p>
             </div>
+            <div className="p-4 bg-purple-500/10 rounded-lg border border-purple-500/20 mb-4">
+              <p className="text-purple-300 font-medium mb-2 text-sm">Quer um domínio personalizado?</p>
+              <p className="text-gray-400 text-xs mb-3">
+                Compre seu domínio .com.br ou .com no Registro BR e conecte ao seu projeto.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full border-purple-500/30 bg-transparent text-purple-300 hover:bg-purple-500/20"
+                onClick={() => window.open("https://registro.br", "_blank")}
+              >
+                <Globe className="w-4 h-4 mr-2" />
+                Comprar Domínio no Registro BR
+              </Button>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -1335,7 +1398,16 @@ ${html}
               >
                 Cancelar
               </Button>
-              <Button className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90">
+              <Button
+                className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
+                onClick={() => {
+                  // Simulate publishing
+                  alert(
+                    `Projeto "${activeProject?.name || "Meu Projeto"}" publicado com sucesso!\n\nAcesse: connext.app/${activeProject?.id || "meu-projeto"}`,
+                  )
+                  setShowPublishModal(false)
+                }}
+              >
                 <ExternalLink className="w-4 h-4 mr-2" />
                 Publicar
               </Button>

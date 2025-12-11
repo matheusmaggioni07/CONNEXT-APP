@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw } from "lucide-react"
+import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw, Building2, Target } from "lucide-react"
 import { getMatches } from "@/app/actions/likes"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
@@ -87,7 +87,7 @@ export function MatchesPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Seus Matches</h1>
-            <p className="text-muted-foreground">Profissionais que demonstraram interesse mútuo</p>
+            <p className="text-muted-foreground">Empreendedores que demonstraram interesse mútuo</p>
           </div>
           <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
             <RefreshCw className="w-5 h-5" />
@@ -99,11 +99,11 @@ export function MatchesPage() {
             <Heart className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-foreground mb-2">Nenhum match ainda</h2>
             <p className="text-muted-foreground max-w-md mx-auto mb-6">
-              Continue explorando perfis na página Descobrir para encontrar profissionais compatíveis com seus
+              Continue explorando perfis na página Descobrir para encontrar empreendedores compatíveis com seus
               interesses.
             </p>
             <Link href="/dashboard">
-              <Button className="gradient-bg text-primary-foreground">Descobrir Profissionais</Button>
+              <Button className="gradient-bg text-primary-foreground">Descobrir Empreendedores</Button>
             </Link>
           </div>
         ) : (
@@ -158,6 +158,13 @@ export function MatchesPage() {
                     </div>
                   </div>
 
+                  {profile.industry && (
+                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                      <Building2 className="w-3 h-3" />
+                      <span>{profile.industry}</span>
+                    </div>
+                  )}
+
                   {/* Interests */}
                   {profile.interests && profile.interests.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-3">
@@ -171,6 +178,22 @@ export function MatchesPage() {
                           +{profile.interests.length - 3}
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {profile.looking_for && profile.looking_for.length > 0 && (
+                    <div className="mt-2">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                        <Target className="w-3 h-3" />
+                        <span>Procura:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {profile.looking_for.slice(0, 2).map((item) => (
+                          <span key={item} className="px-2 py-0.5 bg-primary/20 text-primary rounded-full text-xs">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
 
