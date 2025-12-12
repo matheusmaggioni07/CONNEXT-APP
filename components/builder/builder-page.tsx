@@ -113,6 +113,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [publishSuccess, setPublishSuccess] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -123,7 +124,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [shareLinkCopied, setShareLinkCopied] = useState(false)
-  const [publishSuccess, setPublishSuccess] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const previewContainerRef = useRef<HTMLDivElement>(null)
 
@@ -177,7 +177,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
   useEffect(() => {
     if (activeProject?.builder_files && activeProject.builder_files.length > 0) {
-      // Get most recent file
       const sortedFiles = [...activeProject.builder_files].sort(
         (a, b) =>
           new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
@@ -188,6 +187,20 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       }
     }
   }, [activeProject])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange)
+    document.addEventListener("msfullscreenchange", handleFullscreenChange)
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange)
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange)
+      document.removeEventListener("msfullscreenchange", handleFullscreenChange)
+    }
+  }, [])
 
   const addThought = (type: ThoughtStep["type"], message: string) => {
     const id = Math.random().toString(36).substring(7)
@@ -201,7 +214,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const generateFallbackCode = (prompt: string): string => {
     const lowerPrompt = prompt.toLowerCase()
-
     if (
       lowerPrompt.includes("landing") ||
       lowerPrompt.includes("página inicial") ||
@@ -212,14 +224,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       return `export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#030014] text-white overflow-hidden">
-      {/* Animated Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-30 animate-pulse"></div>
-        <div className="absolute top-1/3 -left-40 w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse" style={{animationDelay: '2s'}}></div>
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse" style={{animationDelay: '4s'}}></div>
+        <div className="absolute top-1/3 -left-40 w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse"></div>
       </div>
-      
-      {/* Navigation */}
       <nav className="relative z-50 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -230,24 +238,16 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
             </div>
             <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">SeuBrand</span>
           </div>
-          
           <div className="hidden md:flex items-center gap-10">
             <a href="#features" className="text-sm text-gray-400 hover:text-white transition-colors">Recursos</a>
             <a href="#pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Preços</a>
-            <a href="#testimonials" className="text-sm text-gray-400 hover:text-white transition-colors">Depoimentos</a>
-            <a href="#faq" className="text-sm text-gray-400 hover:text-white transition-colors">FAQ</a>
           </div>
-          
           <div className="flex items-center gap-4">
             <button className="hidden sm:block text-sm text-gray-400 hover:text-white transition-colors">Entrar</button>
-            <button className="px-5 py-2.5 bg-white text-black text-sm font-semibold rounded-full hover:bg-gray-100 transition-all hover:scale-105 shadow-lg shadow-white/10">
-              Começar Grátis
-            </button>
+            <button className="px-5 py-2.5 bg-white text-black text-sm font-semibold rounded-full hover:bg-gray-100 transition-all hover:scale-105 shadow-lg shadow-white/10">Começar Grátis</button>
           </div>
         </div>
       </nav>
-
-      {/* Hero Section */}
       <section className="relative z-10 pt-20 lg:pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-4xl mx-auto text-center">
@@ -258,20 +258,13 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
               </span>
               <span className="text-sm text-purple-300">Disponível em todo Brasil</span>
             </div>
-            
             <h1 className="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold leading-[1.1] tracking-tight mb-8">
-              Crie produtos
-              <br />
-              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
-                incríveis
-              </span>
+              Crie produtos<br />
+              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">incríveis</span>
             </h1>
-            
             <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-              A plataforma completa que ajuda você a criar, lançar e escalar seus produtos digitais. 
-              Confiada por mais de 10.000 empresas.
+              A plataforma completa que ajuda você a criar, lançar e escalar seus produtos digitais.
             </p>
-            
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
               <button className="group relative px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full font-semibold text-lg overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/25">
                 <span className="relative z-10 flex items-center justify-center gap-2">
@@ -282,14 +275,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 </span>
               </button>
               <button className="px-8 py-4 border border-white/10 rounded-full font-semibold text-lg hover:bg-white/5 transition-all backdrop-blur-sm flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                 Ver Demo
               </button>
             </div>
-
-            {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-3xl mx-auto pt-8 border-t border-white/5">
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">10K+</div>
@@ -311,18 +300,13 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           </div>
         </div>
       </section>
-
-      {/* Features Section */}
       <section id="features" className="relative z-10 py-24 px-6 border-t border-white/5">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-20">
             <span className="text-purple-400 text-sm font-semibold tracking-wider uppercase mb-4 block">Recursos</span>
             <h2 className="text-4xl sm:text-5xl font-bold mb-6">Tudo que você precisa</h2>
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Ferramentas poderosas para construir, lançar e crescer seu negócio.
-            </p>
+            <p className="text-xl text-gray-400 max-w-2xl mx-auto">Ferramentas poderosas para construir, lançar e crescer seu negócio.</p>
           </div>
-
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
@@ -331,9 +315,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 </svg>
               </div>
               <h3 className="text-xl font-bold mb-3">Ultra Rápido</h3>
-              <p className="text-gray-400 leading-relaxed">Otimizado para velocidade. Resultados instantâneos com nossa infraestrutura de ponta.</p>
+              <p className="text-gray-400 leading-relaxed">Otimizado para velocidade. Resultados instantâneos.</p>
             </div>
-            
             <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <svg className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,9 +324,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 </svg>
               </div>
               <h3 className="text-xl font-bold mb-3">Segurança Total</h3>
-              <p className="text-gray-400 leading-relaxed">Criptografia de nível bancário mantém seus dados seguros 24/7.</p>
+              <p className="text-gray-400 leading-relaxed">Criptografia de nível bancário mantém seus dados seguros.</p>
             </div>
-            
             <div className="group p-8 rounded-3xl bg-gradient-to-b from-white/5 to-transparent border border-white/5 hover:border-purple-500/30 transition-all duration-500 hover:-translate-y-2">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <svg className="w-7 h-7 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -351,47 +333,17 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
                 </svg>
               </div>
               <h3 className="text-xl font-bold mb-3">Analytics Avançado</h3>
-              <p className="text-gray-400 leading-relaxed">Insights profundos e dados em tempo real para decisões inteligentes.</p>
+              <p className="text-gray-400 leading-relaxed">Insights profundos e dados em tempo real.</p>
             </div>
           </div>
         </div>
       </section>
-
-      {/* CTA Section */}
-      <section className="relative z-10 py-24 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative p-12 rounded-[2.5rem] bg-gradient-to-b from-purple-500/10 to-transparent border border-purple-500/20 text-center overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-transparent to-pink-600/10"></div>
-            <div className="relative z-10">
-              <h2 className="text-4xl sm:text-5xl font-bold mb-6">Pronto para começar?</h2>
-              <p className="text-xl text-gray-400 mb-10 max-w-xl mx-auto">
-                Junte-se a milhares de empresas que já estão crescendo conosco.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <button className="px-8 py-4 bg-white text-black font-semibold rounded-full text-lg hover:bg-gray-100 transition-all hover:scale-105 shadow-lg shadow-white/10">
-                  Começar Gratuitamente
-                </button>
-                <button className="px-8 py-4 border border-white/20 rounded-full font-semibold text-lg hover:bg-white/5 transition-all">
-                  Falar com Vendas
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
       <footer className="relative z-10 border-t border-white/5 py-12 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500"></div>
               <span className="font-bold">SeuBrand</span>
-            </div>
-            <div className="flex items-center gap-8 text-sm text-gray-400">
-              <a href="#" className="hover:text-white transition-colors">Privacidade</a>
-              <a href="#" className="hover:text-white transition-colors">Termos</a>
-              <a href="#" className="hover:text-white transition-colors">Suporte</a>
             </div>
             <p className="text-sm text-gray-500">© 2025 SeuBrand. Todos os direitos reservados.</p>
           </div>
@@ -401,34 +353,16 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   )
 }`
     }
-
     return `export default function Component() {
   return (
-    <div className="min-h-screen bg-[#030014] flex items-center justify-center p-8">
-      <div className="text-center max-w-2xl">
-        <div className="w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
-          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
-        <h1 className="text-5xl font-bold text-white mb-6">Bem-vindo</h1>
-        <p className="text-xl text-gray-400 mb-8">Descreva o que você quer criar e a IA vai gerar para você.</p>
-        <button className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full text-white font-semibold hover:shadow-2xl hover:shadow-purple-500/25 transition-all hover:scale-105">
-          Começar
-        </button>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white flex items-center justify-center p-8">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Componente Gerado</h1>
+        <p className="text-gray-400">Descreva o que você quer criar com mais detalhes.</p>
       </div>
     </div>
   )
 }`
-  }
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    setUploadedFiles((prev) => [...prev, ...files])
-  }
-
-  const removeFile = (index: number) => {
-    setUploadedFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -479,7 +413,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
       if (!response.ok) {
         if (response.status === 429) {
-          setError(`Limite atingido. Aguarde ${data.remainingTime || 60} minutos.`)
+          setError("Limite atingido. Aguarde " + (data.remainingTime || 60) + " minutos.")
         }
         throw new Error(data.error || "API Error")
       }
@@ -512,7 +446,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       }
 
       setMessages((prev) => [...prev, assistantMessage])
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateThought(readingId, "done", 1000)
 
       const fallbackId = addThought("fixing", "Usando geração local...")
@@ -549,9 +483,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const autoSaveToProject = async (code: string) => {
     if (!activeProject) return
-
     try {
-      await fetch(`/api/builder/projects/${activeProject.id}/files`, {
+      await fetch("/api/builder/projects/" + activeProject.id + "/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -572,7 +505,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: `Projeto ${projects.length + 1}`,
+          name: "Projeto " + (projects.length + 1),
           description: "Novo projeto criado com Connext Builder",
         }),
       })
@@ -591,10 +524,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const deleteProject = async (id: string) => {
     try {
-      const res = await fetch(`/api/builder/projects/${id}`, {
-        method: "DELETE",
-      })
-
+      const res = await fetch("/api/builder/projects/" + id, { method: "DELETE" })
       if (res.ok) {
         setProjects((prev) => prev.filter((p) => p.id !== id))
         if (activeProject?.id === id) {
@@ -609,10 +539,9 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const saveCodeToProject = async () => {
     if (!activeProject || !generatedCode) return
-
     setIsSaving(true)
     try {
-      await fetch(`/api/builder/projects/${activeProject.id}/files`, {
+      await fetch("/api/builder/projects/" + activeProject.id + "/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -622,8 +551,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           language: "tsx",
         }),
       })
-
-      // Reload projects to get updated files
       await loadProjects()
     } catch (err) {
       console.error("Error saving file:", err)
@@ -637,32 +564,27 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       setEditingProjectId(null)
       return
     }
-
     try {
-      const res = await fetch(`/api/builder/projects/${id}`, {
+      const res = await fetch("/api/builder/projects/" + id, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editingProjectName.trim() }),
       })
-
       if (res.ok) {
         setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name: editingProjectName.trim() } : p)))
       }
     } catch (err) {
       console.error("Error updating project name:", err)
     }
-
     setEditingProjectId(null)
     setEditingProjectName("")
   }
 
   const selectProject = async (project: Project) => {
     setActiveProject(project)
-
-    // If project doesn't have files loaded, fetch them
     if (!project.builder_files || project.builder_files.length === 0) {
       try {
-        const res = await fetch(`/api/builder/projects/${project.id}`)
+        const res = await fetch("/api/builder/projects/" + project.id)
         if (res.ok) {
           const data = await res.json()
           setActiveProject(data.project)
@@ -705,7 +627,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const copyShareLink = () => {
-    const link = `${window.location.origin}/share/${activeProject?.id || "preview"}`
+    const link = window.location.origin + "/share/" + (activeProject?.id || "preview")
     navigator.clipboard.writeText(link)
     setShareLinkCopied(true)
     setTimeout(() => setShareLinkCopied(false), 2000)
@@ -714,18 +636,12 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const toggleFullscreen = async () => {
     const container = previewContainerRef.current
     if (!container) return
-
     try {
       if (!document.fullscreenElement) {
-        // Try standard fullscreen API first
         if (container.requestFullscreen) {
           await container.requestFullscreen()
         } else if ((container as any).webkitRequestFullscreen) {
-          // Safari
           await (container as any).webkitRequestFullscreen()
-        } else if ((container as any).msRequestFullscreen) {
-          // IE11
-          await (container as any).msRequestFullscreen()
         }
         setIsFullscreen(true)
       } else {
@@ -733,34 +649,14 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           await document.exitFullscreen()
         } else if ((document as any).webkitExitFullscreen) {
           await (document as any).webkitExitFullscreen()
-        } else if ((document as any).msExitFullscreen) {
-          await (document as any).msExitFullscreen()
         }
         setIsFullscreen(false)
       }
     } catch (err) {
       console.error("Fullscreen error:", err)
-      // Fallback: use CSS-based fullscreen for mobile
       setIsFullscreen(!isFullscreen)
     }
   }
-
-  // Listen for fullscreen changes
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
-    }
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange)
-    document.addEventListener("msfullscreenchange", handleFullscreenChange)
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange)
-      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange)
-      document.removeEventListener("msfullscreenchange", handleFullscreenChange)
-    }
-  }, [])
 
   const getDeviceWidth = () => {
     switch (deviceView) {
@@ -771,6 +667,17 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       default:
         return "w-full"
     }
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files) {
+      setUploadedFiles((prev) => [...prev, ...Array.from(files)])
+    }
+  }
+
+  const removeFile = (idx: number) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== idx))
   }
 
   const generatePreviewHtml = () => {
@@ -795,31 +702,18 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       .replace(/key=\{[^}]*\}/g, "")
       .replace(/style=\{\{([^}]*)\}\}/g, (match, styles) => {
         const cssStyles = styles.replace(/animationDelay:\s*'([^']+)'/g, "animation-delay: $1").replace(/,\s*/g, "; ")
-        return `style="${cssStyles}"`
+        return 'style="' + cssStyles + '"'
       })
       .replace(/<>/g, "<div>")
       .replace(/<\/>/g, "</div>")
 
     html = html.replace(/\{[^}]*\}/g, "")
 
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-    @keyframes pulse { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.3; } }
-    .animate-pulse { animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-  </style>
-</head>
-<body>
-${html}
-</body>
-</html>`
+    return (
+      '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><script>tailwind.config = { theme: { extend: { fontFamily: { sans: ["Inter", "system-ui", "-apple-system", "sans-serif"] } } } }</script><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"><style>* { box-sizing: border-box; margin: 0; padding: 0; } html, body { font-family: "Inter", system-ui, -apple-system, sans-serif; min-height: 100%; background: #030014; color: white; } @keyframes pulse { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.3; } } .animate-pulse { animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite; } @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } } .animate-ping { animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; } img { max-width: 100%; height: auto; } a { color: inherit; text-decoration: none; } button { cursor: pointer; }</style></head><body class="bg-[#030014] text-white min-h-screen">' +
+      html +
+      "</body></html>"
+    )
   }
 
   const startEditingProject = (id: string, name: string) => {
@@ -834,7 +728,6 @@ ${html}
         return "PRO"
       case "premium":
         return "Premium"
-      case "free":
       default:
         return "Gratuito"
     }
@@ -847,15 +740,13 @@ ${html}
         return "Créditos ilimitados"
       case "premium":
         return "Videochamadas, likes e Builder ilimitados"
-      case "free":
       default:
-        return `${userCredits} créditos restantes`
+        return userCredits + " créditos restantes"
     }
   }
 
   const renderChatContent = () => (
     <>
-      {/* Header */}
       <div className="p-4 border-b border-purple-500/20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -917,11 +808,9 @@ ${html}
         </Tabs>
       </div>
 
-      {/* Content */}
       <ScrollArea className="flex-1 p-4">
         {activeTab === "chat" && (
           <div className="space-y-4">
-            {/* Show active project indicator */}
             {activeProject && (
               <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
                 <div className="flex items-center justify-between">
@@ -965,7 +854,6 @@ ${html}
               </div>
             )}
 
-            {/* Timeline */}
             {thoughts.length > 0 && (
               <div className="mb-4 p-3 bg-[#1a1a2e] rounded-lg border border-purple-500/20">
                 <div className="flex items-center gap-2 mb-3">
@@ -994,7 +882,6 @@ ${html}
               </div>
             )}
 
-            {/* Messages */}
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -1151,21 +1038,6 @@ ${html}
                 </Button>
               )}
             </div>
-            <div className="p-4 bg-[#1a1a2e] rounded-lg border border-purple-500/20">
-              <h3 className="font-medium text-white mb-2">Assinatura</h3>
-              <p className="text-sm text-white font-semibold">
-                {profile?.plan === "pro"
-                  ? "Plano PRO"
-                  : profile?.plan === "premium"
-                    ? "Plano Premium"
-                    : "Plano Gratuito"}
-              </p>
-              <p className="text-sm text-gray-400">
-                {profile?.plan === "pro" || profile?.plan === "premium"
-                  ? "Videochamadas, likes e Builder ilimitados"
-                  : "Videochamadas e likes limitados + 20 créditos Builder/mês"}
-              </p>
-            </div>
             <Button onClick={clearChat} variant="outline" className="w-full border-purple-500/30 bg-transparent">
               <RefreshCw className="w-4 h-4 mr-2" />
               Limpar Conversa
@@ -1174,7 +1046,6 @@ ${html}
         )}
       </ScrollArea>
 
-      {/* Input area */}
       <div className="p-4 border-t border-purple-500/20">
         {uploadedFiles.length > 0 && (
           <div className="mb-3 space-y-2">
@@ -1276,7 +1147,6 @@ ${html}
 
   const renderPreviewContent = () => (
     <>
-      {/* Toolbar */}
       <div className="h-14 border-b border-purple-500/20 flex items-center justify-between px-4 gap-2 overflow-x-auto">
         <div className="flex items-center gap-2 flex-shrink-0">
           <Button
@@ -1300,7 +1170,6 @@ ${html}
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0">
-          {/* Device toggles - hidden on mobile */}
           <div className="hidden md:flex items-center gap-1 bg-[#0d0d14] rounded-lg p-1">
             <button
               onClick={() => setDeviceView("desktop")}
@@ -1375,12 +1244,10 @@ ${html}
         </div>
       </div>
 
-      {/* Preview Area */}
       <div
         ref={previewContainerRef}
         className={cn("flex-1 p-2 md:p-4 overflow-auto bg-[#1a1a2e]", isFullscreen && "fixed inset-0 z-50 p-0")}
       >
-        {/* Fullscreen close button */}
         {isFullscreen && (
           <button
             onClick={toggleFullscreen}
@@ -1413,7 +1280,6 @@ ${html}
                     </div>
                     <h3 className="text-xl md:text-2xl font-bold text-white mb-3">Bem-vindo ao Connext Builder</h3>
                     <p className="text-gray-400 mb-6 text-sm md:text-base">Descreva o que você quer criar</p>
-
                     <div className="space-y-3">
                       {["Crie uma landing page...", "Crie um site completo..."].map((example) => (
                         <button
@@ -1448,7 +1314,6 @@ ${html}
 
   return (
     <div className="flex flex-col h-screen bg-[#0d0d14] overflow-hidden">
-      {/* Upgrade Modal */}
       {showUpgradeModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-8 max-w-md w-full">
@@ -1478,7 +1343,6 @@ ${html}
         </div>
       )}
 
-      {/* Share Modal */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-6 max-w-md w-full">
@@ -1491,7 +1355,11 @@ ${html}
             <p className="text-gray-400 mb-4 text-sm">Compartilhe seu projeto com outras pessoas</p>
             <div className="flex gap-2 mb-4">
               <Input
-                value={`${typeof window !== "undefined" ? window.location.origin : ""}/share/${activeProject?.id || "preview"}`}
+                value={
+                  (typeof window !== "undefined" ? window.location.origin : "") +
+                  "/share/" +
+                  (activeProject?.id || "preview")
+                }
                 readOnly
                 className="bg-[#0d0d14] border-purple-500/30"
               />
@@ -1513,7 +1381,6 @@ ${html}
         </div>
       )}
 
-      {/* Publish Modal */}
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-[#1a1a2e] to-[#0d0d14] rounded-2xl border border-purple-500/30 p-6 max-w-md w-full">
@@ -1582,7 +1449,6 @@ ${html}
                   <Button
                     className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
                     onClick={async () => {
-                      // Save project before publishing
                       if (activeProject && generatedCode) {
                         await saveCodeToProject()
                       }
@@ -1600,15 +1466,11 @@ ${html}
       )}
 
       <div className="hidden lg:flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Chat */}
         <div className="w-96 bg-[#0d0d14] border-r border-purple-500/20 flex flex-col">{renderChatContent()}</div>
-
-        {/* Right Panel - Preview */}
         <div className="flex-1 flex flex-col bg-[#1a1a2e] overflow-hidden">{renderPreviewContent()}</div>
       </div>
 
       <div className="lg:hidden flex flex-col flex-1 overflow-hidden">
-        {/* Mobile view toggle */}
         <div className="flex border-b border-purple-500/20 bg-[#0d0d14]">
           <button
             onClick={() => setMobileView("chat")}
@@ -1632,8 +1494,6 @@ ${html}
             {generatedCode && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />}
           </button>
         </div>
-
-        {/* Mobile content */}
         <div className="flex-1 overflow-hidden">
           {mobileView === "chat" ? (
             <div className="h-full flex flex-col bg-[#0d0d14]">{renderChatContent()}</div>
