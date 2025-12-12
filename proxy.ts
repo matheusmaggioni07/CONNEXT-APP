@@ -74,7 +74,6 @@ const MALICIOUS_USER_AGENTS = [
 ]
 
 const BLOCKED_PATHS = [
-  // Config files
   "/.env",
   "/.env.local",
   "/.env.production",
@@ -87,8 +86,6 @@ const BLOCKED_PATHS = [
   "/config.php",
   "/config.json",
   "/settings.json",
-
-  // Source code
   "/.next",
   "/node_modules",
   "/src",
@@ -99,8 +96,6 @@ const BLOCKED_PATHS = [
   "/package-lock.json",
   "/tsconfig.json",
   "/next.config",
-
-  // Admin panels
   "/wp-admin",
   "/wp-login",
   "/wp-content",
@@ -110,8 +105,6 @@ const BLOCKED_PATHS = [
   "/administrator",
   "/cpanel",
   "/plesk",
-
-  // System files
   "/server-status",
   "/server-info",
   "/.aws",
@@ -120,21 +113,15 @@ const BLOCKED_PATHS = [
   "/etc/shadow",
   "/proc/self",
   "/var/log",
-
-  // API keys and secrets
   "/api/keys",
   "/api/secrets",
   "/api/config",
   "/.credentials",
   "/secrets",
-
-  // Debug
   "/debug",
   "/phpinfo",
   "/test.php",
   "/info.php",
-
-  // Backup files
   "/.bak",
   "/.backup",
   "/.old",
@@ -143,14 +130,6 @@ const BLOCKED_PATHS = [
   "/backup",
   "/db.sql",
   "/dump.sql",
-]
-
-const PROTECTED_API_ROUTES = [
-  "/api/admin",
-  "/api/builder/projects",
-  "/api/builder/generate",
-  "/api/security",
-  "/api/upload",
 ]
 
 function getClientIP(request: NextRequest): string {
@@ -169,7 +148,6 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
   const url = decodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)
   const userAgent = request.headers.get("user-agent") || ""
 
-  // Verifica user agents maliciosos
   for (const pattern of MALICIOUS_USER_AGENTS) {
     if (pattern.test(userAgent)) {
       return { isAttack: true, type: "malicious_user_agent" }
@@ -183,7 +161,6 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
     }
   }
 
-  // Verifica extensões de arquivo sensíveis
   const sensitiveExtensions = [".env", ".git", ".sql", ".bak", ".log", ".conf", ".ini", ".yaml", ".yml", ".toml"]
   for (const ext of sensitiveExtensions) {
     if (pathLower.endsWith(ext)) {
@@ -191,14 +168,12 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
     }
   }
 
-  // Verifica padrões de ataque na URL
   for (const pattern of ATTACK_PATTERNS) {
     if (pattern.test(url)) {
       return { isAttack: true, type: "attack_pattern" }
     }
   }
 
-  // Verifica path traversal
   if (request.nextUrl.pathname.includes("..") || request.nextUrl.pathname.includes("%2e%2e")) {
     return { isAttack: true, type: "path_traversal" }
   }
@@ -210,29 +185,39 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
   return { isAttack: false }
 }
 
-function requiresAuth(path: string): boolean {
-  return PROTECTED_API_ROUTES.some((route) => path.startsWith(route))
-}
-
 export async function middleware(request: NextRequest) {
   const ip = getClientIP(request)
   const userAgent = request.headers.get("user-agent") || ""
   const path = request.nextUrl.pathname
 
-  // Arquivos estáticos que devem ser ignorados
+  // Ignora arquivos estáticos - DEVE ser o primeiro check
   if (
-    path.startsWith("/_next/static") ||
-    path.startsWith("/_next/image") ||
+    path.startsWith("/_next") ||
+    path.startsWith("/static") ||
     path === "/favicon.ico" ||
     path === "/robots.txt" ||
     path === "/sitemap.xml" ||
-    /\.(svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2|ttf|eot|map)$/.test(path)
+    path.endsWith(".svg") ||
+    path.endsWith(".png") ||
+    path.endsWith(".jpg") ||
+    path.endsWith(".jpeg") ||
+    path.endsWith(".gif") ||
+    path.endsWith(".webp") ||
+    path.endsWith(".ico") ||
+    path.endsWith(".css") ||
+    path.endsWith(".js") ||
+    path.endsWith(".woff") ||
+    path.endsWith(".woff2") ||
+    path.endsWith(".ttf") ||
+    path.endsWith(".eot") ||
+    path.endsWith(".map")
   ) {
     return NextResponse.next()
   }
 
-  if (path.endsWith(".map")) {
-    return new NextResponse(null, { status: 404 })
+  // Ignora webhooks do Stripe (precisam passar sem modificação)
+  if (path.startsWith("/api/webhooks")) {
+    return NextResponse.next()
   }
 
   // 1. Verifica se IP está bloqueado
@@ -261,11 +246,10 @@ export async function middleware(request: NextRequest) {
         timestamp: new Date().toISOString(),
       })
 
-      // Bloqueia IP imediatamente para ataques graves
       if (
         ["malicious_user_agent", "attack_pattern", "ssrf_attempt", "path_traversal"].includes(attackCheck.type || "")
       ) {
-        await blockIP(ip, 7200, attackCheck.type) // 2 horas de bloqueio
+        await blockIP(ip, 7200, attackCheck.type)
       }
     } catch {
       // Se Redis falhar, continua
@@ -303,39 +287,17 @@ export async function middleware(request: NextRequest) {
   // 5. Processa a sessão do Supabase
   const response = await updateSession(request)
 
+  // 6. Adiciona headers de segurança
   const securityHeaders = {
-    // Previne MIME sniffing
     "X-Content-Type-Options": "nosniff",
-
-    // Previne clickjacking
     "X-Frame-Options": "DENY",
-
-    // Filtro XSS legado
     "X-XSS-Protection": "1; mode=block",
-
-    // Controle de referrer
     "Referrer-Policy": "strict-origin-when-cross-origin",
-
-    // Permissões restritas
-    "Permissions-Policy":
-      "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), accelerometer=(), gyroscope=(), magnetometer=()",
-
-    // HSTS - força HTTPS por 2 anos
+    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()",
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-
-    // Previne download sem prompt
     "X-Download-Options": "noopen",
-
-    // DNS Prefetch
-    "X-DNS-Prefetch-Control": "on",
-
-    // Cross-Origin policies rígidas
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
-    "Cross-Origin-Embedder-Policy": "credentialless",
-
-    "X-Powered-By": "",
-    Server: "",
   }
 
   const csp = [
@@ -352,40 +314,19 @@ export async function middleware(request: NextRequest) {
     "object-src 'none'",
     "media-src 'self' blob:",
     "worker-src 'self' blob:",
-    "manifest-src 'self'",
     "upgrade-insecure-requests",
-    "block-all-mixed-content",
   ].join("; ")
 
-  // Aplica headers
   for (const [key, value] of Object.entries(securityHeaders)) {
-    if (value) {
-      response.headers.set(key, value)
-    } else {
-      response.headers.delete(key)
-    }
+    response.headers.set(key, value)
   }
   response.headers.set("Content-Security-Policy", csp)
-
   response.headers.delete("X-Powered-By")
   response.headers.delete("Server")
 
   return response
 }
 
-export const config = {
-  matcher: [
-    "/",
-    "/api/:path*",
-    "/dashboard/:path*",
-    "/login",
-    "/register",
-    "/share/:path*",
-    "/builder/:path*",
-    "/profile/:path*",
-    "/pricing",
-    "/about",
-    "/contact",
-    "/faq",
-  ],
-}
+// REMOVIDO o config.matcher completamente para evitar o erro
+// "Cannot repeat 'path' without a prefix and suffix"
+// Toda a lógica de filtragem é feita dentro do middleware
