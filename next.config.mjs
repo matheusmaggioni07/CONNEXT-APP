@@ -6,6 +6,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  productionBrowserSourceMaps: false,
+  
+  poweredByHeader: false,
+  
+  compress: true,
+
   async headers() {
     return [
       {
@@ -29,7 +35,15 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(self), microphone=(self), geolocation=(), payment=()',
+            value: 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=()',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload',
+          },
+          {
+            key: 'X-Permitted-Cross-Domain-Policies',
+            value: 'none',
           },
         ],
       },
@@ -49,12 +63,79 @@ const nextConfig = {
             key: 'Expires',
             value: '0',
           },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+        ],
+      },
+      {
+        source: '/.env:path*',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
+      },
+      {
+        source: '/.git:path*', 
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
         ],
       },
     ]
   },
-  // Disable powered by header
-  poweredByHeader: false,
+
+  async rewrites() {
+    return {
+      beforeFiles: [
+        // Block source map files
+        {
+          source: '/:path*.map',
+          destination: '/404',
+        },
+      ],
+    }
+  },
+
+  async redirects() {
+    return [
+      // Block common attack paths
+      {
+        source: '/.env',
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/.env.local',
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/.git/:path*',
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/wp-admin/:path*',
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/wp-login.php',
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/phpmyadmin/:path*',
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/admin/config/:path*',
+        destination: '/404',
+        permanent: false,
+      },
+    ]
+  },
 }
 
 export default nextConfig

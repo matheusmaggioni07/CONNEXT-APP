@@ -3,32 +3,51 @@ import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 import { checkRateLimit, isIPBlocked, recordSuspiciousActivity, blockIP, incrementMetric, auditLog } from "@/lib/redis"
 
-// Padrões de ataque conhecidos
 const ATTACK_PATTERNS = [
   // SQL Injection
   /(\b(union|select|insert|update|delete|drop|create|alter|truncate)\b.*\b(from|into|table|database)\b)/i,
   /('|")\s*(or|and)\s*('|"|\d)/i,
   /(\b(exec|execute|xp_|sp_)\b)/i,
+  /\b(benchmark|sleep|waitfor|delay)\b/i,
 
   // XSS
   /<script\b[^>]*>[\s\S]*?<\/script>/i,
   /javascript\s*:/i,
   /on\w+\s*=\s*["']?[^"']*["']?/i,
+  /data\s*:\s*text\/html/i,
 
   // Path Traversal
   /\.\.\//,
   /%2e%2e%2f/i,
   /%252e%252e%252f/i,
+  /\.\.%2f/i,
+  /%2e%2e\//i,
 
   // Command Injection
   /[;&|`$]/,
   /\$\{.*\}/,
+  /\$$$.*$$/,
+  /`.*`/,
 
   // LDAP Injection
   /[()\\*]/,
+
+  // XXE
+  /<!ENTITY/i,
+  /<!DOCTYPE.*SYSTEM/i,
+
+  // SSRF
+  /localhost/i,
+  /127\.0\.0\.1/,
+  /0\.0\.0\.0/,
+  /\[::1\]/,
+
+  // Template Injection
+  /\{\{.*\}\}/,
+  /\$\{.*\}/,
+  /<%= .* %>/,
 ]
 
-// User agents maliciosos
 const MALICIOUS_USER_AGENTS = [
   /sqlmap/i,
   /nikto/i,
@@ -42,23 +61,96 @@ const MALICIOUS_USER_AGENTS = [
   /acunetix/i,
   /nessus/i,
   /openvas/i,
+  /havij/i,
+  /w3af/i,
+  /skipfish/i,
+  /arachni/i,
+  /commix/i,
+  /joomscan/i,
+  /drupalgeddon/i,
+  /metasploit/i,
+  /hydra/i,
+  /medusa/i,
 ]
 
-// Caminhos sensíveis
-const SENSITIVE_PATHS = [
+const BLOCKED_PATHS = [
+  // Config files
   "/.env",
+  "/.env.local",
+  "/.env.production",
+  "/.env.development",
   "/.git",
+  "/.gitignore",
+  "/.htaccess",
+  "/.htpasswd",
+  "/web.config",
+  "/config.php",
+  "/config.json",
+  "/settings.json",
+
+  // Source code
+  "/.next",
+  "/node_modules",
+  "/src",
+  "/lib",
+  "/components",
+  "/scripts",
+  "/package.json",
+  "/package-lock.json",
+  "/tsconfig.json",
+  "/next.config",
+
+  // Admin panels
   "/wp-admin",
   "/wp-login",
+  "/wp-content",
   "/phpmyadmin",
+  "/adminer",
   "/admin/config",
-  "/.htaccess",
-  "/web.config",
+  "/administrator",
+  "/cpanel",
+  "/plesk",
+
+  // System files
   "/server-status",
   "/server-info",
   "/.aws",
   "/.ssh",
   "/etc/passwd",
+  "/etc/shadow",
+  "/proc/self",
+  "/var/log",
+
+  // API keys and secrets
+  "/api/keys",
+  "/api/secrets",
+  "/api/config",
+  "/.credentials",
+  "/secrets",
+
+  // Debug
+  "/debug",
+  "/phpinfo",
+  "/test.php",
+  "/info.php",
+
+  // Backup files
+  "/.bak",
+  "/.backup",
+  "/.old",
+  "/.orig",
+  "/.save",
+  "/backup",
+  "/db.sql",
+  "/dump.sql",
+]
+
+const PROTECTED_API_ROUTES = [
+  "/api/admin",
+  "/api/builder/projects",
+  "/api/builder/generate",
+  "/api/security",
+  "/api/upload",
 ]
 
 function getClientIP(request: NextRequest): string {
@@ -84,10 +176,18 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
     }
   }
 
-  // Verifica caminhos sensíveis
-  for (const path of SENSITIVE_PATHS) {
-    if (request.nextUrl.pathname.toLowerCase().includes(path.toLowerCase())) {
-      return { isAttack: true, type: "sensitive_path_access" }
+  const pathLower = request.nextUrl.pathname.toLowerCase()
+  for (const blockedPath of BLOCKED_PATHS) {
+    if (pathLower.includes(blockedPath.toLowerCase())) {
+      return { isAttack: true, type: "blocked_path_access" }
+    }
+  }
+
+  // Verifica extensões de arquivo sensíveis
+  const sensitiveExtensions = [".env", ".git", ".sql", ".bak", ".log", ".conf", ".ini", ".yaml", ".yml", ".toml"]
+  for (const ext of sensitiveExtensions) {
+    if (pathLower.endsWith(ext)) {
+      return { isAttack: true, type: "sensitive_file_access" }
     }
   }
 
@@ -103,19 +203,31 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
     return { isAttack: true, type: "path_traversal" }
   }
 
+  if (/:\d{4,5}/.test(url) || /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(url)) {
+    return { isAttack: true, type: "ssrf_attempt" }
+  }
+
   return { isAttack: false }
 }
 
-export async function proxy(request: NextRequest) {
+function requiresAuth(path: string): boolean {
+  return PROTECTED_API_ROUTES.some((route) => path.startsWith(route))
+}
+
+export async function middleware(request: NextRequest) {
   const ip = getClientIP(request)
   const userAgent = request.headers.get("user-agent") || ""
   const path = request.nextUrl.pathname
+
+  if (path.endsWith(".map")) {
+    return new NextResponse(null, { status: 404 })
+  }
 
   // 1. Verifica se IP está bloqueado
   try {
     if (await isIPBlocked(ip)) {
       await incrementMetric("blocked_requests")
-      return new NextResponse(JSON.stringify({ error: "Acesso bloqueado temporariamente" }), {
+      return new NextResponse(JSON.stringify({ error: "Access denied" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
       })
@@ -133,45 +245,43 @@ export async function proxy(request: NextRequest) {
         ip,
         type: attackCheck.type,
         path,
-        userAgent,
+        userAgent: userAgent.slice(0, 200),
+        timestamp: new Date().toISOString(),
       })
 
-      // Bloqueia após atividade maliciosa confirmada
-      if (attackCheck.type === "malicious_user_agent" || attackCheck.type === "attack_pattern") {
-        await blockIP(ip, 3600, attackCheck.type)
+      // Bloqueia IP imediatamente para ataques graves
+      if (
+        ["malicious_user_agent", "attack_pattern", "ssrf_attempt", "path_traversal"].includes(attackCheck.type || "")
+      ) {
+        await blockIP(ip, 7200, attackCheck.type) // 2 horas de bloqueio
       }
     } catch {
       // Se Redis falhar, continua
     }
 
-    return new NextResponse(JSON.stringify({ error: "Requisição bloqueada" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    })
+    return new NextResponse(null, { status: 404 })
   }
 
-  // 3. Rate limiting global por IP
+  // 3. Rate limiting por IP
   try {
-    const rateLimit = await checkRateLimit(`global:${ip}`, 500, 60)
+    const rateLimit = await checkRateLimit(`global:${ip}`, 300, 60)
     if (!rateLimit.allowed) {
       await recordSuspiciousActivity(ip, "global_rate_limit")
       await incrementMetric("rate_limited_requests")
 
-      return new NextResponse(JSON.stringify({ error: "Muitas requisições. Tente novamente em breve." }), {
+      return new NextResponse(JSON.stringify({ error: "Too many requests" }), {
         status: 429,
         headers: {
           "Content-Type": "application/json",
           "Retry-After": String(rateLimit.retryAfter || 60),
-          "X-RateLimit-Remaining": "0",
-          "X-RateLimit-Reset": String(rateLimit.resetAt),
         },
       })
     }
   } catch {
-    // Se Redis falhar, continua sem rate limiting
+    // Se Redis falhar, continua
   }
 
-  // 4. Incrementa métrica de requisições
+  // 4. Incrementa métrica
   try {
     await incrementMetric("total_requests")
   } catch {
@@ -181,7 +291,6 @@ export async function proxy(request: NextRequest) {
   // 5. Processa a sessão do Supabase
   const response = await updateSession(request)
 
-  // 6. Headers de segurança abrangentes
   const securityHeaders = {
     // Previne MIME sniffing
     "X-Content-Type-Options": "nosniff",
@@ -195,35 +304,37 @@ export async function proxy(request: NextRequest) {
     // Controle de referrer
     "Referrer-Policy": "strict-origin-when-cross-origin",
 
-    // Permissões de features
+    // Permissões restritas
     "Permissions-Policy":
-      "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=(), serial=()",
+      "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), accelerometer=(), gyroscope=(), magnetometer=()",
 
-    // HSTS - força HTTPS
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    // HSTS - força HTTPS por 2 anos
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 
-    // Previne download de arquivos sem prompt
+    // Previne download sem prompt
     "X-Download-Options": "noopen",
 
     // DNS Prefetch
     "X-DNS-Prefetch-Control": "on",
 
-    // Cross-Origin policies
-    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    // Cross-Origin policies rígidas
+    "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Cross-Origin-Embedder-Policy": "credentialless",
+
+    "X-Powered-By": "",
+    Server: "",
   }
 
-  // Content Security Policy robusto
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live https://*.vercel.app",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https: http:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://vitals.vercel-insights.com https://*.vercel.app https://*.upstash.io wss://*.upstash.io",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://vitals.vercel-insights.com https://*.upstash.io wss://*.upstash.io",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-    "frame-ancestors 'self'",
+    "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
     "object-src 'none'",
@@ -231,22 +342,21 @@ export async function proxy(request: NextRequest) {
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "upgrade-insecure-requests",
+    "block-all-mixed-content",
   ].join("; ")
 
   // Aplica headers
   for (const [key, value] of Object.entries(securityHeaders)) {
-    response.headers.set(key, value)
+    if (value) {
+      response.headers.set(key, value)
+    } else {
+      response.headers.delete(key)
+    }
   }
   response.headers.set("Content-Security-Policy", csp)
 
-  // Rate limit info nos headers (se disponível)
-  try {
-    const rateLimit = await checkRateLimit(`global:${ip}`, 500, 60)
-    response.headers.set("X-RateLimit-Remaining", String(rateLimit.remaining))
-    response.headers.set("X-RateLimit-Reset", String(rateLimit.resetAt))
-  } catch {
-    // Ignora erro
-  }
+  response.headers.delete("X-Powered-By")
+  response.headers.delete("Server")
 
   return response
 }
