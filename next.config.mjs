@@ -15,7 +15,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: '/(.*)',
         headers: [
           {
             key: 'X-Content-Type-Options',
@@ -48,8 +48,7 @@ const nextConfig = {
         ],
       },
       {
-        // Prevent caching of sensitive API routes
-        source: '/api/:path*',
+        source: '/api/(.*)',
         headers: [
           {
             key: 'Cache-Control',
@@ -69,36 +68,12 @@ const nextConfig = {
           },
         ],
       },
-      {
-        source: '/.env:path*',
-        headers: [
-          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
-        ],
-      },
-      {
-        source: '/.git:path*', 
-        headers: [
-          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
-        ],
-      },
     ]
   },
 
-  async rewrites() {
-    return {
-      beforeFiles: [
-        // Block source map files
-        {
-          source: '/:path*.map',
-          destination: '/404',
-        },
-      ],
-    }
-  },
-
+  
   async redirects() {
     return [
-      // Block common attack paths
       {
         source: '/.env',
         destination: '/404',
@@ -110,12 +85,12 @@ const nextConfig = {
         permanent: false,
       },
       {
-        source: '/.git/:path*',
+        source: '/.git',
         destination: '/404',
         permanent: false,
       },
       {
-        source: '/wp-admin/:path*',
+        source: '/wp-admin',
         destination: '/404',
         permanent: false,
       },
@@ -125,12 +100,7 @@ const nextConfig = {
         permanent: false,
       },
       {
-        source: '/phpmyadmin/:path*',
-        destination: '/404',
-        permanent: false,
-      },
-      {
-        source: '/admin/config/:path*',
+        source: '/phpmyadmin',
         destination: '/404',
         permanent: false,
       },
