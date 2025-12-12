@@ -185,7 +185,7 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
   return { isAttack: false }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const ip = getClientIP(request)
   const userAgent = request.headers.get("user-agent") || ""
   const path = request.nextUrl.pathname
