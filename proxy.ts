@@ -374,7 +374,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!api/webhooks).*)", // Aplica middleware em todas as rotas exceto webhooks (eles têm sua própria validação)
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks).*)"],
 }
