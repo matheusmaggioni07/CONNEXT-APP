@@ -219,6 +219,18 @@ export async function middleware(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || ""
   const path = request.nextUrl.pathname
 
+  // Arquivos estáticos que devem ser ignorados
+  if (
+    path.startsWith("/_next/static") ||
+    path.startsWith("/_next/image") ||
+    path === "/favicon.ico" ||
+    path === "/robots.txt" ||
+    path === "/sitemap.xml" ||
+    /\.(svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2|ttf|eot|map)$/.test(path)
+  ) {
+    return NextResponse.next()
+  }
+
   if (path.endsWith(".map")) {
     return new NextResponse(null, { status: 404 })
   }
@@ -363,14 +375,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder files
-     * - files with common extensions
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.gif|.*\\.webp|.*\\.ico|.*\\.css|.*\\.js|.*\\.woff|.*\\.woff2|.*\\.ttf|.*\\.eot|.*\\.map).*)",
+    "/((?!api/webhooks).*)", // Aplica middleware em todas as rotas exceto webhooks (eles têm sua própria validação)
   ],
 }
