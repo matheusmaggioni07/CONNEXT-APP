@@ -6,8 +6,6 @@
 @theme inline {
   --font-sans: "Inter", "Inter Fallback", system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", monospace;
-
-  /* Colors - using direct oklch values */
   --color-background: oklch(0.13 0.02 280);
   --color-foreground: oklch(0.98 0.01 280);
   --color-card: oklch(0.16 0.025 280);
@@ -32,14 +30,10 @@
   --color-chart-3: oklch(0.65 0.22 45);
   --color-chart-4: oklch(0.6 0.2 320);
   --color-chart-5: oklch(0.75 0.18 15);
-
-  /* Radius */
   --radius-sm: 0.5rem;
   --radius-md: 0.625rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-
-  /* Sidebar */
   --color-sidebar: oklch(0.14 0.025 280);
   --color-sidebar-foreground: oklch(0.98 0.01 280);
   --color-sidebar-primary: oklch(0.72 0.2 30);
@@ -59,7 +53,6 @@
   }
 }
 
-/* Custom futuristic styles for Connext App */
 .glow-orange {
   box-shadow: 0 0 20px oklch(0.72 0.2 30 / 0.4), 0 0 40px oklch(0.72 0.2 30 / 0.2);
 }

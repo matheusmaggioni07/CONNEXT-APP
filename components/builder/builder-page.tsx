@@ -197,455 +197,367 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     setThoughts((prev) => prev.map((t) => (t.id === id ? { ...t, status, duration } : t)))
   }
 
-  const generateFallbackCode = (prompt: string): string => {
+  function generateFallbackCode(prompt: string): string {
     const lowerPrompt = prompt.toLowerCase()
 
-    // Detectar times de futebol brasileiros
-    const isGremio = lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio")
-    const isInter = lowerPrompt.includes("inter") || lowerPrompt.includes("internacional")
-    const isFlamengo = lowerPrompt.includes("flamengo") || lowerPrompt.includes("mengão")
-    const isCorinthians = lowerPrompt.includes("corinthians") || lowerPrompt.includes("timão")
-    const isPalmeiras = lowerPrompt.includes("palmeiras") || lowerPrompt.includes("verdão")
-    const isSantos = lowerPrompt.includes("santos") || lowerPrompt.includes("peixe")
-    const isSaoPaulo =
-      lowerPrompt.includes("são paulo") || lowerPrompt.includes("spfc") || lowerPrompt.includes("tricolor paulista")
-    const isVasco = lowerPrompt.includes("vasco") || lowerPrompt.includes("vascão")
-    const isBotafogo = lowerPrompt.includes("botafogo") || lowerPrompt.includes("fogão")
-    const isFluminense = lowerPrompt.includes("fluminense") || lowerPrompt.includes("flu")
-    const isAtleticoMG =
-      lowerPrompt.includes("atlético") || lowerPrompt.includes("atletico") || lowerPrompt.includes("galo")
-    const isCruzeiro = lowerPrompt.includes("cruzeiro") || lowerPrompt.includes("raposa")
+    // Bijuterias / Joias
+    if (
+      lowerPrompt.includes("bijuteria") ||
+      lowerPrompt.includes("joia") ||
+      lowerPrompt.includes("acessório") ||
+      lowerPrompt.includes("manuella") ||
+      lowerPrompt.includes("semijoias")
+    ) {
+      const nomeMatch = prompt.match(/(?:da|de)\s+([A-Z][a-záàãéêíóôúç]+(?:\s+[A-Z][a-záàãéêíóôúç]+)*)/i)
+      const nome = nomeMatch ? nomeMatch[1] : "Elegância"
 
-    // Detectar clássicos
-    const isGrenal = (isGremio && isInter) || lowerPrompt.includes("grenal")
-    const isFlaFlu = (isFlamengo && isFluminense) || lowerPrompt.includes("fla-flu") || lowerPrompt.includes("flaflu")
-    const isClassico = lowerPrompt.includes("clássico") || lowerPrompt.includes("classico")
-
-    // Se for Grenal (Grêmio vs Inter)
-    if (isGrenal) {
-      return `export default function Grenal() {
+      return `export default function ${nome.replace(/\s/g, "")}Joias() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0047AB] via-[#1a1a2e] to-[#E31B23] text-white">
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
       <style>{\`
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @keyframes shimmer { to { background-position: 200% center; } }
+        .shimmer { animation: shimmer 3s linear infinite; background-size: 200% auto; }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-        .animate-pulse-slow { animation: pulse 3s ease-in-out infinite; }
-        .animate-float { animation: float 4s ease-in-out infinite; }
+        .float { animation: float 4s ease-in-out infinite; }
       \`}</style>
       
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/40 border-b border-white/10">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-12 h-12 rounded-full bg-[#0047AB] flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/30">G</div>
-              <span className="text-3xl font-black text-white/80">×</span>
-              <div className="w-12 h-12 rounded-full bg-[#E31B23] flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-red-500/30">I</div>
-            </div>
-            <div>
-              <span className="text-2xl font-black tracking-wider">GRENAL</span>
-              <p className="text-xs text-gray-400">O Maior Clássico do Sul</p>
-            </div>
+          <span className="text-2xl font-light tracking-[0.2em] bg-gradient-to-r from-rose-300 to-amber-300 bg-clip-text text-transparent">${nome.toUpperCase()}</span>
+          <div className="hidden md:flex items-center gap-8 text-sm">
+            <a href="#colecoes" className="text-gray-300 hover:text-white transition">Coleções</a>
+            <a href="#aneis" className="text-gray-300 hover:text-white transition">Anéis</a>
+            <a href="#colares" className="text-gray-300 hover:text-white transition">Colares</a>
+            <a href="#brincos" className="text-gray-300 hover:text-white transition">Brincos</a>
+            <a href="#sobre" className="text-gray-300 hover:text-white transition">Sobre</a>
           </div>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#historia" className="text-gray-300 hover:text-white transition font-medium">História</a>
-            <a href="#estatisticas" className="text-gray-300 hover:text-white transition font-medium">Estatísticas</a>
-            <a href="#jogos" className="text-gray-300 hover:text-white transition font-medium">Próximo Jogo</a>
-          </div>
+          <a href="https://wa.me/5551999999999" className="px-5 py-2 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full text-sm font-medium hover:opacity-90 transition">
+            WhatsApp
+          </a>
         </div>
       </nav>
-
-      <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
+      
+      <section className="min-h-screen flex items-center justify-center relative overflow-hidden pt-20">
         <div className="absolute inset-0">
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-[#0047AB]/40 rounded-full blur-[150px] animate-pulse-slow"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-[#E31B23]/40 rounded-full blur-[150px] animate-pulse-slow"></div>
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-rose-500/10 rounded-full blur-[128px]"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-[128px]"></div>
         </div>
-        
-        <div className="relative z-10 text-center px-6 max-w-6xl">
-          <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 border border-white/20 mb-10 backdrop-blur-sm">
-            <span className="text-2xl">⚽</span>
-            <span className="text-sm font-semibold tracking-wide">RIVALIDADE CENTENÁRIA</span>
-          </div>
-          
-          <h1 className="text-7xl md:text-9xl font-black mb-8 leading-none">
-            <span className="text-[#0047AB] drop-shadow-lg">GRÊMIO</span>
-            <span className="mx-6 text-white/60">vs</span>
-            <span className="text-[#E31B23] drop-shadow-lg">INTER</span>
+        <div className="text-center z-10 px-6">
+          <p className="text-rose-300 tracking-widest text-sm mb-6 uppercase">Joias & Bijuterias Exclusivas</p>
+          <h1 className="text-5xl sm:text-6xl md:text-8xl font-light mb-8 bg-gradient-to-r from-rose-200 via-amber-200 to-rose-200 bg-clip-text text-transparent shimmer">
+            ${nome.toUpperCase()}
           </h1>
-          
-          <p className="text-xl md:text-2xl text-gray-300 mb-16 max-w-3xl mx-auto leading-relaxed">
-            Mais de <strong className="text-white">100 anos</strong> de rivalidade, paixão e história no futebol gaúcho. 
-            O clássico que para o Rio Grande do Sul.
+          <p className="text-xl text-gray-400 max-w-xl mx-auto mb-12 leading-relaxed">
+            Peças únicas que contam histórias e realçam sua beleza natural. Feitas com amor e dedicação.
           </p>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
-            <div className="text-center p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm animate-float" style={{animationDelay: '0s'}}>
-              <div className="text-5xl font-black bg-gradient-to-r from-blue-400 to-red-400 bg-clip-text text-transparent mb-2">440+</div>
-              <div className="text-gray-400 font-medium">Confrontos</div>
-            </div>
-            <div className="text-center p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm animate-float" style={{animationDelay: '0.2s'}}>
-              <div className="text-5xl font-black text-white mb-2">1909</div>
-              <div className="text-gray-400 font-medium">Primeiro Jogo</div>
-            </div>
-            <div className="text-center p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm animate-float" style={{animationDelay: '0.4s'}}>
-              <div className="text-5xl font-black text-[#0047AB] mb-2">3</div>
-              <div className="text-gray-400 font-medium">Libertadores Grêmio</div>
-            </div>
-            <div className="text-center p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm animate-float" style={{animationDelay: '0.6s'}}>
-              <div className="text-5xl font-black text-[#E31B23] mb-2">3</div>
-              <div className="text-gray-400 font-medium">Libertadores Inter</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="historia" className="py-32 px-6 bg-black/20">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <span className="text-sm font-semibold text-purple-400 tracking-wider uppercase mb-4 block">Dois Gigantes</span>
-            <h2 className="text-5xl md:text-6xl font-black">História do Clássico</h2>
-          </div>
-          
-          <div className="grid md:grid-cols-2 gap-12">
-            <div className="bg-gradient-to-br from-[#0047AB]/30 to-transparent p-10 rounded-3xl border border-[#0047AB]/40 hover:border-[#0047AB]/60 transition-all hover:transform hover:scale-[1.02]">
-              <div className="w-20 h-20 rounded-full bg-[#0047AB] flex items-center justify-center text-3xl font-black mb-8 shadow-lg shadow-blue-500/30">G</div>
-              <h3 className="text-3xl font-bold mb-4">Grêmio FBPA</h3>
-              <p className="text-gray-400 mb-6 text-lg leading-relaxed">Fundado em 1903, o Imortal Tricolor é um dos clubes mais vitoriosos do Brasil, com títulos internacionais e uma torcida apaixonada.</p>
-              <ul className="space-y-3 text-gray-300">
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">🏆</span> 3x Libertadores da América</li>
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">🌍</span> 2x Mundial de Clubes</li>
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">🏅</span> 5x Copa do Brasil</li>
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">⭐</span> 42+ Campeonatos Gaúchos</li>
-              </ul>
-            </div>
-            <div className="bg-gradient-to-br from-[#E31B23]/30 to-transparent p-10 rounded-3xl border border-[#E31B23]/40 hover:border-[#E31B23]/60 transition-all hover:transform hover:scale-[1.02]">
-              <div className="w-20 h-20 rounded-full bg-[#E31B23] flex items-center justify-center text-3xl font-black mb-8 shadow-lg shadow-red-500/30">I</div>
-              <h3 className="text-3xl font-bold mb-4">Internacional</h3>
-              <p className="text-gray-400 mb-6 text-lg leading-relaxed">Fundado em 1909, o Colorado é conhecido como o Clube do Povo, com conquistas históricas e uma das maiores torcidas do país.</p>
-              <ul className="space-y-3 text-gray-300">
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">🏆</span> 3x Libertadores da América</li>
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">🌍</span> 1x Mundial de Clubes</li>
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">🏅</span> 3x Copa do Brasil</li>
-                <li className="flex items-center gap-3"><span className="text-yellow-400 text-xl">⭐</span> 45+ Campeonatos Gaúchos</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="jogos" className="py-32 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <span className="text-sm font-semibold text-purple-400 tracking-wider uppercase mb-4 block">Aguardado</span>
-          <h2 className="text-5xl md:text-6xl font-black mb-16">Próximo Grenal</h2>
-          
-          <div className="bg-white/5 backdrop-blur-2xl rounded-3xl p-12 border border-white/10 shadow-2xl">
-            <div className="flex items-center justify-center gap-12 mb-10">
-              <div className="text-center">
-                <div className="w-24 h-24 rounded-full bg-[#0047AB] flex items-center justify-center text-4xl font-black mb-4 shadow-lg shadow-blue-500/30 mx-auto">G</div>
-                <span className="font-bold text-xl">Grêmio</span>
-              </div>
-              <div className="text-center">
-                <div className="text-5xl font-black text-gray-500 mb-2">VS</div>
-                <div className="text-sm text-gray-500">Clássico 445</div>
-              </div>
-              <div className="text-center">
-                <div className="w-24 h-24 rounded-full bg-[#E31B23] flex items-center justify-center text-4xl font-black mb-4 shadow-lg shadow-red-500/30 mx-auto">I</div>
-                <span className="font-bold text-xl">Inter</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-2xl font-bold">Arena do Grêmio</p>
-              <p className="text-gray-400 text-lg">Campeonato Gaúcho 2025</p>
-              <p className="text-purple-400 font-semibold">Em breve</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <footer className="py-12 px-6 border-t border-white/10 bg-black/30">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <div className="w-8 h-8 rounded-full bg-[#0047AB] flex items-center justify-center text-sm font-bold">G</div>
-            <span className="text-xl font-bold">GRENAL</span>
-            <div className="w-8 h-8 rounded-full bg-[#E31B23] flex items-center justify-center text-sm font-bold">I</div>
-          </div>
-          <p className="text-gray-500">© 2025 - O Maior Clássico do Sul. Criado com Connext Builder.</p>
-        </div>
-      </footer>
-    </div>
-  )
-}
-`
-    }
-
-    // Se for apenas Grêmio
-    if (isGremio && !isInter) {
-      return `export default function SiteGremio() {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0047AB] via-[#003380] to-[#001a40] text-white">
-      <style>{\`
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        .animate-shimmer { animation: shimmer 3s linear infinite; background-size: 200% 100%; }
-      \`}</style>
-      
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#0047AB]/80 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-lg">
-              <span className="text-[#0047AB] font-black text-2xl">G</span>
-            </div>
-            <div>
-              <span className="text-xl font-bold tracking-wide">GRÊMIO FBPA</span>
-              <p className="text-xs text-blue-200">Imortal Tricolor</p>
-            </div>
-          </div>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#" className="hover:text-blue-200 transition font-medium">História</a>
-            <a href="#" className="hover:text-blue-200 transition font-medium">Elenco</a>
-            <a href="#" className="hover:text-blue-200 transition font-medium">Títulos</a>
-            <button className="px-6 py-2 bg-white text-[#0047AB] font-bold rounded-full hover:bg-blue-100 transition">
-              Seja Sócio
-            </button>
-          </div>
-        </div>
-      </nav>
-      
-      <section className="min-h-screen flex items-center justify-center pt-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/gremio-arena-stadium-night.jpg')] bg-cover bg-center opacity-20"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#001a40] via-transparent to-transparent"></div>
-        
-        <div className="relative z-10 text-center px-6 max-w-5xl">
-          <div className="w-40 h-40 mx-auto mb-10 rounded-full bg-white flex items-center justify-center shadow-2xl shadow-black/50">
-            <span className="text-[#0047AB] font-black text-7xl">G</span>
-          </div>
-          
-          <h1 className="text-7xl md:text-9xl font-black mb-6 tracking-tight">GRÊMIO</h1>
-          <p className="text-2xl md:text-3xl font-light mb-2 text-blue-100">Foot-Ball Porto Alegrense</p>
-          <p className="text-lg text-blue-300 mb-12">Fundado em 15 de setembro de 1903</p>
-          
-          <div className="flex flex-wrap justify-center gap-4 mb-16">
-            <button className="px-10 py-4 bg-white text-[#0047AB] font-bold rounded-xl hover:bg-blue-100 transition shadow-lg shadow-black/20">
-              Seja Sócio Torcedor
-            </button>
-            <button className="px-10 py-4 border-2 border-white rounded-xl hover:bg-white/10 transition">
-              Conheça a Arena
-            </button>
-          </div>
-          
-          <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 border border-white/20">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-            <span className="text-sm">Próximo jogo: Grêmio vs Juventude - Gauchão 2025</span>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="#colecoes" className="px-8 py-4 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full font-medium hover:scale-105 transition-transform">
+              Ver Coleções
+            </a>
+            <a href="https://instagram.com" target="_blank" className="px-8 py-4 border border-white/20 rounded-full font-medium hover:bg-white/10 transition flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+              @${nome.toLowerCase().replace(/\s/g, "")}
+            </a>
           </div>
         </div>
       </section>
       
-      <section className="py-24 px-6 bg-black/30">
+      <section id="colecoes" className="py-24 px-6">
         <div className="max-w-7xl mx-auto">
-          <h2 className="text-4xl md:text-5xl font-bold text-center mb-16">Títulos e Conquistas</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4 drop-shadow-lg">3</div>
-              <div className="font-bold text-lg">Libertadores</div>
-              <div className="text-sm text-gray-400">1983, 1995, 2017</div>
-            </div>
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4 drop-shadow-lg">2</div>
-              <div className="font-bold text-lg">Mundiais</div>
-              <div className="text-sm text-gray-400">1983, 2017</div>
-            </div>
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4 drop-shadow-lg">5</div>
-              <div className="font-bold text-lg">Copa do Brasil</div>
-              <div className="text-sm text-gray-400">89, 94, 97, 01, 16</div>
-            </div>
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4 drop-shadow-lg">42</div>
-              <div className="font-bold text-lg">Gauchões</div>
-              <div className="text-sm text-gray-400">Recordista</div>
-            </div>
+          <div className="text-center mb-16">
+            <p className="text-rose-300 tracking-widest text-sm mb-4">NOSSOS DESTAQUES</p>
+            <h2 className="text-4xl md:text-5xl font-light">Coleções Exclusivas</h2>
           </div>
-        </div>
-      </section>
-
-      <section className="py-24 px-6">
-        <div className="max-w-7xl mx-auto">
-          <h2 className="text-4xl md:text-5xl font-bold text-center mb-16">Lendas Imortais</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {["Renato Portaluppi", "Mário Sérgio", "Hugo de León", "Jardel"].map((player, i) => (
-              <div key={i} className="text-center p-6 bg-white/5 rounded-2xl border border-white/10">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-2xl font-bold">
-                  {player.charAt(0)}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { name: 'Anel Aurora', price: 'R$ 89,90', emoji: '💍' },
+              { name: 'Colar Estrela', price: 'R$ 129,90', emoji: '📿' },
+              { name: 'Brinco Pérola', price: 'R$ 69,90', emoji: '✨' },
+              { name: 'Pulseira Luxo', price: 'R$ 99,90', emoji: '💎' },
+            ].map((item, i) => (
+              <div key={i} className="group cursor-pointer">
+                <div className="aspect-square bg-gradient-to-br from-rose-900/30 via-black to-amber-900/30 rounded-2xl mb-4 flex items-center justify-center border border-white/10 group-hover:border-rose-500/50 transition-all duration-300 group-hover:scale-[1.02]">
+                  <span className="text-7xl float" style={{ animationDelay: i * 0.2 + 's' }}>{item.emoji}</span>
                 </div>
-                <div className="font-bold">{player}</div>
+                <h3 className="text-lg font-medium mb-1 group-hover:text-rose-300 transition">{item.name}</h3>
+                <p className="text-rose-300 font-medium">{item.price}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
       
-      <footer className="py-12 px-6 border-t border-white/10 bg-[#001a40]">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white flex items-center justify-center">
-            <span className="text-[#0047AB] font-black text-2xl">G</span>
-          </div>
-          <p className="text-blue-300 font-semibold mb-2">Grêmio Foot-Ball Porto Alegrense</p>
-          <p className="text-gray-500 text-sm">© 2025 - Imortal Tricolor. Criado com Connext Builder.</p>
-        </div>
-      </footer>
-    </div>
-  )
-}
-`
-    }
-
-    // Se for apenas Inter
-    if (isInter && !isGremio) {
-      return `export default function SiteInter() {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-[#E31B23] via-[#b01820] to-[#5a0000] text-white">
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#E31B23]/80 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-lg">
-              <span className="text-[#E31B23] font-black text-2xl">I</span>
+      <section id="sobre" className="py-24 px-6 bg-gradient-to-b from-transparent via-rose-950/10 to-transparent">
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-rose-300 tracking-widest text-sm mb-4">NOSSA HISTÓRIA</p>
+          <h2 className="text-4xl md:text-5xl font-light mb-8">Sobre ${nome}</h2>
+          <p className="text-gray-400 text-lg leading-relaxed mb-8">
+            Com mais de 5 anos de experiência criando peças exclusivas, ${nome} transforma sonhos em realidade.
+            Cada bijuteria é cuidadosamente selecionada para realçar a beleza única de cada pessoa.
+            Trabalhamos com materiais de alta qualidade para garantir durabilidade e brilho.
+          </p>
+          <div className="grid sm:grid-cols-3 gap-8 mt-12">
+            <div className="text-center">
+              <div className="text-4xl font-light text-rose-300 mb-2">500+</div>
+              <p className="text-gray-500">Clientes Felizes</p>
             </div>
-            <div>
-              <span className="text-xl font-bold tracking-wide">INTERNACIONAL</span>
-              <p className="text-xs text-red-200">Clube do Povo</p>
+            <div className="text-center">
+              <div className="text-4xl font-light text-rose-300 mb-2">1000+</div>
+              <p className="text-gray-500">Peças Vendidas</p>
             </div>
-          </div>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#" className="hover:text-red-200 transition font-medium">História</a>
-            <a href="#" className="hover:text-red-200 transition font-medium">Elenco</a>
-            <a href="#" className="hover:text-red-200 transition font-medium">Títulos</a>
-            <button className="px-6 py-2 bg-white text-[#E31B23] font-bold rounded-full hover:bg-red-100 transition">
-              Seja Sócio
-            </button>
-          </div>
-        </div>
-      </nav>
-      
-      <section className="min-h-screen flex items-center justify-center pt-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/beira-rio-stadium-inter-night.jpg')] bg-cover bg-center opacity-20"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#5a0000] via-transparent to-transparent"></div>
-        
-        <div className="relative z-10 text-center px-6 max-w-5xl">
-          <div className="w-40 h-40 mx-auto mb-10 rounded-full bg-white flex items-center justify-center shadow-2xl shadow-black/50">
-            <span className="text-[#E31B23] font-black text-7xl">I</span>
-          </div>
-          
-          <h1 className="text-7xl md:text-9xl font-black mb-6 tracking-tight">INTER</h1>
-          <p className="text-2xl md:text-3xl font-light mb-2 text-red-100">Sport Club Internacional</p>
-          <p className="text-lg text-red-300 mb-12">Fundado em 4 de abril de 1909</p>
-          
-          <div className="flex flex-wrap justify-center gap-4 mb-16">
-            <button className="px-10 py-4 bg-white text-[#E31B23] font-bold rounded-xl hover:bg-red-100 transition shadow-lg shadow-black/20">
-              Seja Sócio Colorado
-            </button>
-            <button className="px-10 py-4 border-2 border-white rounded-xl hover:bg-white/10 transition">
-              Conheça o Beira-Rio
-            </button>
-          </div>
-        </div>
-      </section>
-      
-      <section className="py-24 px-6 bg-black/30">
-        <div className="max-w-7xl mx-auto">
-          <h2 className="text-4xl md:text-5xl font-bold text-center mb-16">Títulos e Conquistas</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4">3</div>
-              <div className="font-bold text-lg">Libertadores</div>
-              <div className="text-sm text-gray-400">2006, 2010, 2025</div>
-            </div>
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4">1</div>
-              <div className="font-bold text-lg">Mundial</div>
-              <div className="text-sm text-gray-400">2006</div>
-            </div>
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4">3</div>
-              <div className="font-bold text-lg">Copa do Brasil</div>
-              <div className="text-sm text-gray-400">1992, 2022, 2023</div>
-            </div>
-            <div className="text-center p-8 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl border border-white/10 hover:border-yellow-500/50 transition-all hover:transform hover:scale-105">
-              <div className="text-6xl font-black text-yellow-400 mb-4">45</div>
-              <div className="font-bold text-lg">Gauchões</div>
-              <div className="text-sm text-gray-400">Maior campeão</div>
+            <div className="text-center">
+              <div className="text-4xl font-light text-rose-300 mb-2">5⭐</div>
+              <p className="text-gray-500">Avaliação</p>
             </div>
           </div>
         </div>
       </section>
       
-      <footer className="py-12 px-6 border-t border-white/10 bg-[#5a0000]">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white flex items-center justify-center">
-            <span className="text-[#E31B23] font-black text-2xl">I</span>
-          </div>
-          <p className="text-red-300 font-semibold mb-2">Sport Club Internacional</p>
-          <p className="text-gray-500 text-sm">© 2025 - Colorado. Criado com Connext Builder.</p>
-        </div>
-      </footer>
-    </div>
-  )
-}
-`
-    }
-
-    // Se for Flamengo
-    if (isFlamengo) {
-      return `export default function SiteFlamengo() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#BF0000] via-[#8B0000] to-black text-white">
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-[#BF0000] flex items-center justify-center border-2 border-white">
-              <span className="font-black text-xl">F</span>
+      <section className="py-24 px-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gradient-to-r from-rose-900/40 via-black to-amber-900/40 rounded-3xl p-8 sm:p-12 text-center border border-white/10">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             </div>
-            <span className="text-xl font-bold">FLAMENGO</span>
-          </div>
-        </div>
-      </nav>
-      
-      <section className="min-h-screen flex items-center justify-center pt-20">
-        <div className="text-center px-6">
-          <h1 className="text-7xl md:text-9xl font-black mb-6">MENGÃO</h1>
-          <p className="text-2xl text-red-200 mb-12">A Maior Torcida do Mundo</p>
-          <div className="grid grid-cols-3 gap-8 max-w-xl mx-auto">
-            <div className="text-center">
-              <div className="text-4xl font-black text-yellow-400">3</div>
-              <div className="text-sm text-gray-400">Libertadores</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-black text-yellow-400">1</div>
-              <div className="text-sm text-gray-400">Mundial</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-black text-yellow-400">8</div>
-              <div className="text-sm text-gray-400">Brasileirões</div>
-            </div>
+            <h3 className="text-2xl sm:text-3xl font-light mb-4">Quer uma peça exclusiva?</h3>
+            <p className="text-gray-400 mb-8 max-w-lg mx-auto">
+              Entre em contato pelo WhatsApp e receba atendimento personalizado. Enviamos para todo o Brasil!
+            </p>
+            <a href="https://wa.me/5551999999999" target="_blank" className="inline-flex items-center gap-3 px-8 py-4 bg-emerald-600 rounded-full font-medium hover:bg-emerald-500 transition-colors">
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              Falar no WhatsApp
+            </a>
           </div>
         </div>
       </section>
       
-      <footer className="py-8 text-center border-t border-white/10">
-        <p className="text-gray-500">© 2025 Flamengo - Criado com Connext Builder</p>
+      <footer className="py-12 px-6 border-t border-white/10">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <span className="text-xl font-light tracking-widest bg-gradient-to-r from-rose-300 to-amber-300 bg-clip-text text-transparent">${nome.toUpperCase()}</span>
+          <p className="text-gray-500 text-sm">© 2025 ${nome} - Todos os direitos reservados</p>
+          <p className="text-gray-600 text-xs">Criado com Connext Builder</p>
+        </div>
       </footer>
     </div>
   )
 }`
     }
 
-    // Fallback genérico para outros casos
+    // Grenal
+    if (lowerPrompt.includes("grenal") || (lowerPrompt.includes("gremio") && lowerPrompt.includes("inter"))) {
+      return `export default function Grenal() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#0047AB] via-black to-[#E31B23] text-white overflow-hidden">
+      <style>{\`
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .pulse { animation: pulse 2s infinite; }
+      \`}</style>
+      
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-center gap-8">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-[#0047AB] flex items-center justify-center border-2 border-white font-bold">G</div>
+            <span className="font-bold">GRÊMIO</span>
+          </div>
+          <span className="text-2xl font-black text-yellow-400">VS</span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold">INTER</span>
+            <div className="w-10 h-10 rounded-full bg-[#E31B23] flex items-center justify-center border-2 border-white font-bold">I</div>
+          </div>
+        </div>
+      </nav>
+      
+      <section className="min-h-screen flex items-center justify-center pt-20 px-6">
+        <div className="text-center">
+          <p className="text-yellow-400 tracking-widest mb-4 pulse">O MAIOR CLÁSSICO DO SUL</p>
+          <h1 className="text-6xl sm:text-7xl md:text-9xl font-black mb-8">GRE-NAL</h1>
+          <p className="text-2xl text-gray-300 mb-12">Rivalidade centenária que move o Rio Grande do Sul</p>
+          
+          <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
+            <div className="bg-[#0047AB]/50 backdrop-blur p-8 rounded-2xl border border-white/20">
+              <div className="text-5xl font-black mb-2">441</div>
+              <div className="text-sm text-gray-300">Vitórias do Grêmio</div>
+            </div>
+            <div className="bg-[#E31B23]/50 backdrop-blur p-8 rounded-2xl border border-white/20">
+              <div className="text-5xl font-black mb-2">423</div>
+              <div className="text-sm text-gray-300">Vitórias do Inter</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <section className="py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-4xl font-bold mb-8">Números do Clássico</h2>
+          <div className="grid sm:grid-cols-4 gap-6">
+            <div className="bg-white/5 p-6 rounded-2xl">
+              <div className="text-3xl font-bold text-yellow-400">436</div>
+              <div className="text-sm text-gray-400">Empates</div>
+            </div>
+            <div className="bg-white/5 p-6 rounded-2xl">
+              <div className="text-3xl font-bold text-yellow-400">1909</div>
+              <div className="text-sm text-gray-400">Primeiro Jogo</div>
+            </div>
+            <div className="bg-white/5 p-6 rounded-2xl">
+              <div className="text-3xl font-bold text-yellow-400">1300+</div>
+              <div className="text-sm text-gray-400">Jogos</div>
+            </div>
+            <div className="bg-white/5 p-6 rounded-2xl">
+              <div className="text-3xl font-bold text-yellow-400">2</div>
+              <div className="text-sm text-gray-400">Maiores do Sul</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <footer className="py-8 px-6 border-t border-white/10 text-center">
+        <p className="text-gray-500">Criado com Connext Builder</p>
+      </footer>
+    </div>
+  )
+}`
+    }
+
+    // Grêmio
+    if (lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio") || lowerPrompt.includes("tricolor")) {
+      return `export default function GremioFBPA() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#0047AB] via-[#001a3a] to-black text-white">
+      <style>{\`
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .float { animation: float 3s ease-in-out infinite; }
+      \`}</style>
+      
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#0047AB]/80 border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center">
+              <span className="text-[#0047AB] font-black text-xl">G</span>
+            </div>
+            <span className="text-xl font-bold tracking-wide">GRÊMIO FBPA</span>
+          </div>
+          <div className="hidden md:flex items-center gap-6 text-sm">
+            <a href="#" className="hover:text-sky-300 transition">Títulos</a>
+            <a href="#" className="hover:text-sky-300 transition">Elenco</a>
+            <a href="#" className="hover:text-sky-300 transition">Arena</a>
+            <a href="#" className="hover:text-sky-300 transition">Loja</a>
+          </div>
+          <button className="px-5 py-2 bg-white text-[#0047AB] rounded-full font-bold text-sm hover:bg-sky-100 transition">
+            Sócio Torcedor
+          </button>
+        </div>
+      </nav>
+      
+      <section className="min-h-screen flex items-center justify-center pt-20 px-6 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-sky-400 rounded-full blur-[128px]"></div>
+        </div>
+        <div className="text-center z-10">
+          <p className="text-sky-300 tracking-[0.3em] text-sm mb-6 uppercase">Imortal Tricolor</p>
+          <h1 className="text-6xl sm:text-7xl md:text-9xl font-black mb-8 float">GRÊMIO</h1>
+          <p className="text-2xl text-sky-200 mb-12">Desde 1903 fazendo história</p>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-3xl mx-auto">
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">3</div>
+              <div className="text-sm text-sky-200">Libertadores</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">2</div>
+              <div className="text-sm text-sky-200">Mundiais</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">5</div>
+              <div className="text-sm text-sky-200">Copa do Brasil</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">42+</div>
+              <div className="text-sm text-sky-200">Gauchões</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <section className="py-24 px-6 bg-black/50">
+        <div className="max-w-6xl mx-auto text-center">
+          <h2 className="text-4xl font-bold mb-12">Arena do Grêmio</h2>
+          <div className="aspect-video bg-gradient-to-br from-[#0047AB]/50 to-black rounded-3xl flex items-center justify-center border border-white/10">
+            <span className="text-8xl">🏟️</span>
+          </div>
+          <p className="text-gray-400 mt-6">Capacidade: 55.662 torcedores</p>
+        </div>
+      </section>
+      
+      <footer className="py-8 px-6 border-t border-white/10 text-center">
+        <p className="text-gray-500">© 2025 Grêmio FBPA - Criado com Connext Builder</p>
+      </footer>
+    </div>
+  )
+}`
+    }
+
+    // Internacional
+    if (lowerPrompt.includes("internacional") || lowerPrompt.includes("inter") || lowerPrompt.includes("colorado")) {
+      return `export default function Internacional() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#E31B23] via-[#8B0000] to-black text-white">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#E31B23]/80 border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center">
+              <span className="text-[#E31B23] font-black text-xl">I</span>
+            </div>
+            <span className="text-xl font-bold tracking-wide">INTERNACIONAL</span>
+          </div>
+          <button className="px-5 py-2 bg-white text-[#E31B23] rounded-full font-bold text-sm">
+            Sócio Colorado
+          </button>
+        </div>
+      </nav>
+      
+      <section className="min-h-screen flex items-center justify-center pt-20 px-6">
+        <div className="text-center">
+          <p className="text-red-200 tracking-[0.3em] text-sm mb-6 uppercase">Clube do Povo</p>
+          <h1 className="text-6xl sm:text-7xl md:text-9xl font-black mb-8">INTER</h1>
+          <p className="text-2xl text-red-200 mb-12">Desde 1909 fazendo história</p>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-3xl mx-auto">
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">3</div>
+              <div className="text-sm text-red-200">Libertadores</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">1</div>
+              <div className="text-sm text-red-200">Mundial</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">3</div>
+              <div className="text-sm text-red-200">Copa do Brasil</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur p-6 rounded-2xl border border-white/20">
+              <div className="text-4xl font-black text-yellow-400">45+</div>
+              <div className="text-sm text-red-200">Gauchões</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <footer className="py-8 px-6 border-t border-white/10 text-center">
+        <p className="text-gray-500">© 2025 Internacional - Criado com Connext Builder</p>
+      </footer>
+    </div>
+  )
+}`
+    }
+
+    // Landing page / startup / SaaS
     if (
       lowerPrompt.includes("landing") ||
-      lowerPrompt.includes("página") ||
-      lowerPrompt.includes("home") ||
       lowerPrompt.includes("startup") ||
+      lowerPrompt.includes("saas") ||
       lowerPrompt.includes("empresa") ||
       lowerPrompt.includes("negócio") ||
-      lowerPrompt.includes("produto") ||
-      lowerPrompt.includes("site")
+      lowerPrompt.includes("produto")
     ) {
       return `export default function LandingPage() {
   return (
@@ -653,7 +565,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       <style>{\`
         @keyframes gradient { to { background-position: 200% center; } }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-        .animate-gradient { animation: gradient 8s linear infinite; }
+        .animate-gradient { animation: gradient 8s linear infinite; background-size: 200% auto; }
         .animate-float { animation: float 6s ease-in-out infinite; }
       \`}</style>
       
@@ -672,7 +584,14 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
             </div>
             <span className="text-lg font-semibold">SuaMarca</span>
           </div>
-          <button className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-medium">Começar</button>
+          <div className="hidden md:flex items-center gap-8 text-sm text-gray-400">
+            <a href="#" className="hover:text-white transition">Features</a>
+            <a href="#" className="hover:text-white transition">Pricing</a>
+            <a href="#" className="hover:text-white transition">About</a>
+          </div>
+          <button className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-medium hover:opacity-90 transition">
+            Começar Grátis
+          </button>
         </div>
       </nav>
 
@@ -685,13 +604,13 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
             </span>
             <span className="text-sm text-violet-300">Disponível em todo Brasil</span>
           </div>
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-8">
-            <span className="bg-gradient-to-b from-white to-gray-600 bg-clip-text text-transparent">Crie produtos</span>
+          <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-8 leading-tight">
+            <span className="bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">Crie produtos</span>
             <br />
-            <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent animate-gradient bg-[length:200%_auto]">incríveis</span>
+            <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent animate-gradient">incríveis</span>
           </h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-12">
-            A plataforma completa que ajuda você a criar, lançar e escalar seus produtos digitais.
+          <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
+            A plataforma completa que ajuda você a criar, lançar e escalar seus produtos digitais com facilidade.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button className="px-8 py-4 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 font-semibold hover:scale-105 transition-transform">
@@ -702,19 +621,108 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
               Ver Demo
             </button>
           </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mt-20 max-w-3xl mx-auto">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-1">99.9%</div>
+              <div className="text-sm text-gray-500">Uptime</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-1">10M+</div>
+              <div className="text-sm text-gray-500">Usuários</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-1">150+</div>
+              <div className="text-sm text-gray-500">Países</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-1">24/7</div>
+              <div className="text-sm text-gray-500">Suporte</div>
+            </div>
+          </div>
         </div>
       </section>
       
       <footer className="py-12 px-6 border-t border-white/5 text-center">
-        <p className="text-gray-600">Criado com Connext Builder</p>
+        <p className="text-gray-600">© 2025 SuaMarca - Criado com Connext Builder</p>
       </footer>
     </div>
   )
 }`
     }
 
-    // Fallback padrão
-    return `export default function Component() {
+    // Portfolio
+    if (
+      lowerPrompt.includes("portfolio") ||
+      lowerPrompt.includes("portfólio") ||
+      lowerPrompt.includes("designer") ||
+      lowerPrompt.includes("desenvolvedor")
+    ) {
+      const nomeMatch = prompt.match(/(?:de|do|da)\s+([A-Z][a-záàãéêíóôúç]+(?:\s+[A-Z][a-záàãéêíóôúç]+)*)/i)
+      const nome = nomeMatch ? nomeMatch[1] : "João Silva"
+
+      return `export default function Portfolio() {
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/5">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <span className="text-xl font-bold">${nome.split(" ")[0]}.</span>
+          <div className="hidden md:flex items-center gap-8 text-sm text-gray-400">
+            <a href="#" className="hover:text-white transition">Projetos</a>
+            <a href="#" className="hover:text-white transition">Sobre</a>
+            <a href="#" className="hover:text-white transition">Contato</a>
+          </div>
+          <a href="#contato" className="px-5 py-2 bg-white text-black rounded-full text-sm font-medium hover:bg-gray-200 transition">
+            Contratar
+          </a>
+        </div>
+      </nav>
+      
+      <section className="min-h-screen flex items-center justify-center pt-20 px-6">
+        <div className="text-center max-w-3xl">
+          <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-5xl">
+            👨‍💻
+          </div>
+          <p className="text-violet-400 text-sm tracking-widest mb-4 uppercase">Designer & Developer</p>
+          <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6">${nome}</h1>
+          <p className="text-xl text-gray-400 mb-10 leading-relaxed">
+            Criando experiências digitais únicas e memoráveis. Especializado em design de interfaces e desenvolvimento web.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            {['React', 'Next.js', 'Figma', 'Tailwind', 'TypeScript'].map((skill) => (
+              <span key={skill} className="px-4 py-2 bg-white/5 rounded-full text-sm border border-white/10">{skill}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+      
+      <section className="py-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold mb-12 text-center">Projetos Recentes</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            {['App Fintech', 'E-commerce', 'Dashboard SaaS', 'Landing Page'].map((project, i) => (
+              <div key={i} className="group cursor-pointer">
+                <div className="aspect-video bg-gradient-to-br from-violet-900/30 to-fuchsia-900/30 rounded-2xl mb-4 flex items-center justify-center border border-white/10 group-hover:border-violet-500/50 transition">
+                  <span className="text-4xl">🎨</span>
+                </div>
+                <h3 className="text-lg font-medium group-hover:text-violet-400 transition">{project}</h3>
+                <p className="text-sm text-gray-500">UI/UX Design & Development</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      
+      <footer className="py-12 px-6 border-t border-white/5 text-center">
+        <p className="text-gray-600">© 2025 ${nome} - Criado com Connext Builder</p>
+      </footer>
+    </div>
+  )
+}`
+    }
+
+    // Default fallback
+    return `export default function Site() {
   return (
     <div className="min-h-screen bg-[#030014] text-white flex items-center justify-center p-8">
       <div className="max-w-2xl text-center">
@@ -727,7 +735,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           Descreva seu site
         </h1>
         <p className="text-xl text-gray-400 mb-8">
-          Seja específico! Por exemplo: "Crie um site do Grêmio" ou "Landing page para minha startup de IA"
+          Seja específico! Por exemplo: "Crie um site de bijuterias da Maria" ou "Landing page para minha startup de IA"
         </p>
       </div>
     </div>
@@ -991,6 +999,13 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const generatePreviewHtml = (code: string) => {
+    // Extract the component name from the code
+    const componentMatch = code.match(/export\s+default\s+function\s+(\w+)/)
+    const componentName = componentMatch ? componentMatch[1] : null
+
+    // Log for debugging
+    console.log("[v0] Generating preview, detected component:", componentName)
+
     return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1006,35 +1021,107 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
             'float': 'float 6s ease-in-out infinite',
             'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             'ping': 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
+            'shimmer': 'shimmer 3s linear infinite',
+            'spin': 'spin 1s linear infinite',
+            'bounce': 'bounce 1s infinite',
           }
         }
       }
     }
   </script>
   <style>
-    @keyframes gradient { to { background-position: 200% center; } }
+    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
     @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-    .animate-gradient { animation: gradient 8s linear infinite; background-size: 200% auto; }
+    @keyframes shimmer { to { background-position: 200% center; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes bounce { 0%, 100% { transform: translateY(-5%); } 50% { transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-gradient { animation: gradient 8s ease infinite; background-size: 200% 200%; }
     .animate-float { animation: float 6s ease-in-out infinite; }
+    .shimmer { animation: shimmer 3s linear infinite; background-size: 200% auto; }
+    .float { animation: float 4s ease-in-out infinite; }
+    .fade-in { animation: fadeIn 0.6s ease-out forwards; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { min-height: 100%; background: #030014; }
-    body { font-family: system-ui, -apple-system, sans-serif; }
+    html { scroll-behavior: smooth; }
+    html, body, #root { min-height: 100%; width: 100%; }
+    body { 
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #030014;
+      color: white;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    img { max-width: 100%; height: auto; }
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback } = React;
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+    
+    // Inject user generated code
     ${code}
-    const ComponentToRender = typeof Component !== 'undefined' ? Component : 
-                              typeof LandingPage !== 'undefined' ? LandingPage :
-                              typeof Page !== 'undefined' ? Page :
-                              typeof App !== 'undefined' ? App : 
-                              (() => <div className="min-h-screen bg-[#030014] flex items-center justify-center text-white">Preview</div>);
-    ReactDOM.createRoot(document.getElementById('root')).render(<ComponentToRender />);
+    
+    // Dynamic component detection - find any exported default function
+    let ComponentToRender = null;
+    
+    // Try to find the component by checking common names and the detected name
+    const possibleNames = [
+      ${componentName ? `'${componentName}',` : ""}
+      'ManuellaJoias', 'ManuellamaggioniBijuterias', 'EleganciaJoias', 'JoiasSite',
+      'Grenal', 'GremioFBPA', 'Internacional', 'FlamengoSite', 'TimeSite',
+      'LandingPage', 'Portfolio', 'Site', 'Component', 'Page', 'App', 'Home',
+      'MainComponent', 'Website', 'Landing', 'HomePage', 'MainPage',
+      'BijouxSite', 'BijuteriaSite', 'JewelrySite', 'StoreSite', 'EcommerceSite',
+      'StartupSite', 'SaaSLanding', 'AgencySite', 'RestaurantSite', 'CafeSite'
+    ];
+    
+    for (const name of possibleNames) {
+      try {
+        const comp = eval(name);
+        if (typeof comp === 'function') {
+          ComponentToRender = comp;
+          console.log('[Connext] Found component:', name);
+          break;
+        }
+      } catch (e) {
+        // Component not found, try next
+      }
+    }
+    
+    // If still not found, try to find any function that returns JSX
+    if (!ComponentToRender) {
+      // Look for the default export pattern
+      try {
+        const match = \`${code.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`.match(/export\\s+default\\s+function\\s+(\\w+)/);
+        if (match && match[1]) {
+          ComponentToRender = eval(match[1]);
+        }
+      } catch (e) {
+        console.error('[Connext] Could not find component:', e);
+      }
+    }
+    
+    // Fallback error component
+    if (!ComponentToRender) {
+      ComponentToRender = () => React.createElement('div', {
+        className: 'min-h-screen bg-gradient-to-br from-purple-900 to-black flex items-center justify-center text-white p-8'
+      }, 
+        React.createElement('div', { className: 'text-center' },
+          React.createElement('div', { className: 'text-6xl mb-4' }, '⚠️'),
+          React.createElement('h1', { className: 'text-2xl font-bold mb-2' }, 'Erro ao Renderizar'),
+          React.createElement('p', { className: 'text-gray-400' }, 'Não foi possível encontrar o componente. Tente novamente.')
+        )
+      );
+    }
+    
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(ComponentToRender));
   </script>
 </body>
 </html>`
