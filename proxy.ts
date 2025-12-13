@@ -65,6 +65,10 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
 
+  if (path.startsWith("/auth/")) {
+    return updateSession(request)
+  }
+
   if (
     path.startsWith("/_next") ||
     path.startsWith("/static") ||
@@ -82,7 +86,7 @@ export async function proxy(request: NextRequest) {
 
   const attackCheck = checkForAttacks(request)
   if (attackCheck.isAttack) {
-    console.log(`[v0] Attack blocked: ${attackCheck.type} from ${getClientIP(request)}`)
+    console.log(`[Security] Attack blocked: ${attackCheck.type} from ${getClientIP(request)}`)
     return new NextResponse(null, { status: 404 })
   }
 

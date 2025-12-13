@@ -4,6 +4,28 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 
+function getRedirectUrl() {
+  // In production, always use the main domain
+  if (typeof window !== "undefined" && window.location.hostname === "www.connextapp.com.br") {
+    return "https://www.connextapp.com.br/auth/callback"
+  }
+  if (typeof window !== "undefined" && window.location.hostname === "connextapp.com.br") {
+    return "https://www.connextapp.com.br/auth/callback"
+  }
+  // Use environment variable for development/staging
+  if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
+    return `${process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL}/auth/callback`
+  }
+  // Use NEXT_PUBLIC_SITE_URL if available
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+  }
+  // Fallback to current origin (for local development)
+  return typeof window !== "undefined"
+    ? `${window.location.origin}/auth/callback`
+    : "https://www.connextapp.com.br/auth/callback"
+}
+
 export function OAuthButtons() {
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false)
   const [isLoadingGithub, setIsLoadingGithub] = useState(false)
@@ -17,14 +39,10 @@ export function OAuthButtons() {
 
     const supabase = createClient()
 
-    const redirectTo = process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
-      ? `${process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL}/auth/callback`
-      : `${window.location.origin}/auth/callback`
-
     await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo,
+        redirectTo: getRedirectUrl(),
         queryParams:
           provider === "google"
             ? {

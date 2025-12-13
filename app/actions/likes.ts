@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { sendMatchNotificationEmail, sendLikeNotificationEmail } from "@/lib/email/sender"
 
 const PLAN_LIMITS = {
   free: { dailyLikes: 5, dailyCalls: 5 },
@@ -109,6 +110,26 @@ export async function likeUser(toUserId: string) {
     await supabase.rpc("increment_daily_likes", { p_user_id: user.id })
   }
 
+  const { data: myProfile } = await supabase
+    .from("profiles")
+    .select("full_name, role, avatar_url")
+    .eq("id", user.id)
+    .single()
+
+  const { data: targetProfile } = await supabase
+    .from("profiles")
+    .select("full_name, email, role, avatar_url, company, email_notifications")
+    .eq("id", toUserId)
+    .single()
+
+  if (targetProfile?.email && targetProfile?.email_notifications !== false) {
+    sendLikeNotificationEmail(targetProfile.email, targetProfile.full_name || "Profissional", {
+      name: myProfile?.full_name || "Alguém",
+      role: myProfile?.role,
+      avatar: myProfile?.avatar_url,
+    }).catch((err) => console.error("[v0] Like notification error:", err))
+  }
+
   const { data: match } = await supabase
     .from("matches")
     .select("id")
@@ -116,11 +137,26 @@ export async function likeUser(toUserId: string) {
     .maybeSingle()
 
   if (match) {
-    // Get matched user profile
-    const { data: matchedProfile } = await supabase.from("profiles").select("*").eq("id", toUserId).single()
+    if (targetProfile?.email && targetProfile?.email_notifications !== false) {
+      sendMatchNotificationEmail(targetProfile.email, targetProfile.full_name || "Profissional", {
+        name: myProfile?.full_name || "Alguém",
+        role: myProfile?.role,
+        company: undefined,
+        avatar: myProfile?.avatar_url,
+      }).catch((err) => console.error("[v0] Match notification error:", err))
+    }
+
+    if (user.email) {
+      sendMatchNotificationEmail(user.email, myProfile?.full_name || "Você", {
+        name: targetProfile?.full_name || "Alguém",
+        role: targetProfile?.role,
+        company: targetProfile?.company,
+        avatar: targetProfile?.avatar_url,
+      }).catch((err) => console.error("[v0] Match notification error:", err))
+    }
 
     revalidatePath("/dashboard/matches")
-    return { success: true, isMatch: true, matchedProfile }
+    return { success: true, isMatch: true, matchedProfile: targetProfile }
   }
 
   revalidatePath("/dashboard")

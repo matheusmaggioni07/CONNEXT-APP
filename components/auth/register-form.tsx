@@ -243,14 +243,37 @@ export function RegisterForm() {
     try {
       const supabase = createClient()
 
+      // Determine the correct redirect URL - always use production domain in production
+      const getRedirectUrl = () => {
+        // In production, always use the main domain
+        if (typeof window !== "undefined" && window.location.hostname === "www.connextapp.com.br") {
+          return "https://www.connextapp.com.br/auth/callback"
+        }
+        if (typeof window !== "undefined" && window.location.hostname === "connextapp.com.br") {
+          return "https://www.connextapp.com.br/auth/callback"
+        }
+        // Use environment variable for development/staging
+        if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
+          return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
+        }
+        // Use NEXT_PUBLIC_SITE_URL if available
+        if (process.env.NEXT_PUBLIC_SITE_URL) {
+          return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        }
+        // Fallback to current origin (for local development)
+        return typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : "https://www.connextapp.com.br/auth/callback"
+      }
+
       // 1. Create user account
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || window.location.origin,
+          emailRedirectTo: getRedirectUrl(),
           data: {
-            full_name: formData.name, // Use full_name instead of name
+            full_name: formData.name,
             phone: formData.phone,
             city: formData.city,
             country: formData.country,
