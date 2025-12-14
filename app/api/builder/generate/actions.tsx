@@ -1,30 +1,23 @@
 "use client"
 
-import type { GenerateCodeParams } from "./types"
+// A lógica real está no route.ts
 
-export async function generateCode({ prompt, projectContext, history, userId }: GenerateCodeParams): Promise<{
+export async function generateCode({
+  prompt,
+  projectContext,
+  history,
+  userId,
+}: {
+  prompt: string
+  projectContext?: Array<{ name: string; content: string }>
+  history?: Array<{ role: string; content: string }>
+  userId?: string
+}): Promise<{
   code: string
   explanation: string
   remainingRequests: number
 }> {
-  const response = await fetch("/api/builder/generate", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ prompt, projectContext, history, userId }),
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json()
-    throw new Error(errorData.error || "Failed to generate code")
-  }
-
-  const data = await response.json()
-
-  return {
-    code: data.code,
-    explanation: data.explanation,
-    remainingRequests: data.remainingRequests,
-  }
+  // Esta função NÃO é mais usada - a builder-page chama /api/builder/generate diretamente
+  // Mantida apenas para compatibilidade
+  throw new Error("Use /api/builder/generate directly")
 }
