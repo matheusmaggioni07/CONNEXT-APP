@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { BuilderPage } from "@/components/builder/builder-page"
+import BuilderPage from "@/components/builder/builder-page"
 
 export default async function Builder() {
   const supabase = await createClient()

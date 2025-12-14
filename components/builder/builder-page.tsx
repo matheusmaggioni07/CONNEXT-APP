@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   Send,
   Plus,
@@ -27,16 +26,24 @@ import {
   RefreshCw,
   X,
   Check,
-  ImageIcon,
-  Globe,
   Crown,
   Share2,
   ExternalLink,
   Maximize2,
   Minimize2,
-  Play,
+  ImageIcon,
+  Clipboard,
+  Figma,
+  Link,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu" // Added
 
 interface Profile {
   id: string
@@ -86,7 +93,7 @@ interface Project {
   builder_files?: ProjectFile[]
 }
 
-export function BuilderPage({ user, profile }: BuilderPageProps) {
+export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -95,6 +102,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [previewMode, setPreviewMode] = useState<"preview" | "code">("preview")
   const [deviceView, setDeviceView] = useState<"desktop" | "tablet" | "mobile">("desktop")
   const [generatedCode, setGeneratedCode] = useState("")
+  const [previewHtml, setPreviewHtml] = useState("") // Added state for preview HTML
   const [projects, setProjects] = useState<Project[]>([])
   const [activeProject, setActiveProject] = useState<Project | null>(null)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
@@ -103,7 +111,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [publishSuccess, setPublishSuccess] = useState(false)
+  const [publishSuccess, setPublishSuccess] = useState(false) // Added state for publish success
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const [userCredits, setUserCredits] = useState(20)
@@ -115,6 +123,9 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const previewContainerRef = useRef<HTMLDivElement>(null)
 
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat")
+
+  const [attachedImage, setAttachedImage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProjects = useCallback(async () => {
     setIsLoadingProjects(true)
@@ -196,6 +207,225 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   const updateThought = (id: string, status: ThoughtStep["status"], duration?: number) => {
     setThoughts((prev) => prev.map((t) => (t.id === id ? { ...t, status, duration } : t)))
   }
+
+  const generatePreviewHtml = useCallback((code: string): string => {
+    if (!code) return ""
+
+    try {
+      // Extract the return statement content
+      let jsxContent = ""
+
+      // Find return ( and extract balanced parentheses content
+      const returnIndex = code.indexOf("return (")
+      if (returnIndex !== -1) {
+        let depth = 0
+        let start = returnIndex + 7
+        let foundStart = false
+
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === "(") {
+            if (!foundStart) {
+              start = i + 1
+              foundStart = true
+            }
+            depth++
+          } else if (code[i] === ")") {
+            depth--
+            if (depth === 0 && foundStart) {
+              jsxContent = code.substring(start, i).trim()
+              break
+            }
+          }
+        }
+      }
+
+      if (!jsxContent) {
+        const match = code.match(/return\s*$$\s*([\s\S]*)\s*$$\s*;?\s*\}?\s*$/)
+        if (match) {
+          jsxContent = match[1]
+        }
+      }
+
+      if (!jsxContent) {
+        return getErrorHtml("Não foi possível extrair o JSX do código")
+      }
+
+      // Step 1: Remove ALL JSX comments {/* ... */}
+      let html = jsxContent.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+
+      // Handle various .map patterns by removing entire expressions
+      html = html.replace(/\{[^{}]*\.map[^{}]*\{[^{}]*\}[^{}]*\}/g, "")
+      html = html.replace(/\{[^{}]*\.map[^{}]*\}/g, "")
+
+      // Step 3: Handle array .map patterns like {['a','b'].map(...)}
+      html = html.replace(/\{\s*\[[^\]]*\][^}]*\}/g, "")
+
+      // Step 4: Remove ternary expressions - keep the truthy part or nothing
+      // Handle: {condition ? <something> : <something>}
+      html = html.replace(/\{[^{}]*\?\s*(<[^{}]*>)\s*:\s*[^}]*\}/g, "$1")
+      html = html.replace(/\{[^{}]*\?[^:]*:[^}]*\}/g, "")
+
+      // Step 5: Remove remaining JavaScript expressions
+      html = html.replace(/\{menuOpen[^}]*\}/g, "")
+      html = html.replace(/\{formData\.[^}]*\}/g, '""')
+      html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_.]*\}/g, "")
+      html = html.replace(/\{\s*`[^`]*`\s*\}/g, "") // Template literals
+
+      // Step 6: Convert React attributes to HTML
+      html = html.replace(/className=/g, "class=")
+      html = html.replace(/htmlFor=/g, "for=")
+      html = html.replace(/strokeWidth=/g, "strokeWidth=")
+      html = html.replace(/strokeLinecap=/g, "strokeLinecap=")
+      html = html.replace(/strokeLinejoin=/g, "strokeLinejoin=")
+      html = html.replace(/viewBox=/g, "viewBox=")
+      html = html.replace(/fillRule=/g, "fillRule=")
+      html = html.replace(/clipRule=/g, "clipRule=")
+
+      // Step 7: Remove event handlers
+      html = html.replace(/\s+on[A-Z][a-zA-Z]*=\{[^}]*\}/g, "")
+      html = html.replace(/\s+onClick=\{[^}]*\}/g, "")
+      html = html.replace(/\s+onChange=\{[^}]*\}/g, "")
+      html = html.replace(/\s+onSubmit=\{[^}]*\}/g, "")
+      html = html.replace(/\s+onMouseEnter=\{[^}]*\}/g, "")
+      html = html.replace(/\s+onMouseLeave=\{[^}]*\}/g, "")
+
+      // Step 8: Remove value and key props
+      html = html.replace(/\s+value=\{[^}]*\}/g, "")
+      html = html.replace(/\s+key=\{[^}]*\}/g, "")
+      html = html.replace(/\s+ref=\{[^}]*\}/g, "")
+
+      // Step 9: Convert style={{...}} to style="..."
+      html = html.replace(/style=\{\{([^}]+)\}\}/g, (_, styles) => {
+        const cssStyles = styles
+          .split(",")
+          .map((s: string) => {
+            const colonIdx = s.indexOf(":")
+            if (colonIdx === -1) return ""
+            const key = s.substring(0, colonIdx).trim()
+            const value = s
+              .substring(colonIdx + 1)
+              .trim()
+              .replace(/['"]/g, "")
+              .replace(/}$/, "")
+            const cssKey = key.replace(/([A-Z])/g, "-$1").toLowerCase()
+            return `${cssKey}: ${value}`
+          })
+          .filter(Boolean)
+          .join("; ")
+        return `style="${cssStyles}"`
+      })
+
+      // Step 10: Clean up any leftover curly braces with expressions
+      html = html.replace(/\{[^{}]*\}/g, "")
+
+      // Step 11: Clean up empty attributes and double spaces
+      html = html.replace(/\s+/g, " ")
+      html = html.replace(/>\s+</g, "><")
+
+      // Wrap in HTML document with Tailwind CSS
+      return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    html { scroll-behavior: smooth; }
+    a { cursor: pointer; text-decoration: none; color: inherit; }
+    button { cursor: pointer; border: none; background: none; }
+    input, textarea { outline: none; font-family: inherit; }
+    input:focus, textarea:focus { border-color: #8B5CF6 !important; }
+    @keyframes gradient { to { background-position: 200% center; } }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+    .animate-gradient { animation: gradient 8s linear infinite; background-size: 200% auto; }
+    .animate-float { animation: float 6s ease-in-out infinite; }
+    .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    .animate-ping { animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
+  </style>
+</head>
+<body>
+  ${html}
+  <script>
+    // Make anchor navigation work
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const id = this.getAttribute('href')?.substring(1);
+        if (id) {
+          const el = document.getElementById(id);
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    });
+    // Make forms work
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        alert('Mensagem enviada com sucesso!');
+        this.reset();
+      });
+    });
+    // Mobile menu toggle
+    document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const menu = document.querySelector('[data-mobile-menu]');
+        if (menu) menu.classList.toggle('hidden');
+      });
+    });
+  </script>
+</body>
+</html>`
+    } catch (err) {
+      console.error("Preview generation error:", err)
+      return getErrorHtml("Erro ao gerar preview: " + (err as Error).message)
+    }
+  }, [])
+
+  const getErrorHtml = (message: string) => `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      font-family: system-ui;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #1a1a1a;
+      color: #fff;
+      text-align: center;
+      padding: 20px;
+    }
+    .error {
+      background: #2a2a2a;
+      padding: 40px;
+      border-radius: 16px;
+      border: 1px solid #333;
+    }
+    h2 { color: #f87171; margin-bottom: 16px; }
+    p { opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <div class="error">
+    <h2>Erro no Preview</h2>
+    <p>${message}</p>
+    <p style="margin-top: 16px;">Clique em "Código" para ver o código gerado.</p>
+  </div>
+</body>
+</html>`
+
+  useEffect(() => {
+    if (generatedCode) {
+      const html = generatePreviewHtml(generatedCode)
+      setPreviewHtml(html)
+    }
+  }, [generatedCode, generatePreviewHtml])
 
   function generateFallbackCode(prompt: string): string {
     const lowerPrompt = prompt.toLowerCase()
@@ -744,544 +974,206 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 }`
   }
 
-  const generatePreviewHtml = (code: string): string => {
-    console.log("[v0] generatePreviewHtml called, code length:", code?.length)
-
-    if (!code || code.trim().length < 50) {
-      return getErrorHtml("O código não foi gerado corretamente. Tente novamente.")
-    }
-
-    // Extract JSX content from return statement
-    let jsxContent = ""
-
-    try {
-      // Remove comments first
-      const cleanCode = code
-        .replace(/\/\*[\s\S]*?\*\//g, "") // Multi-line comments
-        .replace(/\/\/.*$/gm, "") // Single-line comments
-
-      // Find the return statement with JSX
-      const returnMatch = cleanCode.match(/return\s*$$\s*([\s\S]*?)\s*$$\s*;?\s*\}?$/)
-
-      if (returnMatch && returnMatch[1]) {
-        jsxContent = returnMatch[1].trim()
-        console.log("[v0] Found return content, length:", jsxContent.length)
-      } else {
-        // Try alternative: find return ( and manually extract
-        const returnIdx = cleanCode.indexOf("return (")
-        if (returnIdx !== -1) {
-          let depth = 0
-          let start = -1
-          let end = -1
-
-          for (let i = returnIdx; i < cleanCode.length; i++) {
-            if (cleanCode[i] === "(") {
-              if (start === -1) start = i + 1
-              depth++
-            } else if (cleanCode[i] === ")") {
-              depth--
-              if (depth === 0) {
-                end = i
-                break
-              }
-            }
-          }
-
-          if (start !== -1 && end !== -1) {
-            jsxContent = cleanCode.substring(start, end).trim()
-            console.log("[v0] Manually extracted JSX, length:", jsxContent.length)
-          }
-        }
-      }
-
-      if (!jsxContent || jsxContent.length < 10) {
-        console.log("[v0] No JSX content found, using Babel fallback")
-        return generatePreviewWithBabel(code)
-      }
-
-      // Convert JSX to HTML
-      const htmlContent = convertJsxToHtml(jsxContent)
-      console.log("[v0] Converted to HTML, length:", htmlContent.length)
-
-      if (htmlContent.length < 20) {
-        console.log("[v0] HTML too short, using Babel fallback")
-        return generatePreviewWithBabel(code)
-      }
-
-      return wrapInHtmlDocument(htmlContent)
-    } catch (error) {
-      console.error("[v0] Error in generatePreviewHtml:", error)
-      return generatePreviewWithBabel(code)
-    }
-  }
-
-  const convertJsxToHtml = (jsx: string): string => {
-    let html = jsx
-
-    // Remove fragments
-    html = html.replace(/<React\.Fragment>/g, "").replace(/<\/React\.Fragment>/g, "")
-    html = html.replace(/<Fragment>/g, "").replace(/<\/Fragment>/g, "")
-    html = html.replace(/<>/g, "").replace(/<\/>/g, "")
-
-    // className -> class
-    html = html.replace(/className=/g, "class=")
-
-    // Remove event handlers
-    const eventHandlers = [
-      "onClick",
-      "onChange",
-      "onSubmit",
-      "onMouseEnter",
-      "onMouseLeave",
-      "onFocus",
-      "onBlur",
-      "onKeyDown",
-      "onKeyUp",
-      "onScroll",
-      "onLoad",
-      "onTouchStart",
-      "onTouchMove",
-      "onTouchEnd",
-      "onMouseDown",
-      "onMouseUp",
-      "onDoubleClick",
-      "onContextMenu",
-      "onWheel",
-    ]
-    eventHandlers.forEach((handler) => {
-      // Match handler={...} including nested braces and template literals
-      const regex = new RegExp(`${handler}=\\{(?:(?:\\{[^{}]*\\})|[^\\{\\}])*?\\}`, "g")
-      html = html.replace(regex, "")
-    })
-
-    // Handle template literals {`...`}
-    html = html.replace(/\{`([^`]*)`\}/g, "$1")
-
-    // Handle string expressions {"..."} or {'...'}
-    html = html.replace(/\{"([^"]*)"\}/g, "$1")
-    html = html.replace(/\{'([^']*)'\}/g, "$1")
-
-    // Handle number expressions {123}
-    html = html.replace(/\{(\d+(?:\.\d+)?)\}/g, "$1")
-
-    // Handle boolean expressions {true}, {false} - remove them
-    html = html.replace(/\{true\}/g, "").replace(/\{false\}/g, "")
-
-    // Handle simple variables in text (replace with empty string)
-    html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\}/g, "")
-
-    // Handle conditional rendering {condition && <...>} - remove the condition part
-    html = html.replace(/\{[^{}]*&&\s*/g, "")
-
-    // Handle ternary expressions - take the first option
-    html = html.replace(/\{[^?{}]*\?\s*(['"`]?)([^:]*)\1\s*:\s*(['"`]?)[^{}]*\3\}/g, "$2")
-
-    // Handle map expressions - try to extract the first element if it's an array, otherwise remove
-    html = html.replace(
-      /\{([^{}]*)\.map$$\s*\(?([^{}]*)$$?\s*=>\s*([\s\S]*?)\s*\)\s*\}/g,
-      (_match, arrayName, elementVar, innerJsx) => {
-        // Basic attempt to represent mapped elements. More complex logic might be needed.
-        if (innerJsx.trim().length > 0) {
-          return `<div class="mapped-element">${innerJsx.trim()}</div>`
-        }
-        return ""
-      },
-    )
-
-    // Remove remaining JSX expressions that weren't specifically handled
-    html = html.replace(/\{[^{}]*\}/g, "")
-
-    // Handle href with expressions
-    html = html.replace(/href=\{[^}]*\}/g, 'href="#"')
-
-    // Handle src with expressions
-    html = html.replace(/src=\{[^}]*\}/g, 'src="/placeholder.svg?height=400&width=600"')
-
-    // Handle style objects {style={{ ... }}}
-    html = html.replace(/style=\{\{[^}]*\}\}/g, "")
-
-    // Convert self-closing tags for void elements
-    html = html.replace(/<(img|br|hr|input|meta|link)([^>]*?)\/>/g, "<$1$2>")
-
-    // Clean up extra spaces and newlines
-    html = html.replace(/\s+/g, " ").trim()
-
-    return html
-  }
-
-  const getErrorHtml = (message: string): string => {
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black flex items-center justify-center">
-  <div class="text-center text-white p-8">
-    <h1 class="text-2xl font-bold mb-4">Erro na Geração</h1>
-    <p class="text-gray-300">${message}</p>
-  </div>
-</body>
-</html>`
-  }
-
-  const wrapInHtmlDocument = (content: string): string => {
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] },
-          animation: {
-            "gradient": "gradient 8s linear infinite",
-            "float": "float 6s ease-in-out infinite",
-            "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-            "bounce-slow": "bounce 3s infinite"
-          }
-        }
-      }
-    }
-  </script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    @keyframes gradient { 
-      0% { background-position: 0% 50%; } 
-      50% { background-position: 100% 50%; } 
-      100% { background-position: 0% 50%; } 
-    }
-    @keyframes float { 
-      0%, 100% { transform: translateY(0); } 
-      50% { transform: translateY(-20px); } 
-    }
-    .animate-gradient { 
-      animation: gradient 8s ease infinite; 
-      background-size: 200% 200%; 
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body { font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-    img { max-width: 100%; height: auto; }
-    a { color: inherit; text-decoration: none; cursor: pointer; }
-    button { cursor: pointer; font-family: inherit; }
-    
-    /* Scroll sections into view */
-    [id] { scroll-margin-top: 80px; }
-  </style>
-  <script>
-    // Enable smooth scrolling and anchor links
-    document.addEventListener('DOMContentLoaded', function() {
-      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function(e) {
-          e.preventDefault();
-          const targetId = this.getAttribute('href').substring(1);
-          const target = document.getElementById(targetId);
-          if (target) {
-            target.scrollIntoView({ behavior: 'smooth' });
-          }
-        });
-      });
-    });
-  </script>
-</head>
-<body>
-  ${content}
-</body>
-</html>`
-  }
-
-  const generatePreviewWithBabel = (code: string): string => {
-    console.log("[v0] Using Babel fallback for preview")
-
-    // Encode to base64 safely
-    let base64Code = ""
-    try {
-      const encoder = new TextEncoder()
-      const data = encoder.encode(code)
-      const binary = Array.from(data)
-        .map((b) => String.fromCharCode(b))
-        .join("")
-      base64Code = btoa(binary)
-    } catch (e) {
-      console.error("[v0] Base64 encoding failed:", e)
-      try {
-        base64Code = btoa(unescape(encodeURIComponent(code)))
-      } catch (e2) {
-        base64Code = btoa(code.replace(/[^\x00-\x7F]/g, ""))
-      }
-    }
-
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] }
-        }
-      }
-    }
-  </script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body { font-family: "Inter", system-ui, sans-serif; }
-    [id] { scroll-margin-top: 80px; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
-  <script>
-    const { useState, useEffect, useRef, useCallback, useMemo, Fragment } = React;
-    
-    // Global error handler
-    window.onerror = function(msg, url, line) {
-      console.error("Preview error:", msg);
-      const root = document.getElementById("root");
-      if (root) {
-        root.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:white;text-align:center;padding:2rem;"><div><h1 style="font-size:1.5rem;margin-bottom:1rem;font-weight:600;">Erro no Preview</h1><p style="color:#9ca3af;max-width:400px;">' + msg + '</p></div></div>';
-      }
-      return true;
-    };
-    
-    (function() {
-      try {
-        const encodedCode = "${base64Code}";
-        
-        // Decode base64
-        const binaryString = atob(encodedCode);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const decodedCode = new TextDecoder('utf-8').decode(bytes);
-        
-        // Transform export default function to regular function
-        let processedCode = decodedCode
-          .replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function $1')
-          .replace(/export\\s+default\\s+function(?=\\s*\\()/g, 'function App');
-        
-        // Add return statement to get the component
-        const componentMatch = processedCode.match(/function\\s+(\\w+)\\s*\\(/);
-        const componentName = componentMatch ? componentMatch[1] : 'App';
-        
-        // Compile with Babel
-        const transformed = Babel.transform(processedCode, { 
-          presets: ['react'],
-          filename: 'preview.jsx'
-        }).code;
-        
-        // Evaluate and render
-        const result = eval(transformed + '; ' + componentName);
-        
-        if (typeof result === 'function') {
-          ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(result));
-        } else {
-          throw new Error("Componente não encontrado");
-        }
-        
-      } catch (err) {
-        console.error("Render error:", err);
-        document.getElementById("root").innerHTML = 
-          '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:white;text-align:center;padding:2rem;">' +
-          '<div><h1 style="font-size:1.5rem;margin-bottom:1rem;font-weight:600;">Erro no Preview</h1>' +
-          '<p style="color:#9ca3af;max-width:400px;">' + (err.message || 'Erro desconhecido') + '</p></div></div>';
-      }
-    })();
-  </script>
-</body>
-</html>`
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
-
-    if (profile?.plan !== "pro" && userCredits <= 0) {
-      setShowUpgradeModal(true)
-      return
-    }
-
-    setError(null)
-    const userMessage: Message = {
-      id: Math.random().toString(36).substring(7),
-      role: "user",
-      content: input.trim(),
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
-    setThoughts([])
-
-    const thinkingId = addThought("thinking", "Analisando sua solicitação...")
-    await new Promise((r) => setTimeout(r, 800))
-    updateThought(thinkingId, "done", 800)
-
-    const scanningId = addThought("scanning", "Processando requisitos...")
-    await new Promise((r) => setTimeout(r, 600))
-    updateThought(scanningId, "done", 600)
-
-    const readingId = addThought("reading", "Gerando código com Claude Sonnet 4...")
-
-    try {
-      const response = await fetch("/api/builder/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: input.trim(),
-          projectContext: activeProject?.builder_files || [],
-          history: messages.slice(-6),
-          userId: user.id,
-        }),
-      })
-
-      const data = await response.json()
-
-      console.log("[v0] API response status:", response.status)
-      console.log("[v0] API response data:", JSON.stringify(data).substring(0, 500))
-      console.log("[v0] Code received length:", data.code?.length)
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          setError("Limite atingido. Aguarde " + (data.remainingTime || 60) + " minutos.")
-        }
-        throw new Error(data.error || "API Error")
-      }
-
-      updateThought(readingId, "done", 1500)
-
-      if (profile?.plan !== "pro") {
-        setUserCredits((prev) => Math.max(0, prev - 1))
-      }
-
-      const applyingId = addThought("applying", "Aplicando mudanças...")
-      await new Promise((r) => setTimeout(r, 400))
-      updateThought(applyingId, "done", 400)
-
-      const completedId = addThought("completed", "Código gerado com sucesso!")
-      updateThought(completedId, "done")
-
-      if (data.code && data.code.includes("export default function")) {
-        console.log("[v0] Setting generated code - valid component found")
-        setGeneratedCode(data.code)
-      } else {
-        console.log("[v0] Invalid code received, using fallback")
-        const fallbackCode = generateFallbackCode(input.trim())
-        setGeneratedCode(fallbackCode)
-      }
-
-      if (activeProject) {
-        autoSaveToProject(data.code)
-      }
-
-      const assistantMessage: Message = {
-        id: Math.random().toString(36).substring(7),
-        role: "assistant",
-        content: data.explanation || "Site profissional gerado com sucesso! Veja o preview ao lado.",
-        timestamp: new Date(),
-        code: data.code,
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
-    } catch (err) {
-      updateThought(readingId, "done", 1000)
-
-      const fallbackId = addThought("fixing", "Usando geração local...")
-      await new Promise((r) => setTimeout(r, 500))
-      updateThought(fallbackId, "done", 500)
-
-      const code = generateFallbackCode(userMessage.content)
-      setGeneratedCode(code)
-
-      if (profile?.plan !== "pro") {
-        setUserCredits((prev) => Math.max(0, prev - 1))
-      }
-
-      if (activeProject) {
-        autoSaveToProject(code)
-      }
-
-      const completedId = addThought("completed", "Código gerado com sucesso!")
-      updateThought(completedId, "done")
-
-      const assistantMessage: Message = {
-        id: Math.random().toString(36).substring(7),
-        role: "assistant",
-        content: "Site profissional gerado! Veja o preview ao lado.",
-        timestamp: new Date(),
-        code: code,
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
-    }
-
-    setIsLoading(false)
-  }
-
-  const autoSaveToProject = async (code: string) => {
-    if (!activeProject) return
-    try {
-      await fetch("/api/builder/projects/" + activeProject.id + "/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "component.tsx",
-          path: "/component.tsx",
-          content: code,
-          language: "tsx",
-        }),
-      })
-    } catch (err) {
-      console.error("Auto-save error:", err)
-    }
-  }
-
-  const createNewProject = async () => {
+  const saveProject = async (name: string, code: string) => {
+    setIsSaving(true)
     try {
       const res = await fetch("/api/builder/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Projeto " + (projects.length + 1),
-          description: "Novo projeto criado com Connext Builder",
+          name,
+          description: `Projeto criado em ${new Date().toLocaleDateString("pt-BR")}`,
+          files: [
+            {
+              name: "Site.tsx",
+              path: "/Site.tsx",
+              content: code,
+              language: "tsx",
+            },
+          ],
         }),
       })
 
       if (res.ok) {
         const data = await res.json()
-        setProjects((prev) => [data.project, ...prev])
+        await loadProjects()
         setActiveProject(data.project)
-        setGeneratedCode("")
-        setMessages([])
+        return data.project
       }
     } catch (err) {
-      console.error("Error creating project:", err)
+      console.error("Error saving project:", err)
+    } finally {
+      setIsSaving(false)
+    }
+    return null
+  }
+
+  const updateProject = async (projectId: string, code: string) => {
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/builder/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: [
+            {
+              name: "Site.tsx",
+              path: "/Site.tsx",
+              content: code,
+              language: "tsx",
+            },
+          ],
+        }),
+      })
+
+      if (res.ok) {
+        await loadProjects()
+      }
+    } catch (err) {
+      console.error("Error updating project:", err)
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const deleteProject = async (id: string) => {
+  const handleSendMessage = async () => {
+    if ((!input.trim() && !attachedImage) || isLoading) return
+
+    if (userCredits <= 0 && profile?.plan !== "pro") {
+      setShowUpgradeModal(true)
+      return
+    }
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    const currentInput = input
+    const currentImage = attachedImage
+    setInput("")
+    setAttachedImage(null) // Clear attached image after sending
+    setIsLoading(true)
+    setError(null)
+
+    // Show thinking steps
+    const thinkingSteps: ThoughtStep[] = [
+      { id: "1", type: "thinking", message: "Analisando sua solicitação...", status: "active", duration: 800 },
+      { id: "2", type: "scanning", message: "Processando requisitos...", status: "pending", duration: 600 },
+      {
+        id: "3",
+        type: "applying",
+        message: "Gerando código com Claude Sonnet 4...",
+        status: "pending",
+        duration: 1500,
+      },
+    ]
+    setThoughts(thinkingSteps)
+
+    // Animate through steps
+    for (let i = 0; i < thinkingSteps.length; i++) {
+      await new Promise((r) => setTimeout(r, thinkingSteps[i].duration || 500))
+      setThoughts((prev) =>
+        prev.map((t, idx) => ({
+          ...t,
+          status: idx < i + 1 ? "done" : idx === i + 1 ? "active" : "pending",
+        })),
+      )
+    }
+
     try {
-      const res = await fetch("/api/builder/projects/" + id, { method: "DELETE" })
+      const projectContext = activeProject?.builder_files?.map((f) => ({
+        name: f.name,
+        content: f.content,
+      }))
+
+      const res = await fetch("/api/builder/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: currentInput,
+          image_url: currentImage, // Send image if available
+          projectContext,
+          history: messages.slice(-4).map((m) => ({ role: m.role, content: m.content })),
+        }),
+      })
+
+      if (!res.ok) throw new Error("Erro na geração")
+
+      const data = await res.json()
+
+      if (data.code) {
+        setGeneratedCode(data.code)
+
+        // Auto-save to project
+        if (activeProject) {
+          await updateProject(activeProject.id, data.code)
+        } else {
+          // Create new project
+          const projectName = currentInput.substring(0, 50) || "Novo Projeto"
+          await saveProject(projectName, data.code)
+        }
+
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: data.explanation || "Site gerado com sucesso!",
+          timestamp: new Date(),
+          code: data.code,
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+
+        // Update credits
+        if (profile?.plan !== "pro") {
+          const newCredits = userCredits - 1
+          setUserCredits(newCredits)
+          localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
+        }
+      }
+    } catch (err) {
+      console.error("Builder error:", err)
+      setError("Erro ao gerar o site. Tente novamente.")
+    } finally {
+      setIsLoading(false)
+      setThoughts([])
+    }
+  }
+
+  const handleLoadProject = (project: Project) => {
+    setActiveProject(project)
+    setActiveTab("chat")
+
+    const mainFile = project.builder_files?.find((f) => f.name === "Site.tsx" || f.path === "/Site.tsx")
+    if (mainFile) {
+      setGeneratedCode(mainFile.content)
+    }
+
+    setMessages([
+      {
+        id: "loaded",
+        role: "assistant",
+        content: `Projeto "${project.name}" carregado! Você pode continuar editando ou fazer modificações.`,
+        timestamp: new Date(),
+      },
+    ])
+  }
+
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/builder/projects/${projectId}`, {
+        method: "DELETE",
+      })
+
       if (res.ok) {
-        setProjects((prev) => prev.filter((p) => p.id !== id))
-        if (activeProject?.id === id) {
+        setProjects((prev) => prev.filter((p) => p.id !== projectId))
+        if (activeProject?.id === projectId) {
           setActiveProject(null)
           setGeneratedCode("")
+          setPreviewHtml("")
+          setMessages([])
         }
       }
     } catch (err) {
@@ -1289,509 +1181,612 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     }
   }
 
-  const saveProjectName = async (id: string) => {
-    if (!editingProjectName.trim()) {
-      setEditingProjectId(null)
-      return
-    }
+  const handleRenameProject = async (projectId: string, newName: string) => {
     try {
-      const res = await fetch("/api/builder/projects/" + id, {
+      const res = await fetch(`/api/builder/projects/${projectId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editingProjectName.trim() }),
+        body: JSON.stringify({ name: newName }),
       })
+
       if (res.ok) {
-        setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name: editingProjectName.trim() } : p)))
+        setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name: newName } : p)))
+        if (activeProject?.id === projectId) {
+          setActiveProject((prev) => (prev ? { ...prev, name: newName } : null))
+        }
       }
     } catch (err) {
-      console.error("Error updating project name:", err)
+      console.error("Error renaming project:", err)
     }
     setEditingProjectId(null)
-    setEditingProjectName("")
   }
 
-  const selectProject = async (project: Project) => {
-    setActiveProject(project)
-    if (!project.builder_files || project.builder_files.length === 0) {
-      try {
-        const res = await fetch("/api/builder/projects/" + project.id)
-        if (res.ok) {
-          const data = await res.json()
-          setActiveProject(data.project)
-        }
-      } catch (err) {
-        console.error("Error loading project:", err)
-      }
-    }
+  const handleNewProject = () => {
+    setActiveProject(null)
+    setGeneratedCode("")
+    setPreviewHtml("")
+    setMessages([])
+    setInput("") // Clear input on new project
+    setAttachedImage(null) // Clear attachment on new project
+    setActiveTab("chat")
   }
 
-  const copyCode = () => {
+  const handleCopyCode = () => {
     navigator.clipboard.writeText(generatedCode)
     setCopiedCode(true)
     setTimeout(() => setCopiedCode(false), 2000)
   }
 
-  const downloadCode = () => {
+  const handleDownloadCode = () => {
     const blob = new Blob([generatedCode], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "component.tsx"
+    a.download = `${activeProject?.name || "site"}.tsx`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const toggleFullscreen = async () => {
-    if (!previewContainerRef.current) return
+  const getDeviceWidth = () => {
+    switch (deviceView) {
+      case "mobile":
+        return "375px"
+      case "tablet":
+        return "768px"
+      default:
+        return "100%"
+    }
+  }
+
+  // Submit handler for the chat input
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault() // Prevent default form submission
+    await handleSendMessage() // Call the actual message sending logic
+  }
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setAttachedImage(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handlePasteFromClipboard = async () => {
     try {
-      if (!document.fullscreenElement) {
-        await previewContainerRef.current.requestFullscreen()
-      } else {
-        await document.exitFullscreen()
+      const clipboardItems = await navigator.clipboard.read()
+      for (const item of clipboardItems) {
+        for (const type of item.types) {
+          if (type.startsWith("image/")) {
+            const blob = await item.getType(type)
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              setAttachedImage(e.target?.result as string)
+            }
+            reader.readAsDataURL(blob)
+            return
+          }
+        }
       }
     } catch (err) {
-      setIsFullscreen(!isFullscreen)
+      console.error("Failed to read clipboard")
     }
   }
 
-  const handleShare = () => {
-    if (activeProject) {
-      const shareUrl = window.location.origin + "/share/" + activeProject.id
-      navigator.clipboard.writeText(shareUrl)
-      setShareLinkCopied(true)
-      setTimeout(() => setShareLinkCopied(false), 2000)
-    }
-    setShowShareModal(false)
-  }
-
-  const handlePublish = () => {
-    setPublishSuccess(true)
-    setTimeout(() => {
-      setPublishSuccess(false)
-      setShowPublishModal(false)
-    }, 2000)
+  const handleRemoveAttachment = () => {
+    setAttachedImage(null)
   }
 
   const isPro = profile?.plan === "pro"
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-[#0a0a0f]">
-      {/* Mobile Toggle */}
-      <div className="lg:hidden flex border-b border-white/10">
-        <button
-          onClick={() => setMobileView("chat")}
-          className={cn(
-            "flex-1 py-3 text-sm font-medium transition-colors",
-            mobileView === "chat" ? "bg-purple-600 text-white" : "text-gray-400",
-          )}
-        >
-          Chat
-        </button>
-        <button
-          onClick={() => setMobileView("preview")}
-          className={cn(
-            "flex-1 py-3 text-sm font-medium transition-colors",
-            mobileView === "preview" ? "bg-purple-600 text-white" : "text-gray-400",
-          )}
-        >
-          Preview
-        </button>
-      </div>
-
-      {/* Left Panel - Chat */}
-      <div
-        className={cn(
-          "w-full lg:w-[400px] xl:w-[450px] flex flex-col border-r border-white/10 bg-[#0a0a0f]",
-          mobileView !== "chat" && "hidden lg:flex",
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-semibold text-white">Connext Builder</span>
+    <div className="flex flex-col h-screen bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-border/50 bg-card/50 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full">
+            <Zap className="w-4 h-4 text-purple-400" />
+            <span className="text-sm font-medium">Connext Builder</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium flex items-center gap-1">
-              <Sparkles className="w-3 h-3" />
-              {isPro ? "Ilimitado" : userCredits + " créditos"}
-            </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/10 rounded-full text-xs">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-purple-300">{profile?.plan === "pro" ? "∞" : userCredits} créditos</span>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="p-2 border-b border-white/10">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="w-full bg-white/5">
-              <TabsTrigger value="chat" className="flex-1 data-[state=active]:bg-purple-600">
-                <Sparkles className="w-4 h-4 mr-2" />
+        <div className="flex items-center gap-2">
+          {/* Preview/Code Toggle */}
+          <div className="flex items-center bg-muted/50 rounded-lg p-1">
+            <Button
+              variant={previewMode === "preview" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setPreviewMode("preview")}
+              className={cn("gap-1.5", previewMode === "preview" && "bg-purple-600")}
+            >
+              <Eye className="w-4 h-4" />
+              Preview
+            </Button>
+            <Button
+              variant={previewMode === "code" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setPreviewMode("code")}
+              className={cn("gap-1.5", previewMode === "code" && "bg-purple-600")}
+            >
+              <Code className="w-4 h-4" />
+              Código
+            </Button>
+          </div>
+
+          {/* Device View */}
+          <div className="hidden md:flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+            <Button
+              variant={deviceView === "desktop" ? "default" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setDeviceView("desktop")}
+            >
+              <Monitor className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={deviceView === "tablet" ? "default" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setDeviceView("tablet")}
+            >
+              <Tablet className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={deviceView === "mobile" ? "default" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setDeviceView("mobile")}
+            >
+              <Smartphone className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Fullscreen */}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsFullscreen(!isFullscreen)}>
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </Button>
+
+          {/* Share */}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowShareModal(true)}>
+            <Share2 className="w-4 h-4" />
+          </Button>
+
+          {/* Publish */}
+          <Button
+            onClick={() => setShowPublishModal(true)}
+            className="gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            disabled={!generatedCode}
+          >
+            <ExternalLink className="w-4 h-4" />
+            Publicar
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Panel - Chat/Projects */}
+        <div
+          className={cn(
+            "w-full md:w-[400px] flex flex-col border-r border-border/50 bg-card/30",
+            isFullscreen && "hidden",
+          )}
+        >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+            <TabsList className="w-full justify-start px-3 py-2 bg-transparent border-b border-border/50">
+              <TabsTrigger value="chat" className="gap-2 data-[state=active]:bg-purple-500/20">
+                <Sparkles className="w-4 h-4" />
                 Chat
               </TabsTrigger>
-              <TabsTrigger value="projects" className="flex-1 data-[state=active]:bg-purple-600">
-                <FolderOpen className="w-4 h-4 mr-2" />
+              <TabsTrigger value="projects" className="gap-2 data-[state=active]:bg-purple-500/20">
+                <FolderOpen className="w-4 h-4" />
                 Projetos
               </TabsTrigger>
             </TabsList>
-          </Tabs>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden">
-          {activeTab === "chat" ? (
-            <ScrollArea className="h-full">
-              <div className="p-4 space-y-4">
-                {/* Thoughts */}
-                {thoughts.length > 0 && (
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
-                    <div className="flex items-center gap-2 text-purple-400 text-sm font-medium">
-                      <Sparkles className="w-4 h-4" />
-                      Pensamentos
-                    </div>
-                    {thoughts.map((thought) => (
-                      <div key={thought.id} className="flex items-center gap-2 text-sm">
-                        {thought.status === "active" ? (
-                          <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="w-3 h-3 text-green-400" />
-                        )}
-                        <span className="text-gray-400">{thought.message}</span>
-                        {thought.duration && <span className="text-gray-600 text-xs">{thought.duration}ms</span>}
+            {/* Chat Tab */}
+            {activeTab === "chat" && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <ScrollArea className="flex-1 p-4">
+                  <div className="space-y-4">
+                    {/* Thinking steps */}
+                    {thoughts.length > 0 && (
+                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-3 text-purple-400">
+                          <Sparkles className="w-4 h-4" />
+                          <span className="font-medium text-sm">Pensamentos</span>
+                        </div>
+                        <div className="space-y-2">
+                          {thoughts.map((step) => (
+                            <div key={step.id} className="flex items-center gap-3 text-sm">
+                              {step.status === "active" ? (
+                                <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+                              ) : step.status === "done" ? (
+                                <CheckCircle2 className="w-4 h-4 text-green-400" />
+                              ) : (
+                                <div className="w-4 h-4 rounded-full border border-muted-foreground/30" />
+                              )}
+                              <span className={step.status === "active" ? "text-purple-300" : "text-muted-foreground"}>
+                                {step.message}
+                              </span>
+                              {step.duration && (
+                                <span className="text-xs text-muted-foreground ml-auto">{step.duration}ms</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    )}
 
-                {/* Messages */}
-                {messages.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-                      <Sparkles className="w-8 h-8 text-purple-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-white mb-2">Bem-vindo ao Connext Builder</h3>
-                    <p className="text-gray-400 text-sm mb-6">Descreva o que você quer criar</p>
-                    <div className="space-y-2">
-                      <button
-                        onClick={() => setInput("Crie uma landing page para uma startup de tecnologia")}
-                        className="w-full p-3 text-left rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm hover:bg-white/10 transition-colors"
-                      >
-                        Crie uma landing page...
-                      </button>
-                      <button
-                        onClick={() => setInput("Crie um site completo com navbar, hero, features e footer")}
-                        className="w-full p-3 text-left rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm hover:bg-white/10 transition-colors"
-                      >
-                        Crie um site completo...
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}
-                    >
+                    {/* Messages */}
+                    {messages.map((message) => (
                       <div
+                        key={message.id}
                         className={cn(
-                          "max-w-[85%] p-4 rounded-2xl",
-                          msg.role === "user" ? "bg-purple-600 text-white" : "bg-white/10 text-gray-200",
+                          "rounded-xl p-4",
+                          message.role === "user"
+                            ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white ml-8"
+                            : "bg-muted/50 mr-8",
                         )}
                       >
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                         <span className="text-xs opacity-60 mt-2 block">
-                          {msg.timestamp.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          {message.timestamp.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                </ScrollArea>
+
+                <div className="p-4 border-t border-border/50">
+                  {error && (
+                    <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                      {error}
                     </div>
-                  ))
-                )}
-                {error && (
-                  <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
-                    {error}
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-          ) : (
-            <ScrollArea className="h-full">
-              <div className="p-4 space-y-3">
-                <Button onClick={createNewProject} className="w-full bg-purple-600 hover:bg-purple-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Novo Projeto
-                </Button>
-                {isLoadingProjects ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                  </div>
-                ) : projects.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">Nenhum projeto ainda</div>
-                ) : (
-                  projects.map((project) => (
-                    <div
-                      key={project.id}
-                      className={cn(
-                        "p-4 rounded-xl border transition-all cursor-pointer",
-                        activeProject?.id === project.id
-                          ? "bg-purple-600/20 border-purple-500"
-                          : "bg-white/5 border-white/10 hover:bg-white/10",
-                      )}
-                      onClick={() => selectProject(project)}
+                  )}
+
+                  {/* Attachment Preview */}
+                  {attachedImage && (
+                    <div className="mb-3 relative inline-block">
+                      <img
+                        src={attachedImage || "/placeholder.svg"}
+                        alt="Attached"
+                        className="h-20 rounded-lg border border-border/50"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                        onClick={handleRemoveAttachment}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                      disabled={isLoading}
+                      placeholder="Descreva o que deseja criar..."
+                      className="flex-1 bg-muted/50 border-purple-500/30 focus:border-purple-500 transition-colors"
+                    />
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={isLoading || (!input.trim() && !attachedImage)}
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                     >
-                      <div className="flex items-center justify-between">
-                        {editingProjectId === project.id ? (
-                          <div className="flex items-center gap-2 flex-1">
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </Button>
+                  </div>
+
+                  {/* Bottom options */}
+                  <div className="flex items-center gap-3 mt-3">
+                    {/* Attachment Menu */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-3 gap-2 bg-transparent border-border/50 hover:bg-purple-500/10 hover:border-purple-500/30"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span className="text-xs">Anexar</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56 bg-card border-border/50">
+                        <DropdownMenuItem
+                          className="gap-3 cursor-pointer"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <ImageIcon className="w-4 h-4 text-purple-400" />
+                          <div>
+                            <p className="font-medium text-sm">Upload de imagem</p>
+                            <p className="text-xs text-muted-foreground">PNG, JPG, WebP</p>
+                          </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="gap-3 cursor-pointer" onClick={handlePasteFromClipboard}>
+                          <Clipboard className="w-4 h-4 text-blue-400" />
+                          <div>
+                            <p className="font-medium text-sm">Colar da área de transferência</p>
+                            <p className="text-xs text-muted-foreground">Ctrl+V ou Cmd+V</p>
+                          </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="gap-3 cursor-pointer"
+                          onClick={() => setInput(input + " [Importar do Figma - Em breve]")}
+                        >
+                          <Figma className="w-4 h-4 text-green-400" />
+                          <div>
+                            <p className="font-medium text-sm">Importar do Figma</p>
+                            <p className="text-xs text-muted-foreground">Em breve</p>
+                          </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-3 cursor-pointer"
+                          onClick={() => {
+                            const url = prompt("Digite a URL do site para copiar:")
+                            if (url) setInput(`Crie um site similar a: ${url}`)
+                          }}
+                        >
+                          <Link className="w-4 h-4 text-orange-400" />
+                          <div>
+                            <p className="font-medium text-sm">Copiar de URL</p>
+                            <p className="text-xs text-muted-foreground">Clone um site existente</p>
+                          </div>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+
+                    {/* Model indicator */}
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto">
+                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      Claude Sonnet 4
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Projects Tab */}
+            {activeTab === "projects" && (
+              <ScrollArea className="flex-1 p-4">
+                <div className="space-y-2">
+                  <Button
+                    onClick={handleNewProject}
+                    variant="outline"
+                    className="w-full justify-start gap-2 mb-4 bg-transparent"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Novo Projeto
+                  </Button>
+
+                  {isLoadingProjects ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+                    </div>
+                  ) : projects.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p>Nenhum projeto ainda</p>
+                      <p className="text-sm">Crie seu primeiro site com IA!</p>
+                    </div>
+                  ) : (
+                    projects.map((project) => (
+                      <div
+                        key={project.id}
+                        className={cn(
+                          "group flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/50 cursor-pointer transition-all",
+                          activeProject?.id === project.id && "bg-purple-500/10 border-purple-500/30",
+                        )}
+                        onClick={() => handleLoadProject(project)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          {editingProjectId === project.id ? (
                             <Input
                               value={editingProjectName}
                               onChange={(e) => setEditingProjectName(e.target.value)}
-                              className="h-8 text-sm bg-white/10 border-white/20"
+                              onBlur={() => handleRenameProject(project.id, editingProjectName)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleRenameProject(project.id, editingProjectName)
+                                if (e.key === "Escape") setEditingProjectId(null)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
                               autoFocus
-                              onKeyDown={(e) => e.key === "Enter" && saveProjectName(project.id)}
+                              className="h-7 text-sm"
                             />
-                            <Button size="sm" variant="ghost" onClick={() => saveProjectName(project.id)}>
-                              <Check className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingProjectId(null)}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-3">
-                              <FolderOpen className="w-5 h-5 text-purple-400" />
-                              <span className="font-medium text-white">{project.name}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  selectProject(project)
-                                }}
-                              >
-                                <Play className="w-4 h-4 text-green-400" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setEditingProjectId(project.id)
-                                  setEditingProjectName(project.name)
-                                }}
-                              >
-                                <RefreshCw className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  deleteProject(project.id)
-                                }}
-                              >
-                                <Trash2 className="w-4 h-4 text-red-400" />
-                              </Button>
-                            </div>
-                          </>
-                        )}
+                          ) : (
+                            <>
+                              <p className="font-medium text-sm truncate">{project.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(project.updated_at).toLocaleDateString("pt-BR")}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingProjectId(project.id)
+                              setEditingProjectName(project.name)
+                            }}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-400 hover:text-red-300"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteProject(project.id)
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </Tabs>
+        </div>
+
+        {/* Right Panel - Preview/Code */}
+        <div className="flex-1 flex flex-col bg-white overflow-hidden" ref={previewContainerRef}>
+          {previewMode === "preview" ? (
+            <div className="flex-1 flex items-center justify-center p-4 bg-neutral-100">
+              <div
+                className="h-full bg-white rounded-lg shadow-lg overflow-hidden transition-all duration-300"
+                style={{ width: getDeviceWidth(), maxWidth: "100%" }}
+              >
+                {previewHtml ? (
+                  <iframe
+                    srcDoc={previewHtml}
+                    className="w-full h-full border-0"
+                    title="Preview"
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full bg-gradient-to-b from-neutral-50 to-neutral-100">
+                    <div className="text-center max-w-md px-8">
+                      <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                        <Sparkles className="w-12 h-12 text-purple-500" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-neutral-800 mb-3">Crie seu site com IA</h3>
+                      <p className="text-neutral-500 mb-8">
+                        Descreva o site que você deseja e o Connext Builder irá criar para você em segundos
+                      </p>
+
+                      {/* Quick suggestions */}
+                      <div className="space-y-2">
+                        <p className="text-xs text-neutral-400 uppercase tracking-wide mb-3">Sugestões rápidas</p>
+                        <div className="flex flex-wrap gap-2 justify-center">
+                          {[
+                            "Landing page moderna",
+                            "Portfolio criativo",
+                            "Loja virtual",
+                            "Blog pessoal",
+                            "Site de restaurante",
+                          ].map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              onClick={() => setInput(suggestion)}
+                              className="px-3 py-1.5 text-sm bg-white border border-neutral-200 rounded-full hover:border-purple-400 hover:bg-purple-50 transition-colors text-neutral-600 hover:text-purple-600"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  ))
+                  </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden">
+              <div className="flex items-center justify-end gap-2 p-2 border-b border-border/20">
+                <Button variant="ghost" size="sm" onClick={handleCopyCode} className="gap-2 text-muted-foreground">
+                  {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copiedCode ? "Copiado!" : "Copiar"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleDownloadCode} className="gap-2 text-muted-foreground">
+                  <Download className="w-4 h-4" />
+                  Download
+                </Button>
+              </div>
+              <ScrollArea className="flex-1">
+                <pre className="p-4 text-sm text-green-400 font-mono">
+                  <code>{generatedCode || "// O código gerado aparecerá aqui..."}</code>
+                </pre>
+              </ScrollArea>
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Input */}
-        <div className="p-4 border-t border-white/10">
-          <form onSubmit={handleSubmit} className="relative">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Descreva o que deseja criar..."
-              className="w-full min-h-[80px] max-h-[200px] p-4 pr-12 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSubmit(e)
-                }
-              }}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={isLoading || !input.trim()}
-              className="absolute right-3 bottom-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
-            >
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
-          </form>
-          <div className="flex items-center justify-between mt-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                  <Plus className="w-4 h-4 mr-1" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="bg-[#1a1a2e] border-white/10">
-                <DropdownMenuItem className="text-gray-300 hover:bg-white/10">
-                  <ImageIcon className="w-4 h-4 mr-2" />
-                  Enviar Imagem
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-gray-300 hover:bg-white/10">
-                  <Globe className="w-4 h-4 mr-2" />
-                  Landing Page
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <div className="w-3 h-3 rounded-full bg-gradient-to-r from-orange-500 to-yellow-500" />
-              Claude Sonnet 4
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">Upgrade para Pro</h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowUpgradeModal(false)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="text-center py-6">
+              <Crown className="w-16 h-16 mx-auto text-amber-400 mb-4" />
+              <p className="text-muted-foreground mb-6">
+                Você usou todos os seus créditos gratuitos. Faça upgrade para o plano Pro e tenha créditos ilimitados!
+              </p>
+              <Button
+                className="w-full bg-gradient-to-r from-amber-500 to-orange-500"
+                onClick={() => (window.location.href = "/dashboard/upgrade")}
+              >
+                Fazer Upgrade
+              </Button>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Right Panel - Preview */}
-      <div
-        ref={previewContainerRef}
-        className={cn(
-          "flex-1 flex flex-col bg-[#0f0f1a]",
-          mobileView !== "preview" && "hidden lg:flex",
-          isFullscreen && "fixed inset-0 z-50",
-        )}
-      >
-        {/* Preview Header */}
-        <div className="flex items-center justify-between p-3 border-b border-white/10 bg-[#0a0a0f]">
-          <div className="flex items-center gap-2">
-            <Tabs value={previewMode} onValueChange={(v) => setPreviewMode(v as "preview" | "code")}>
-              <TabsList className="bg-white/5">
-                <TabsTrigger value="preview" className="data-[state=active]:bg-purple-600">
-                  <Eye className="w-4 h-4 mr-2" />
-                  Preview
-                </TabsTrigger>
-                <TabsTrigger value="code" className="data-[state=active]:bg-purple-600">
-                  <Code className="w-4 h-4 mr-2" />
-                  Código
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-white/5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8", deviceView === "desktop" && "bg-white/10")}
-                onClick={() => setDeviceView("desktop")}
-              >
-                <Monitor className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8", deviceView === "tablet" && "bg-white/10")}
-                onClick={() => setDeviceView("tablet")}
-              >
-                <Tablet className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8", deviceView === "mobile" && "bg-white/10")}
-                onClick={() => setDeviceView("mobile")}
-              >
-                <Smartphone className="w-4 h-4" />
-              </Button>
-            </div>
-            <Button variant="ghost" size="icon" onClick={toggleFullscreen}>
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setShowShareModal(true)}>
-              <Share2 className="w-4 h-4" />
-            </Button>
-            <Button onClick={() => setShowPublishModal(true)} className="bg-purple-600 hover:bg-purple-700">
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Publicar
-            </Button>
-          </div>
-        </div>
-
-        {/* Preview Content */}
-        <div className="flex-1 overflow-hidden p-4 bg-[#0f0f1a]">
-          <div
-            className={cn(
-              "h-full mx-auto transition-all duration-300 rounded-xl overflow-hidden border border-white/10 bg-white",
-              deviceView === "desktop" && "w-full",
-              deviceView === "tablet" && "max-w-[768px]",
-              deviceView === "mobile" && "max-w-[375px]",
-            )}
-          >
-            {previewMode === "preview" ? (
-              generatedCode ? (
-                <iframe
-                  srcDoc={generatePreviewHtml(generatedCode)}
-                  className="w-full h-full border-0"
-                  title="Preview"
-                  sandbox="allow-scripts allow-same-origin"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-[#030014]">
-                  <div className="text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-                      <Sparkles className="w-8 h-8 text-purple-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-white mb-2">Bem-vindo ao Connext Builder</h3>
-                    <p className="text-gray-400 text-sm">Descreva o que você quer criar</p>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="h-full bg-[#0d0d12] p-4 overflow-auto">
-                <div className="flex items-center justify-end gap-2 mb-4">
-                  <Button variant="ghost" size="sm" onClick={copyCode} className="text-gray-400 hover:text-white">
-                    {copiedCode ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
-                    {copiedCode ? "Copiado!" : "Copiar"}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={downloadCode} className="text-gray-400 hover:text-white">
-                    <Download className="w-4 h-4 mr-1" />
-                    Download
-                  </Button>
-                </div>
-                <pre className="text-sm text-gray-300 font-mono whitespace-pre-wrap">
-                  {generatedCode || "// Código será exibido aqui..."}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Share Modal */}
       {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-[#1a1a2e] rounded-2xl p-6 max-w-md w-full mx-4 border border-white/10">
-            <h3 className="text-xl font-semibold text-white mb-4">Compartilhar Projeto</h3>
-            <p className="text-gray-400 text-sm mb-6">
-              {activeProject
-                ? "Copie o link para compartilhar seu projeto."
-                : "Salve um projeto primeiro para compartilhar."}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setShowShareModal(false)} className="flex-1">
-                Cancelar
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">Compartilhar</h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowShareModal(false)}>
+                <X className="w-5 h-5" />
               </Button>
-              <Button
-                onClick={handleShare}
-                disabled={!activeProject}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
-              >
-                {shareLinkCopied ? "Link Copiado!" : "Copiar Link"}
-              </Button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-muted-foreground text-sm">Compartilhe o código do seu site:</p>
+              <div className="flex gap-2">
+                <Input
+                  value={`${typeof window !== "undefined" ? window.location.origin : ""}/shared/${activeProject?.id || "preview"}`}
+                  readOnly
+                  className="flex-1"
+                />
+                <Button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `${typeof window !== "undefined" ? window.location.origin : ""}/shared/${activeProject?.id || "preview"}`,
+                    )
+                    setShareLinkCopied(true)
+                    setTimeout(() => setShareLinkCopied(false), 2000)
+                  }}
+                >
+                  {shareLinkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1799,55 +1794,29 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
       {/* Publish Modal */}
       {showPublishModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-[#1a1a2e] rounded-2xl p-6 max-w-md w-full mx-4 border border-white/10">
-            <h3 className="text-xl font-semibold text-white mb-4">Publicar Site</h3>
-            <p className="text-gray-400 text-sm mb-4">Seu site será publicado e ficará disponível online.</p>
-            <a
-              href="https://registro.br"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block p-3 rounded-xl bg-white/5 border border-white/10 text-purple-400 text-sm mb-6 hover:bg-white/10 transition-colors"
-            >
-              Compre seu domínio em Registro.BR
-            </a>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setShowPublishModal(false)} className="flex-1">
-                Cancelar
-              </Button>
-              <Button onClick={handlePublish} className="flex-1 bg-purple-600 hover:bg-purple-700">
-                {publishSuccess ? "Publicado!" : "Publicar"}
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">Publicar Site</h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowPublishModal(false)}>
+                <X className="w-5 h-5" />
               </Button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-[#1a1a2e] rounded-2xl p-6 max-w-md w-full mx-4 border border-white/10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
-                <Crown className="w-6 h-6 text-white" />
+            <div className="space-y-4">
+              <p className="text-muted-foreground text-sm">
+                Para publicar seu site, copie o código e use uma plataforma como Vercel, Netlify ou GitHub Pages.
+              </p>
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium mb-2">Opções de publicação:</h4>
+                <ul className="text-sm text-muted-foreground space-y-2">
+                  <li>• Vercel - vercel.com</li>
+                  <li>• Netlify - netlify.com</li>
+                  <li>• GitHub Pages</li>
+                </ul>
               </div>
-              <div>
-                <h3 className="text-xl font-semibold text-white">Créditos Esgotados</h3>
-                <p className="text-sm text-gray-400">Faça upgrade para continuar criando</p>
-              </div>
-            </div>
-            <p className="text-gray-400 text-sm mb-6">
-              Com o plano PRO você tem créditos ilimitados, acesso a todos os modelos de IA e suporte prioritário.
-            </p>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setShowUpgradeModal(false)} className="flex-1">
-                Depois
-              </Button>
-              <Button
-                asChild
-                className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
-              >
-                <a href="/dashboard/upgrade">Upgrade para PRO</a>
+              <Button onClick={handleCopyCode} className="w-full gap-2">
+                {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiedCode ? "Código Copiado!" : "Copiar Código"}
               </Button>
             </div>
           </div>
