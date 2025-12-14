@@ -348,7 +348,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     if (lowerPrompt.includes("grenal") || (lowerPrompt.includes("gremio") && lowerPrompt.includes("inter"))) {
       return `export default function Grenal() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0047AB] via-black to-[#E31B23] text-white overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-black to-[#1a1a2e] text-white overflow-hidden">
       <style>{\`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .pulse { animation: pulse 2s infinite; }
@@ -357,7 +357,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-center gap-8">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-full bg-[#0047AB] flex items-center justify-center border-2 border-white font-bold">G</div>
+            <div className="w-10 h-10 rounded-full bg-[#0a0a0f] flex items-center justify-center border-2 border-white font-bold">G</div>
             <span className="font-bold">GRÊMIO</span>
           </div>
           <span className="text-2xl font-black text-yellow-400">VS</span>
@@ -423,7 +423,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     if (lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio") || lowerPrompt.includes("tricolor")) {
       return `export default function GremioFBPA() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0047AB] via-[#001a3a] to-black text-white">
+    <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#001a3a] to-black text-white">
       <style>{\`
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         .float { animation: float 3s ease-in-out infinite; }
@@ -562,7 +562,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     ) {
       return `export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#030014] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden">
       <style>{\`
         @keyframes gradient { to { background-position: 200% center; } }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
@@ -725,15 +725,15 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     // Default fallback
     return `export default function Site() {
   return (
-    <div className="min-h-screen bg-[#030014] text-white flex items-center justify-center p-8">
+    <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center p-8">
       <div className="max-w-2xl text-center">
-        <div className="w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
+        <div className="w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
           <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
         <h1 className="text-4xl font-bold mb-6 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-          Descreva seu site
+          Descreva o que você quer criar
         </h1>
         <p className="text-xl text-gray-400 mb-8">
           Seja específico! Por exemplo: "Crie um site de bijuterias da Maria" ou "Landing page para minha startup de IA"
@@ -768,41 +768,81 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
     let htmlContent = ""
 
     try {
-      // Find the return statement and extract JSX
-      const returnMatch = code.match(/return\s*$$\s*([\s\S]*?)\s*$$\s*;?\s*\}?\s*$/)
+      // Find return ( and then match until the closing ) considering nested parens
+      const returnIndex = code.indexOf("return (")
+      if (returnIndex === -1) {
+        console.log("[v0] Could not find 'return (' in code")
+      }
 
-      if (returnMatch && returnMatch[1]) {
-        htmlContent = returnMatch[1]
-          // Convert className to class
-          .replace(/className=/g, "class=")
-          // Convert self-closing tags
-          .replace(/<(\w+)([^>]*?)\/>/g, "<$1$2></$1>")
-          // Remove JSX expressions {something} - replace with empty or handle common patterns
-          .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // Remove JSX comments
-          .replace(/\{`([^`]*)`\}/g, "$1") // Template literals
-          .replace(/\{"([^"]*)"\}/g, "$1") // String literals
-          .replace(/\{'([^']*)'\}/g, "$1") // Single quote strings
-          .replace(/\{(\d+)\}/g, "$1") // Numbers
-          .replace(/\{[^}]*\}/g, "") // Remove remaining JSX expressions
-          // Fix common React patterns
-          .replace(/onClick=\{[^}]*\}/g, "")
-          .replace(/onChange=\{[^}]*\}/g, "")
-          .replace(/onSubmit=\{[^}]*\}/g, "")
-          .replace(/href=\{[^}]*\}/g, 'href="#"')
-          .replace(/src=\{[^}]*\}/g, 'src="/placeholder.svg?height=400&width=600"')
-          // Remove Fragment syntax
-          .replace(/<>/g, "")
-          .replace(/<\/>/g, "")
-          .replace(/<React\.Fragment>/g, "")
-          .replace(/<\/React\.Fragment>/g, "")
+      if (returnIndex !== -1) {
+        let depth = 0
+        const startIndex = returnIndex + 7 // After "return "
+        let foundStart = false
+        let contentStart = 0
+        let contentEnd = 0
 
-        console.log("[v0] Converted HTML length:", htmlContent.length)
-      } else {
-        console.log("[v0] Could not find return statement in code")
-        // Try alternative: find JSX directly
-        const jsxMatch = code.match(/<([a-zA-Z][a-zA-Z0-9]*)[\s\S]*<\/\1>/)
+        for (let i = startIndex; i < code.length; i++) {
+          if (code[i] === "(") {
+            if (!foundStart) {
+              foundStart = true
+              contentStart = i + 1
+            }
+            depth++
+          } else if (code[i] === ")") {
+            depth--
+            if (depth === 0 && foundStart) {
+              contentEnd = i
+              break
+            }
+          }
+        }
+
+        if (contentStart > 0 && contentEnd > contentStart) {
+          htmlContent = code.substring(contentStart, contentEnd).trim()
+          console.log("[v0] Extracted JSX content length:", htmlContent.length)
+
+          // Convert JSX to HTML
+          htmlContent = htmlContent
+            // Convert className to class
+            .replace(/className=/g, "class=")
+            // Convert self-closing tags
+            .replace(/<(\w+)([^>]*?)\/>/g, "<$1$2></$1>")
+            // Remove JSX expressions {something} - replace with empty or handle common patterns
+            .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // Remove JSX comments
+            .replace(/\{`([^`]*)`\}/g, "$1") // Template literals
+            .replace(/\{"([^"]*)"\}/g, "$1") // String literals
+            .replace(/\{'([^']*)'\}/g, "$1") // Single quote strings
+            .replace(/\{(\d+)\}/g, "$1") // Numbers
+            // Remove event handlers
+            .replace(/onClick=\{[^}]*\}/g, "")
+            .replace(/onChange=\{[^}]*\}/g, "")
+            .replace(/onSubmit=\{[^}]*\}/g, "")
+            .replace(/onMouseEnter=\{[^}]*\}/g, "")
+            .replace(/onMouseLeave=\{[^}]*\}/g, "")
+            // Handle dynamic values
+            .replace(/href=\{[^}]*\}/g, 'href="#"')
+            .replace(/src=\{[^}]*\}/g, 'src="/placeholder.svg?height=400&width=600"')
+            // Remove remaining JSX expressions (must be after specific handlers)
+            .replace(/\{[^}]*\}/g, "")
+            // Remove Fragment syntax
+            .replace(/<>/g, "")
+            .replace(/<\/>/g, "")
+            .replace(/<React\.Fragment>/g, "")
+            .replace(/<\/React\.Fragment>/g, "")
+
+          console.log("[v0] Converted HTML content length:", htmlContent.length)
+        }
+      }
+
+      if (!htmlContent || htmlContent.trim().length < 20) {
+        console.log("[v0] Trying fallback JSX extraction")
+        const jsxMatch = code.match(/<div[\s\S]*<\/div>\s*\)\s*;?\s*\}/)
         if (jsxMatch) {
-          htmlContent = jsxMatch[0].replace(/className=/g, "class=").replace(/\{[^}]*\}/g, "")
+          htmlContent = jsxMatch[0]
+            .replace(/\)\s*;?\s*']=$/, "") // Remove trailing ) ; }
+            .replace(/className=/g, "class=")
+            .replace(/\{[^}]*\}/g, "")
+          console.log("[v0] Fallback extracted length:", htmlContent.length)
         }
       }
     } catch (e) {
