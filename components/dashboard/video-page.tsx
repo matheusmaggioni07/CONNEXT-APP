@@ -418,6 +418,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       // Process answer (for initiator)
       const processAnswer = async (sdp: string) => {
+        if (hasRemoteDescriptionRef.current) {
+          console.log("[v0] Already has remote description, ignoring duplicate answer")
+          return
+        }
+
         console.log("[v0] Processing received answer...")
         try {
           await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }))
