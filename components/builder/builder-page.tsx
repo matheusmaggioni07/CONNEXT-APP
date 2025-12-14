@@ -340,7 +340,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       </footer>
     </div>
   )
-}`
+}
+`
     }
 
     // Grenal
@@ -744,115 +745,185 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const generatePreviewHtml = (code: string): string => {
-    // Extract the component name from the code
-    const componentMatch = code.match(/export\s+default\s+function\s+(\w+)/)
-    const componentName = componentMatch ? componentMatch[1] : "GeneratedComponent"
+    console.log("[v0] generatePreviewHtml received code length:", code?.length)
 
-    // Create a base64 encoded version of the code to avoid escaping issues
-    const base64Code = btoa(unescape(encodeURIComponent(code)))
+    if (!code || code.trim().length < 50) {
+      console.log("[v0] Code is empty or too short, using fallback")
+      return `<!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black flex items-center justify-center">
+          <div class="text-center text-white">
+            <h1 class="text-4xl font-bold mb-4">Erro na Geração</h1>
+            <p class="text-gray-300">O código não foi gerado corretamente. Tente novamente.</p>
+          </div>
+        </body>
+        </html>`
+    }
 
-    return (
-      "<!DOCTYPE html>" +
-      '<html lang="pt-BR">' +
-      "<head>" +
-      '  <meta charset="UTF-8">' +
-      '  <meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-      '  <script src="https://cdn.tailwindcss.com"></script>' +
-      "  <script>" +
-      "    tailwind.config = {" +
-      "      theme: {" +
-      "        extend: {" +
-      '          fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] },' +
-      "          animation: {" +
-      '            "gradient": "gradient 8s linear infinite",' +
-      '            "float": "float 6s ease-in-out infinite",' +
-      '            "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",' +
-      '            "shimmer": "shimmer 3s linear infinite",' +
-      '            "bounce-slow": "bounce 2s infinite"' +
-      "          }" +
-      "        }" +
-      "      }" +
-      "    }" +
-      "  </script>" +
-      "  <style>" +
-      '    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");' +
-      "    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }" +
-      "    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }" +
-      "    @keyframes shimmer { to { background-position: 200% center; } }" +
-      "    @keyframes pulse-glow { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }" +
-      "    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }" +
-      "    .animate-gradient { animation: gradient 8s ease infinite; background-size: 200% 200%; }" +
-      "    .float { animation: float 4s ease-in-out infinite; }" +
-      "    .shimmer { animation: shimmer 3s linear infinite; background-size: 200% auto; }" +
-      "    .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }" +
-      "    .fade-in { animation: fadeIn 0.6s ease-out forwards; }" +
-      "    * { margin: 0; padding: 0; box-sizing: border-box; }" +
-      "    html { scroll-behavior: smooth; }" +
-      "    html, body, #root { min-height: 100%; width: 100%; }" +
-      '    body { font-family: "Inter", system-ui, sans-serif; background: #030014; color: white; -webkit-font-smoothing: antialiased; }' +
-      "    img { max-width: 100%; height: auto; }" +
-      "    a { color: inherit; text-decoration: none; }" +
-      "    button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }" +
-      "  </style>" +
-      "</head>" +
-      "<body>" +
-      '  <div id="root"></div>' +
-      '  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>' +
-      '  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>' +
-      '  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>' +
-      '  <script type="text/babel" data-presets="react">' +
-      "    const { useState, useEffect, useRef, useCallback, useMemo } = React;" +
-      "    " +
-      "    // Error handler" +
-      "    window.onerror = function(msg, url, lineNo, columnNo, error) {" +
-      '      console.error("Preview Error:", msg, error);' +
-      '      var root = document.getElementById("root");' +
-      "      root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e1b4b 0%,#0f0f23 100%);padding:2rem;\">' +" +
-      "        '<div style=\"text-align:center;max-width:500px;\">' +" +
-      "        '<div style=\"font-size:4rem;margin-bottom:1rem;\">⚠️</div>' +" +
-      "        '<h1 style=\"font-size:1.5rem;margin-bottom:0.5rem;color:white;\">Erro no Preview</h1>' +" +
-      "        '<p style=\"color:#9ca3af;\">' + msg + '</p>' +" +
-      "        '<p style=\"color:#6b7280;font-size:0.875rem;margin-top:1rem;\">Tente gerar novamente com um prompt diferente.</p>' +" +
-      "        '</div></div>';" +
-      "      return true;" +
-      "    };" +
-      "    " +
-      "    try {" +
-      "      // Decode the base64 code" +
-      '      var encodedCode = "' +
-      base64Code +
-      '";' +
-      "      var decodedCode = decodeURIComponent(escape(atob(encodedCode)));" +
-      "      " +
-      "      // Create a function from the code" +
-      "      var ComponentFunction = null;" +
-      "      " +
-      "      // Use Function constructor to evaluate the component" +
-      '      var wrappedCode = "(function() { " + decodedCode.replace("export default function", "return function") + " })()";' +
-      '      ComponentFunction = eval(Babel.transform(wrappedCode, { presets: ["react"] }).code);' +
-      "      " +
-      "      if (ComponentFunction) {" +
-      '        var root = ReactDOM.createRoot(document.getElementById("root"));' +
-      "        root.render(React.createElement(ComponentFunction));" +
-      '        console.log("[Connext] Rendered successfully");' +
-      "      } else {" +
-      '        throw new Error("Could not create component");' +
-      "      }" +
-      "    } catch (err) {" +
-      '      console.error("[Connext] Render error:", err);' +
-      '      var root = document.getElementById("root");' +
-      "      root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e1b4b 0%,#0f0f23 100%);padding:2rem;\">' +" +
-      "        '<div style=\"text-align:center;max-width:500px;\">' +" +
-      "        '<div style=\"font-size:4rem;margin-bottom:1rem;\">⚠️</div>' +" +
-      "        '<h1 style=\"font-size:1.5rem;margin-bottom:0.5rem;color:white;\">Erro ao Renderizar</h1>' +" +
-      "        '<p style=\"color:#9ca3af;\">' + err.message + '</p>' +" +
-      "        '<p style=\"color:#6b7280;font-size:0.875rem;margin-top:1rem;\">Tente gerar novamente com um prompt mais simples.</p>' +" +
-      "        '</div></div>';" +
-      "    }" +
-      "  </script>" +
-      "</body>" +
-      "</html>"
-    )
+    // Convert JSX to plain HTML by extracting the content inside return()
+    let htmlContent = ""
+
+    try {
+      // Find the return statement and extract JSX
+      const returnMatch = code.match(/return\s*$$\s*([\s\S]*?)\s*$$\s*;?\s*\}?\s*$/)
+
+      if (returnMatch && returnMatch[1]) {
+        htmlContent = returnMatch[1]
+          // Convert className to class
+          .replace(/className=/g, "class=")
+          // Convert self-closing tags
+          .replace(/<(\w+)([^>]*?)\/>/g, "<$1$2></$1>")
+          // Remove JSX expressions {something} - replace with empty or handle common patterns
+          .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // Remove JSX comments
+          .replace(/\{`([^`]*)`\}/g, "$1") // Template literals
+          .replace(/\{"([^"]*)"\}/g, "$1") // String literals
+          .replace(/\{'([^']*)'\}/g, "$1") // Single quote strings
+          .replace(/\{(\d+)\}/g, "$1") // Numbers
+          .replace(/\{[^}]*\}/g, "") // Remove remaining JSX expressions
+          // Fix common React patterns
+          .replace(/onClick=\{[^}]*\}/g, "")
+          .replace(/onChange=\{[^}]*\}/g, "")
+          .replace(/onSubmit=\{[^}]*\}/g, "")
+          .replace(/href=\{[^}]*\}/g, 'href="#"')
+          .replace(/src=\{[^}]*\}/g, 'src="/placeholder.svg?height=400&width=600"')
+          // Remove Fragment syntax
+          .replace(/<>/g, "")
+          .replace(/<\/>/g, "")
+          .replace(/<React\.Fragment>/g, "")
+          .replace(/<\/React\.Fragment>/g, "")
+
+        console.log("[v0] Converted HTML length:", htmlContent.length)
+      } else {
+        console.log("[v0] Could not find return statement in code")
+        // Try alternative: find JSX directly
+        const jsxMatch = code.match(/<([a-zA-Z][a-zA-Z0-9]*)[\s\S]*<\/\1>/)
+        if (jsxMatch) {
+          htmlContent = jsxMatch[0].replace(/className=/g, "class=").replace(/\{[^}]*\}/g, "")
+        }
+      }
+    } catch (e) {
+      console.error("[v0] Error converting JSX to HTML:", e)
+    }
+
+    // If we couldn't extract content, try to render the whole thing as JSX
+    if (!htmlContent || htmlContent.trim().length < 20) {
+      console.log("[v0] Falling back to Babel approach")
+      return generatePreviewWithBabel(code)
+    }
+
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] },
+          animation: {
+            "gradient": "gradient 8s linear infinite",
+            "float": "float 6s ease-in-out infinite",
+            "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+    .animate-gradient { animation: gradient 8s ease infinite; background-size: 200% 200%; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    img { max-width: 100%; height: auto; }
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; }
+  </style>
+</head>
+<body>
+  ${htmlContent}
+</body>
+</html>`
+  }
+
+  const generatePreviewWithBabel = (code: string): string => {
+    // Encode to base64 safely
+    let base64Code = ""
+    try {
+      // Use TextEncoder for better unicode support
+      const encoder = new TextEncoder()
+      const data = encoder.encode(code)
+      base64Code = btoa(String.fromCharCode(...data))
+    } catch (e) {
+      console.error("[v0] Base64 encoding failed:", e)
+      // Fallback: escape special chars
+      try {
+        base64Code = btoa(unescape(encodeURIComponent(code)))
+      } catch (e2) {
+        console.error("[v0] Fallback encoding also failed")
+        base64Code = btoa(code.replace(/[^\x00-\x7F]/g, ""))
+      }
+    }
+
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Inter", system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef } = React;
+    
+    window.onerror = function(msg) {
+      document.getElementById("root").innerHTML = 
+        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:white;text-align:center;padding:2rem;">' +
+        '<div><h1 style="font-size:1.5rem;margin-bottom:1rem;">Erro no Preview</h1><p style="color:#888;">' + msg + '</p></div></div>';
+      return true;
+    };
+    
+    try {
+      const encodedCode = "${base64Code}";
+      const decodedBytes = atob(encodedCode);
+      const bytes = new Uint8Array(decodedBytes.length);
+      for (let i = 0; i < decodedBytes.length; i++) {
+        bytes[i] = decodedBytes.charCodeAt(i);
+      }
+      const decodedCode = new TextDecoder().decode(bytes);
+      
+      const wrappedCode = "(function() { " + decodedCode.replace("export default function", "return function") + " })()";
+      const ComponentFunction = eval(Babel.transform(wrappedCode, { presets: ["react"] }).code);
+      
+      if (ComponentFunction) {
+        ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ComponentFunction));
+      }
+    } catch (err) {
+      console.error("Render error:", err);
+      document.getElementById("root").innerHTML = 
+        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:white;text-align:center;padding:2rem;">' +
+        '<div><h1 style="font-size:1.5rem;margin-bottom:1rem;">Erro no Preview</h1><p style="color:#888;">' + err.message + '</p></div></div>';
+    }
+  </script>
+</body>
+</html>`
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -901,6 +972,10 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 
       const data = await response.json()
 
+      console.log("[v0] API response status:", response.status)
+      console.log("[v0] API response data:", JSON.stringify(data).substring(0, 500))
+      console.log("[v0] Code received length:", data.code?.length)
+
       if (!response.ok) {
         if (response.status === 429) {
           setError("Limite atingido. Aguarde " + (data.remainingTime || 60) + " minutos.")
@@ -921,7 +996,14 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       const completedId = addThought("completed", "Código gerado com sucesso!")
       updateThought(completedId, "done")
 
-      setGeneratedCode(data.code)
+      if (data.code && data.code.includes("export default function")) {
+        console.log("[v0] Setting generated code - valid component found")
+        setGeneratedCode(data.code)
+      } else {
+        console.log("[v0] Invalid code received, using fallback")
+        const fallbackCode = generateFallbackCode(input.trim())
+        setGeneratedCode(fallbackCode)
+      }
 
       if (activeProject) {
         autoSaveToProject(data.code)

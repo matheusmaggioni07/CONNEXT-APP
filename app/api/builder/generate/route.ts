@@ -46,7 +46,7 @@ const SYSTEM_PROMPT = `Você é um desenvolvedor frontend expert especializado e
 
 ## ÍCONES (use SVG inline):
 - Zap: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-- Check: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+- Check: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7h7v7l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
 - Star: <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
 
 ## EXEMPLO DE CÓDIGO CORRETO:
@@ -95,6 +95,8 @@ LEMBRE-SE: Retorne APENAS o código, começando com "export default function" e 
 export async function POST(req: Request) {
   const { prompt, projectContext, history } = await req.json()
 
+  console.log("[v0] Builder API called with prompt:", prompt?.substring(0, 100))
+
   try {
     const supabase = await createClient()
     const {
@@ -102,6 +104,7 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser()
 
     if (!user) {
+      console.log("[v0] User not authenticated")
       return Response.json({ error: "Não autenticado", code: "", explanation: "" }, { status: 401 })
     }
 
@@ -128,6 +131,8 @@ INSTRUÇÕES ESPECÍFICAS:
 - O site deve ser visualmente impressionante e profissional
 - Retorne APENAS o código JSX, começando com "export default function"`
 
+    console.log("[v0] Calling Claude API...")
+
     const { text } = await generateText({
       model: "anthropic/claude-sonnet-4-20250514",
       system: SYSTEM_PROMPT,
@@ -136,9 +141,11 @@ INSTRUÇÕES ESPECÍFICAS:
       temperature: 0.7,
     })
 
+    console.log("[v0] Claude response length:", text?.length)
+    console.log("[v0] Claude response preview:", text?.substring(0, 300))
+
     let code = text.trim()
 
-    // Remover markdown
     code = code
       .replace(/^```(?:jsx|tsx|javascript|typescript|react)?\s*\n?/gm, "")
       .replace(/\n?```\s*$/gm, "")
@@ -146,6 +153,9 @@ INSTRUÇÕES ESPECÍFICAS:
       .replace(/^I'll create.*?:\s*\n/gim, "")
       .replace(/^Sure.*?:\s*\n/gim, "")
       .replace(/^This.*?:\s*\n/gim, "")
+      .replace(/^Aqui.*?:\s*\n/gim, "")
+      .replace(/^Vou criar.*?:\s*\n/gim, "")
+      .replace(/^Claro.*?:\s*\n/gim, "")
       .trim()
 
     // Encontrar início do export default
@@ -154,7 +164,11 @@ INSTRUÇÕES ESPECÍFICAS:
       code = code.substring(exportIndex)
     }
 
+    console.log("[v0] Cleaned code length:", code?.length)
+    console.log("[v0] Has export default:", code?.includes("export default function"))
+
     if (!code.includes("export default function")) {
+      console.log("[v0] No export default found, using fallback")
       code = generateFallbackCode(prompt)
     }
 
@@ -162,8 +176,11 @@ INSTRUÇÕES ESPECÍFICAS:
     const hasJSX = code.includes("<") && code.includes(">")
 
     if (!hasReturn || !hasJSX) {
+      console.log("[v0] Invalid code structure, using fallback. hasReturn:", hasReturn, "hasJSX:", hasJSX)
       code = generateFallbackCode(prompt)
     }
+
+    console.log("[v0] Final code length:", code?.length)
 
     return Response.json({
       code,
@@ -171,7 +188,7 @@ INSTRUÇÕES ESPECÍFICAS:
       remainingRequests: profile?.plan === "pro" ? -1 : 20,
     })
   } catch (error) {
-    console.error("[Connext Builder] Error:", error)
+    console.error("[v0] Builder Error:", error)
 
     const fallbackCode = generateFallbackCode(prompt)
 
