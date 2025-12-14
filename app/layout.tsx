@@ -9,20 +9,22 @@ const _inter = Inter({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Connext - 1° Plataforma Web de Networking Profissional via Videochamada",
+  title: "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
   description:
-    "1° plataforma web de networking profissional via videochamada. Conecte-se instantaneamente com profissionais da sua área e crie oportunidades de negócio em tempo real.",
+    "A primeira plataforma de networking profissional via videochamada do Brasil. Conecte-se instantaneamente com empreendedores, investidores e profissionais. Match por interesses, videochamadas HD e criação de sites com IA.",
   generator: "v0.app",
   manifest: "/manifest.json",
   keywords: [
-    "networking",
-    "profissional",
+    "networking profissional",
     "videochamada",
+    "networking via video",
+    "conexões profissionais",
     "negócios",
-    "conexões",
-    "carreira",
     "empreendedorismo",
+    "investidores",
     "connext",
+    "primeira plataforma",
+    "networking brasil",
   ],
   authors: [{ name: "Connext App" }],
   creator: "Connext",
@@ -36,9 +38,9 @@ export const metadata: Metadata = {
     locale: "pt_BR",
     url: "https://www.connextapp.com.br",
     siteName: "Connext",
-    title: "Connext - 1° Plataforma Web de Networking Profissional via Videochamada",
+    title: "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
     description:
-      "1° plataforma web de networking profissional via videochamada. Conecte-se instantaneamente com profissionais e crie oportunidades de negócio.",
+      "A primeira plataforma de networking profissional via videochamada do Brasil. Conecte-se com empreendedores e investidores em tempo real.",
     images: [
       {
         url: "/og-image.png",
@@ -50,8 +52,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Connext - 1° Plataforma Web de Networking Profissional via Videochamada",
-    description: "1° plataforma web de networking profissional via videochamada.",
+    title: "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
+    description: "A primeira plataforma de networking profissional via videochamada do Brasil.",
     images: ["/og-image.png"],
     creator: "@connextapp",
   },
@@ -62,12 +64,14 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.ico", sizes: "48x48" },
       { url: "/connext-logo-icon.png", sizes: "32x32", type: "image/png" },
+      { url: "/connext-logo-icon.png", sizes: "96x96", type: "image/png" },
       { url: "/connext-logo-icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/connext-logo-icon.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: "/connext-logo-icon.png",
-    shortcut: "/favicon.ico",
+    apple: [{ url: "/connext-logo-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: "/connext-logo-icon.png",
   },
   robots: {
     index: true,

@@ -1,7 +1,7 @@
 {
-  "name": "Connext - Networking Profissional",
+  "name": "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
   "short_name": "Connext",
-  "description": "1ª plataforma web de networking profissional via videochamada. Conecte-se instantaneamente com profissionais da sua área.",
+  "description": "A primeira plataforma de networking profissional via videochamada do Brasil. Conecte-se instantaneamente com empreendedores, investidores e profissionais. Match por interesses, videochamadas HD e criação de sites com IA.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",
@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "scope": "/",
   "lang": "pt-BR",
-  "categories": ["business", "social", "productivity"],
+  "categories": ["business", "social", "productivity", "networking"],
   "icons": [
     {
       "src": "/connext-logo-icon.png",
@@ -32,21 +32,21 @@
       "type": "image/png"
     },
     {
-      "src": "/icon-192.jpg",
+      "src": "/connext-logo-icon.png",
       "sizes": "192x192",
-      "type": "image/jpeg",
-      "purpose": "maskable"
+      "type": "image/png",
+      "purpose": "maskable any"
     },
     {
-      "src": "/icon-512.jpg",
+      "src": "/connext-logo-icon.png",
       "sizes": "512x512",
-      "type": "image/jpeg",
+      "type": "image/png",
       "purpose": "any"
     }
   ],
   "shortcuts": [
     {
-      "name": "Descobrir",
+      "name": "Descobrir Profissionais",
       "short_name": "Descobrir",
       "url": "/dashboard",
       "icons": [{ "src": "/connext-logo-icon.png", "sizes": "96x96" }]
@@ -64,7 +64,7 @@
       "icons": [{ "src": "/connext-logo-icon.png", "sizes": "96x96" }]
     },
     {
-      "name": "Builder",
+      "name": "Connext Builder",
       "short_name": "Builder",
       "url": "/dashboard/builder",
       "icons": [{ "src": "/connext-logo-icon.png", "sizes": "96x96" }]

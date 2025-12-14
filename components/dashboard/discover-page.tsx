@@ -17,12 +17,16 @@ import {
   RefreshCw,
   Target,
   Video,
+  Briefcase,
+  User,
+  ArrowLeft,
 } from "lucide-react"
 import { likeUser, checkLikeLimit } from "@/app/actions/likes"
 import { getProfilesToDiscover } from "@/app/actions/profile"
 import { getOnlineUserIds, updatePresence } from "@/app/actions/presence"
 import type { Profile } from "@/lib/types"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export function DiscoverPage() {
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -38,6 +42,8 @@ export function DiscoverPage() {
     canLike: true,
     remaining: 5,
   })
+  const [imageError, setImageError] = useState(false)
+  const router = useRouter()
 
   const fetchData = useCallback(async () => {
     setIsLoading(true)
@@ -69,6 +75,10 @@ export function DiscoverPage() {
 
     return () => clearInterval(presenceInterval)
   }, [fetchData])
+
+  useEffect(() => {
+    setImageError(false)
+  }, [currentIndex])
 
   const currentProfile = profiles[currentIndex]
 
@@ -119,6 +129,7 @@ export function DiscoverPage() {
 
   const nextProfile = () => {
     setShowDetails(false)
+    setImageError(false)
     if (currentIndex < profiles.length - 1) {
       setCurrentIndex((prev) => prev + 1)
     } else {
@@ -145,14 +156,14 @@ export function DiscoverPage() {
 
   const isOnline = (userId: string) => onlineUsers.includes(userId)
 
-  const getAvatarUrl = (profile: Profile) => {
+  const getAvatarUrl = (profile: Profile): string | null => {
     // Check for avatar_url first (uploaded photo)
     if (profile.avatar_url) {
-      // If it's a valid URL, use it directly
-      if (profile.avatar_url.startsWith("http")) {
+      // Already a valid HTTP URL
+      if (profile.avatar_url.startsWith("http://") || profile.avatar_url.startsWith("https://")) {
         return profile.avatar_url
       }
-      // If it starts with /, it's a local path
+      // Local path
       if (profile.avatar_url.startsWith("/")) {
         return profile.avatar_url
       }
@@ -161,13 +172,24 @@ export function DiscoverPage() {
     // Check for photos array (multiple photos)
     if (profile.photos && Array.isArray(profile.photos) && profile.photos.length > 0) {
       const firstPhoto = profile.photos[0]
-      if (typeof firstPhoto === "string" && firstPhoto.startsWith("http")) {
-        return firstPhoto
+      if (typeof firstPhoto === "string") {
+        if (firstPhoto.startsWith("http://") || firstPhoto.startsWith("https://")) {
+          return firstPhoto
+        }
       }
     }
 
-    // Fallback to placeholder with user name
-    return `/placeholder.svg?height=600&width=400&query=professional ${encodeURIComponent(profile.full_name || "person")} portrait`
+    // Return null if no valid avatar found - will show initials
+    return null
+  }
+
+  const getInitials = (name: string): string => {
+    if (!name) return "?"
+    const parts = name.trim().split(" ")
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return name.substring(0, 2).toUpperCase()
   }
 
   if (isLoading) {
@@ -197,13 +219,25 @@ export function DiscoverPage() {
     )
   }
 
+  const avatarUrl = getAvatarUrl(currentProfile)
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Header - Desktop only */}
       <div className="hidden md:flex items-center justify-between p-4 md:p-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Descobrir</h1>
-          <p className="text-muted-foreground">Encontre empreendedores compatíveis</p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.back()}
+            className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Descobrir</h1>
+            <p className="text-muted-foreground">Encontre empreendedores compatíveis</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
@@ -213,6 +247,24 @@ export function DiscoverPage() {
             <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
             <span className="text-sm text-foreground">{onlineUsers.length} online</span>
           </div>
+        </div>
+      </div>
+
+      {/* Mobile Header with back button */}
+      <div className="flex md:hidden items-center justify-between p-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => router.back()}
+          className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <h1 className="text-lg font-bold text-foreground">Descobrir</h1>
+        <div className="flex items-center gap-2">
+          <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
+            <RefreshCw className="w-5 h-5" />
+          </Button>
         </div>
       </div>
 
@@ -239,19 +291,22 @@ export function DiscoverPage() {
         <div className="relative flex-1 max-w-lg mx-auto w-full">
           {/* Card */}
           <div className="absolute inset-0 bg-card rounded-2xl border border-border overflow-hidden shadow-2xl">
-            {/* Full Photo */}
+            {/* Full Photo or Initials */}
             <div className="absolute inset-0">
-              <img
-                src={getAvatarUrl(currentProfile) || "/placeholder.svg"}
-                alt={currentProfile.full_name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement
-                  target.src = `/placeholder.svg?height=600&width=400&query=professional person portrait`
-                }}
-              />
+              {avatarUrl && !imageError ? (
+                <img
+                  src={avatarUrl || "/placeholder.svg"}
+                  alt={currentProfile.full_name}
+                  className="w-full h-full object-cover"
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-500 to-rose-500 flex items-center justify-center">
+                  <span className="text-8xl font-bold text-white/90">{getInitials(currentProfile.full_name)}</span>
+                </div>
+              )}
               {/* Gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
             </div>
 
             {/* Online Status Badge */}
@@ -301,17 +356,77 @@ export function DiscoverPage() {
                 {showDetails ? "Ver menos" : "Ver mais"}
               </button>
 
-              {/* Extended Details */}
               {showDetails && (
-                <div className="space-y-3 mb-3 bg-black/40 rounded-xl p-3 backdrop-blur-sm">
-                  {currentProfile.bio && <p className="text-white/90 text-sm leading-relaxed">{currentProfile.bio}</p>}
+                <div className="space-y-3 mb-3 bg-black/50 rounded-xl p-4 backdrop-blur-sm max-h-[40vh] overflow-y-auto">
+                  {/* Bio */}
+                  {currentProfile.bio && (
+                    <div>
+                      <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        Sobre:
+                      </p>
+                      <p className="text-white/90 text-sm leading-relaxed">{currentProfile.bio}</p>
+                    </div>
+                  )}
 
+                  {/* Industry/Sector */}
+                  {currentProfile.industry && (
+                    <div>
+                      <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        Setor/Indústria:
+                      </p>
+                      <span className="px-3 py-1 bg-blue-500/30 text-white rounded-full text-sm inline-block">
+                        {currentProfile.industry}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Position/Role */}
+                  {currentProfile.position && (
+                    <div>
+                      <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
+                        <Briefcase className="w-3 h-3" />
+                        Cargo:
+                      </p>
+                      <span className="text-white/90 text-sm">{currentProfile.position}</span>
+                      {currentProfile.company && (
+                        <span className="text-white/70 text-sm"> em {currentProfile.company}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Seniority */}
+                  {currentProfile.seniority && (
+                    <div>
+                      <p className="text-white/60 text-xs mb-1">Senioridade:</p>
+                      <span className="text-white/90 text-sm">{currentProfile.seniority}</span>
+                    </div>
+                  )}
+
+                  {/* Location */}
+                  {(currentProfile.city || currentProfile.country) && (
+                    <div>
+                      <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        Localização:
+                      </p>
+                      <span className="text-white/90 text-sm">
+                        {[currentProfile.city, currentProfile.country].filter(Boolean).join(", ")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Interests */}
                   {currentProfile.interests && currentProfile.interests.length > 0 && (
                     <div>
-                      <p className="text-white/60 text-xs mb-1">Interesses:</p>
+                      <p className="text-white/60 text-xs mb-2 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        Interesses:
+                      </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {currentProfile.interests.slice(0, 4).map((interest) => (
-                          <span key={interest} className="px-2 py-0.5 bg-white/20 text-white rounded-full text-xs">
+                        {currentProfile.interests.map((interest) => (
+                          <span key={interest} className="px-2 py-1 bg-purple-500/30 text-white rounded-full text-xs">
                             {interest}
                           </span>
                         ))}
@@ -319,27 +434,34 @@ export function DiscoverPage() {
                     </div>
                   )}
 
+                  {/* Looking for */}
                   {currentProfile.looking_for && currentProfile.looking_for.length > 0 && (
                     <div>
-                      <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
-                        <Target className="w-3 h-3" />
-                        Procura:
+                      <p className="text-white/60 text-xs mb-2 flex items-center gap-1">
+                        <Target className="w-3 h-3" />O que procura:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {currentProfile.looking_for.slice(0, 3).map((item) => (
-                          <span key={item} className="px-2 py-0.5 bg-primary/50 text-white rounded-full text-xs">
+                        {currentProfile.looking_for.map((item) => (
+                          <span key={item} className="px-2 py-1 bg-green-500/30 text-white rounded-full text-xs">
                             {item}
                           </span>
                         ))}
                       </div>
                     </div>
                   )}
+
+                  {/* Situation */}
+                  {currentProfile.situation && (
+                    <div>
+                      <p className="text-white/60 text-xs mb-1">Situação:</p>
+                      <span className="text-white/90 text-sm">{currentProfile.situation}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Action Buttons - Replace Video button with Undo button */}
+              {/* Action Buttons */}
               <div className="flex items-center justify-center gap-4">
-                {/* Undo button - go back to previous profile */}
                 <Button
                   size="lg"
                   variant="outline"
@@ -378,7 +500,7 @@ export function DiscoverPage() {
                   {isLiking ? <Loader2 className="w-8 h-8 animate-spin" /> : <Heart className="w-8 h-8" />}
                 </Button>
 
-                {/* Video call button - smaller on the right */}
+                {/* Video call button */}
                 <Link href="/dashboard/video">
                   <Button
                     size="lg"
@@ -401,19 +523,26 @@ export function DiscoverPage() {
           <div className="bg-card rounded-2xl border border-border p-6 md:p-8 max-w-md w-full text-center animate-in zoom-in-95 duration-300">
             <div className="relative mb-6">
               <div className="flex justify-center -space-x-4">
-                <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden z-10 bg-secondary flex items-center justify-center">
-                  <span className="text-2xl font-bold text-foreground">Você</span>
+                <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden z-10 bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-white">Você</span>
                 </div>
-                <div className="w-24 h-24 rounded-full border-4 border-pink-500 overflow-hidden bg-secondary">
-                  <img
-                    src={getAvatarUrl(matchedProfile) || "/placeholder.svg"}
-                    alt={matchedProfile.full_name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.src = `/placeholder.svg?height=96&width=96&query=professional person`
-                    }}
-                  />
+                <div className="w-24 h-24 rounded-full border-4 border-pink-500 overflow-hidden bg-gradient-to-br from-purple-600 to-pink-500">
+                  {getAvatarUrl(matchedProfile) ? (
+                    <img
+                      src={getAvatarUrl(matchedProfile) || ""}
+                      alt={matchedProfile.full_name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.style.display = "none"
+                        target.parentElement!.innerHTML = `<span class="text-2xl font-bold text-white flex items-center justify-center w-full h-full">${getInitials(matchedProfile.full_name)}</span>`
+                      }}
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold text-white flex items-center justify-center w-full h-full">
+                      {getInitials(matchedProfile.full_name)}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-rose-500 rounded-full p-2 shadow-lg">

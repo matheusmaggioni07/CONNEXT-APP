@@ -375,7 +375,7 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           <p className="text-2xl text-gray-300 mb-12">Rivalidade centenária que move o Rio Grande do Sul</p>
           
           <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
-            <div className="bg-[#0047AB]/50 backdrop-blur p-8 rounded-2xl border border-white/20">
+            <div className="bg-[#0a0a0f]/50 backdrop-blur p-8 rounded-2xl border border-white/20">
               <div className="text-5xl font-black mb-2">441</div>
               <div className="text-sm text-gray-300">Vitórias do Grêmio</div>
             </div>
@@ -745,116 +745,188 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const generatePreviewHtml = (code: string): string => {
-    console.log("[v0] generatePreviewHtml received code length:", code?.length)
+    console.log("[v0] generatePreviewHtml called, code length:", code?.length)
 
     if (!code || code.trim().length < 50) {
-      console.log("[v0] Code is empty or too short, using fallback")
-      return `<!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black flex items-center justify-center">
-          <div class="text-center text-white">
-            <h1 class="text-4xl font-bold mb-4">Erro na Geração</h1>
-            <p class="text-gray-300">O código não foi gerado corretamente. Tente novamente.</p>
-          </div>
-        </body>
-        </html>`
+      return getErrorHtml("O código não foi gerado corretamente. Tente novamente.")
     }
 
-    // Convert JSX to plain HTML by extracting the content inside return()
-    let htmlContent = ""
+    // Extract JSX content from return statement
+    let jsxContent = ""
 
     try {
-      // Find return ( and then match until the closing ) considering nested parens
-      const returnIndex = code.indexOf("return (")
-      if (returnIndex === -1) {
-        console.log("[v0] Could not find 'return (' in code")
-      }
+      // Remove comments first
+      const cleanCode = code
+        .replace(/\/\*[\s\S]*?\*\//g, "") // Multi-line comments
+        .replace(/\/\/.*$/gm, "") // Single-line comments
 
-      if (returnIndex !== -1) {
-        let depth = 0
-        const startIndex = returnIndex + 7 // After "return "
-        let foundStart = false
-        let contentStart = 0
-        let contentEnd = 0
+      // Find the return statement with JSX
+      const returnMatch = cleanCode.match(/return\s*$$\s*([\s\S]*?)\s*$$\s*;?\s*\}?$/)
 
-        for (let i = startIndex; i < code.length; i++) {
-          if (code[i] === "(") {
-            if (!foundStart) {
-              foundStart = true
-              contentStart = i + 1
-            }
-            depth++
-          } else if (code[i] === ")") {
-            depth--
-            if (depth === 0 && foundStart) {
-              contentEnd = i
-              break
+      if (returnMatch && returnMatch[1]) {
+        jsxContent = returnMatch[1].trim()
+        console.log("[v0] Found return content, length:", jsxContent.length)
+      } else {
+        // Try alternative: find return ( and manually extract
+        const returnIdx = cleanCode.indexOf("return (")
+        if (returnIdx !== -1) {
+          let depth = 0
+          let start = -1
+          let end = -1
+
+          for (let i = returnIdx; i < cleanCode.length; i++) {
+            if (cleanCode[i] === "(") {
+              if (start === -1) start = i + 1
+              depth++
+            } else if (cleanCode[i] === ")") {
+              depth--
+              if (depth === 0) {
+                end = i
+                break
+              }
             }
           }
-        }
 
-        if (contentStart > 0 && contentEnd > contentStart) {
-          htmlContent = code.substring(contentStart, contentEnd).trim()
-          console.log("[v0] Extracted JSX content length:", htmlContent.length)
-
-          // Convert JSX to HTML
-          htmlContent = htmlContent
-            // Convert className to class
-            .replace(/className=/g, "class=")
-            // Convert self-closing tags
-            .replace(/<(\w+)([^>]*?)\/>/g, "<$1$2></$1>")
-            // Remove JSX expressions {something} - replace with empty or handle common patterns
-            .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // Remove JSX comments
-            .replace(/\{`([^`]*)`\}/g, "$1") // Template literals
-            .replace(/\{"([^"]*)"\}/g, "$1") // String literals
-            .replace(/\{'([^']*)'\}/g, "$1") // Single quote strings
-            .replace(/\{(\d+)\}/g, "$1") // Numbers
-            // Remove event handlers
-            .replace(/onClick=\{[^}]*\}/g, "")
-            .replace(/onChange=\{[^}]*\}/g, "")
-            .replace(/onSubmit=\{[^}]*\}/g, "")
-            .replace(/onMouseEnter=\{[^}]*\}/g, "")
-            .replace(/onMouseLeave=\{[^}]*\}/g, "")
-            // Handle dynamic values
-            .replace(/href=\{[^}]*\}/g, 'href="#"')
-            .replace(/src=\{[^}]*\}/g, 'src="/placeholder.svg?height=400&width=600"')
-            // Remove remaining JSX expressions (must be after specific handlers)
-            .replace(/\{[^}]*\}/g, "")
-            // Remove Fragment syntax
-            .replace(/<>/g, "")
-            .replace(/<\/>/g, "")
-            .replace(/<React\.Fragment>/g, "")
-            .replace(/<\/React\.Fragment>/g, "")
-
-          console.log("[v0] Converted HTML content length:", htmlContent.length)
+          if (start !== -1 && end !== -1) {
+            jsxContent = cleanCode.substring(start, end).trim()
+            console.log("[v0] Manually extracted JSX, length:", jsxContent.length)
+          }
         }
       }
 
-      if (!htmlContent || htmlContent.trim().length < 20) {
-        console.log("[v0] Trying fallback JSX extraction")
-        const jsxMatch = code.match(/<div[\s\S]*<\/div>\s*\)\s*;?\s*\}/)
-        if (jsxMatch) {
-          htmlContent = jsxMatch[0]
-            .replace(/\)\s*;?\s*']=$/, "") // Remove trailing ) ; }
-            .replace(/className=/g, "class=")
-            .replace(/\{[^}]*\}/g, "")
-          console.log("[v0] Fallback extracted length:", htmlContent.length)
-        }
+      if (!jsxContent || jsxContent.length < 10) {
+        console.log("[v0] No JSX content found, using Babel fallback")
+        return generatePreviewWithBabel(code)
       }
-    } catch (e) {
-      console.error("[v0] Error converting JSX to HTML:", e)
-    }
 
-    // If we couldn't extract content, try to render the whole thing as JSX
-    if (!htmlContent || htmlContent.trim().length < 20) {
-      console.log("[v0] Falling back to Babel approach")
+      // Convert JSX to HTML
+      const htmlContent = convertJsxToHtml(jsxContent)
+      console.log("[v0] Converted to HTML, length:", htmlContent.length)
+
+      if (htmlContent.length < 20) {
+        console.log("[v0] HTML too short, using Babel fallback")
+        return generatePreviewWithBabel(code)
+      }
+
+      return wrapInHtmlDocument(htmlContent)
+    } catch (error) {
+      console.error("[v0] Error in generatePreviewHtml:", error)
       return generatePreviewWithBabel(code)
     }
+  }
 
+  const convertJsxToHtml = (jsx: string): string => {
+    let html = jsx
+
+    // Remove fragments
+    html = html.replace(/<React\.Fragment>/g, "").replace(/<\/React\.Fragment>/g, "")
+    html = html.replace(/<Fragment>/g, "").replace(/<\/Fragment>/g, "")
+    html = html.replace(/<>/g, "").replace(/<\/>/g, "")
+
+    // className -> class
+    html = html.replace(/className=/g, "class=")
+
+    // Remove event handlers
+    const eventHandlers = [
+      "onClick",
+      "onChange",
+      "onSubmit",
+      "onMouseEnter",
+      "onMouseLeave",
+      "onFocus",
+      "onBlur",
+      "onKeyDown",
+      "onKeyUp",
+      "onScroll",
+      "onLoad",
+      "onTouchStart",
+      "onTouchMove",
+      "onTouchEnd",
+      "onMouseDown",
+      "onMouseUp",
+      "onDoubleClick",
+      "onContextMenu",
+      "onWheel",
+    ]
+    eventHandlers.forEach((handler) => {
+      // Match handler={...} including nested braces and template literals
+      const regex = new RegExp(`${handler}=\\{(?:(?:\\{[^{}]*\\})|[^\\{\\}])*?\\}`, "g")
+      html = html.replace(regex, "")
+    })
+
+    // Handle template literals {`...`}
+    html = html.replace(/\{`([^`]*)`\}/g, "$1")
+
+    // Handle string expressions {"..."} or {'...'}
+    html = html.replace(/\{"([^"]*)"\}/g, "$1")
+    html = html.replace(/\{'([^']*)'\}/g, "$1")
+
+    // Handle number expressions {123}
+    html = html.replace(/\{(\d+(?:\.\d+)?)\}/g, "$1")
+
+    // Handle boolean expressions {true}, {false} - remove them
+    html = html.replace(/\{true\}/g, "").replace(/\{false\}/g, "")
+
+    // Handle simple variables in text (replace with empty string)
+    html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\}/g, "")
+
+    // Handle conditional rendering {condition && <...>} - remove the condition part
+    html = html.replace(/\{[^{}]*&&\s*/g, "")
+
+    // Handle ternary expressions - take the first option
+    html = html.replace(/\{[^?{}]*\?\s*(['"`]?)([^:]*)\1\s*:\s*(['"`]?)[^{}]*\3\}/g, "$2")
+
+    // Handle map expressions - try to extract the first element if it's an array, otherwise remove
+    html = html.replace(
+      /\{([^{}]*)\.map$$\s*\(?([^{}]*)$$?\s*=>\s*([\s\S]*?)\s*\)\s*\}/g,
+      (_match, arrayName, elementVar, innerJsx) => {
+        // Basic attempt to represent mapped elements. More complex logic might be needed.
+        if (innerJsx.trim().length > 0) {
+          return `<div class="mapped-element">${innerJsx.trim()}</div>`
+        }
+        return ""
+      },
+    )
+
+    // Remove remaining JSX expressions that weren't specifically handled
+    html = html.replace(/\{[^{}]*\}/g, "")
+
+    // Handle href with expressions
+    html = html.replace(/href=\{[^}]*\}/g, 'href="#"')
+
+    // Handle src with expressions
+    html = html.replace(/src=\{[^}]*\}/g, 'src="/placeholder.svg?height=400&width=600"')
+
+    // Handle style objects {style={{ ... }}}
+    html = html.replace(/style=\{\{[^}]*\}\}/g, "")
+
+    // Convert self-closing tags for void elements
+    html = html.replace(/<(img|br|hr|input|meta|link)([^>]*?)\/>/g, "<$1$2>")
+
+    // Clean up extra spaces and newlines
+    html = html.replace(/\s+/g, " ").trim()
+
+    return html
+  }
+
+  const getErrorHtml = (message: string): string => {
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black flex items-center justify-center">
+  <div class="text-center text-white p-8">
+    <h1 class="text-2xl font-bold mb-4">Erro na Geração</h1>
+    <p class="text-gray-300">${message}</p>
+  </div>
+</body>
+</html>`
+  }
+
+  const wrapInHtmlDocument = (content: string): string => {
     return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -869,7 +941,8 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
           animation: {
             "gradient": "gradient 8s linear infinite",
             "float": "float 6s ease-in-out infinite",
-            "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+            "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            "bounce-slow": "bounce 3s infinite"
           }
         }
       }
@@ -877,38 +950,68 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   </script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-    .animate-gradient { animation: gradient 8s ease infinite; background-size: 200% 200%; }
+    @keyframes gradient { 
+      0% { background-position: 0% 50%; } 
+      50% { background-position: 100% 50%; } 
+      100% { background-position: 0% 50%; } 
+    }
+    @keyframes float { 
+      0%, 100% { transform: translateY(0); } 
+      50% { transform: translateY(-20px); } 
+    }
+    .animate-gradient { 
+      animation: gradient 8s ease infinite; 
+      background-size: 200% 200%; 
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body { font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
     img { max-width: 100%; height: auto; }
-    a { color: inherit; text-decoration: none; }
-    button { cursor: pointer; }
+    a { color: inherit; text-decoration: none; cursor: pointer; }
+    button { cursor: pointer; font-family: inherit; }
+    
+    /* Scroll sections into view */
+    [id] { scroll-margin-top: 80px; }
   </style>
+  <script>
+    // Enable smooth scrolling and anchor links
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+          e.preventDefault();
+          const targetId = this.getAttribute('href').substring(1);
+          const target = document.getElementById(targetId);
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth' });
+          }
+        });
+      });
+    });
+  </script>
 </head>
 <body>
-  ${htmlContent}
+  ${content}
 </body>
 </html>`
   }
 
   const generatePreviewWithBabel = (code: string): string => {
+    console.log("[v0] Using Babel fallback for preview")
+
     // Encode to base64 safely
     let base64Code = ""
     try {
-      // Use TextEncoder for better unicode support
       const encoder = new TextEncoder()
       const data = encoder.encode(code)
-      base64Code = btoa(String.fromCharCode(...data))
+      const binary = Array.from(data)
+        .map((b) => String.fromCharCode(b))
+        .join("")
+      base64Code = btoa(binary)
     } catch (e) {
       console.error("[v0] Base64 encoding failed:", e)
-      // Fallback: escape special chars
       try {
         base64Code = btoa(unescape(encodeURIComponent(code)))
       } catch (e2) {
-        console.error("[v0] Fallback encoding also failed")
         base64Code = btoa(code.replace(/[^\x00-\x7F]/g, ""))
       }
     }
@@ -919,48 +1022,85 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] }
+        }
+      }
+    }
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body { font-family: "Inter", system-ui, sans-serif; }
+    [id] { scroll-margin-top: 80px; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useRef } = React;
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <script>
+    const { useState, useEffect, useRef, useCallback, useMemo, Fragment } = React;
     
-    window.onerror = function(msg) {
-      document.getElementById("root").innerHTML = 
-        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:white;text-align:center;padding:2rem;">' +
-        '<div><h1 style="font-size:1.5rem;margin-bottom:1rem;">Erro no Preview</h1><p style="color:#888;">' + msg + '</p></div></div>';
+    // Global error handler
+    window.onerror = function(msg, url, line) {
+      console.error("Preview error:", msg);
+      const root = document.getElementById("root");
+      if (root) {
+        root.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:white;text-align:center;padding:2rem;"><div><h1 style="font-size:1.5rem;margin-bottom:1rem;font-weight:600;">Erro no Preview</h1><p style="color:#9ca3af;max-width:400px;">' + msg + '</p></div></div>';
+      }
       return true;
     };
     
-    try {
-      const encodedCode = "${base64Code}";
-      const decodedBytes = atob(encodedCode);
-      const bytes = new Uint8Array(decodedBytes.length);
-      for (let i = 0; i < decodedBytes.length; i++) {
-        bytes[i] = decodedBytes.charCodeAt(i);
+    (function() {
+      try {
+        const encodedCode = "${base64Code}";
+        
+        // Decode base64
+        const binaryString = atob(encodedCode);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const decodedCode = new TextDecoder('utf-8').decode(bytes);
+        
+        // Transform export default function to regular function
+        let processedCode = decodedCode
+          .replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function $1')
+          .replace(/export\\s+default\\s+function(?=\\s*\\()/g, 'function App');
+        
+        // Add return statement to get the component
+        const componentMatch = processedCode.match(/function\\s+(\\w+)\\s*\\(/);
+        const componentName = componentMatch ? componentMatch[1] : 'App';
+        
+        // Compile with Babel
+        const transformed = Babel.transform(processedCode, { 
+          presets: ['react'],
+          filename: 'preview.jsx'
+        }).code;
+        
+        // Evaluate and render
+        const result = eval(transformed + '; ' + componentName);
+        
+        if (typeof result === 'function') {
+          ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(result));
+        } else {
+          throw new Error("Componente não encontrado");
+        }
+        
+      } catch (err) {
+        console.error("Render error:", err);
+        document.getElementById("root").innerHTML = 
+          '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:white;text-align:center;padding:2rem;">' +
+          '<div><h1 style="font-size:1.5rem;margin-bottom:1rem;font-weight:600;">Erro no Preview</h1>' +
+          '<p style="color:#9ca3af;max-width:400px;">' + (err.message || 'Erro desconhecido') + '</p></div></div>';
       }
-      const decodedCode = new TextDecoder().decode(bytes);
-      
-      const wrappedCode = "(function() { " + decodedCode.replace("export default function", "return function") + " })()";
-      const ComponentFunction = eval(Babel.transform(wrappedCode, { presets: ["react"] }).code);
-      
-      if (ComponentFunction) {
-        ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ComponentFunction));
-      }
-    } catch (err) {
-      console.error("Render error:", err);
-      document.getElementById("root").innerHTML = 
-        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:white;text-align:center;padding:2rem;">' +
-        '<div><h1 style="font-size:1.5rem;margin-bottom:1rem;">Erro no Preview</h1><p style="color:#888;">' + err.message + '</p></div></div>';
-    }
+    })();
   </script>
 </body>
 </html>`

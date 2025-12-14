@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { sendConfirmationEmail } from "@/lib/email/sender"
 
 const FREE_EMAIL_DOMAINS = [
   "gmail.com",
@@ -44,30 +45,14 @@ export async function signUp(formData: {
     return { error: "Por favor, use seu email profissional (corporativo). Emails pessoais não são aceitos." }
   }
 
-  const getEmailRedirectUrl = () => {
-    // Sempre usar a URL de produção para emails de confirmação
-    const productionUrl = "https://www.connextapp.com.br"
-
-    // Se tiver variável de ambiente de desenvolvimento, usar ela (para testes)
-    if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
-      return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
-    }
-
-    // Usar SITE_URL se disponível
-    if (process.env.NEXT_PUBLIC_SITE_URL) {
-      return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
-    }
-
-    // Fallback para produção
-    return `${productionUrl}/auth/callback`
-  }
+  const confirmationBaseUrl = "https://www.connextapp.com.br/auth/callback"
 
   // Sign up user with metadata
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: formData.email,
     password: formData.password,
     options: {
-      emailRedirectTo: getEmailRedirectUrl(),
+      emailRedirectTo: confirmationBaseUrl,
       data: {
         full_name: formData.fullName,
       },
@@ -104,7 +89,13 @@ export async function signUp(formData: {
 
   if (profileError) {
     console.error("[v0] Profile update error:", profileError)
-    // Don't fail registration if profile update fails - user can complete it later
+  }
+
+  // O Supabase envia o email dele, mas enviamos o nosso também como backup bonito
+  try {
+    await sendConfirmationEmail(formData.email, formData.fullName, confirmationBaseUrl)
+  } catch (emailError) {
+    console.log("[v0] Custom email failed, Supabase email will be used:", emailError)
   }
 
   return { success: true, needsEmailConfirmation: !authData.session }

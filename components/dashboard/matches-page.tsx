@@ -2,7 +2,20 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw, Building2, Target, ArrowLeft } from "lucide-react"
+import {
+  MessageCircle,
+  MapPin,
+  Clock,
+  Heart,
+  AlertCircle,
+  RefreshCw,
+  Building2,
+  Target,
+  ArrowLeft,
+  Sparkles,
+  Briefcase,
+  User,
+} from "lucide-react"
 import { getMatches } from "@/app/actions/likes"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
@@ -13,6 +26,7 @@ export function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const router = useRouter()
 
   const fetchData = async () => {
@@ -31,6 +45,18 @@ export function MatchesPage() {
   useEffect(() => {
     fetchData()
   }, [])
+
+  const toggleExpand = (id: string) => {
+    setExpandedCards((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return newSet
+    })
+  }
 
   const openWhatsApp = (phone: string | undefined | null, name: string) => {
     if (!phone) {
@@ -64,11 +90,25 @@ export function MatchesPage() {
 
   const isOnline = (userId: string) => onlineUsers.includes(userId)
 
-  const getAvatarUrl = (profile: Profile) => {
-    if (profile.avatar_url && profile.avatar_url.startsWith("http")) {
-      return profile.avatar_url
+  const getAvatarUrl = (profile: Profile): string | null => {
+    if (profile.avatar_url) {
+      if (profile.avatar_url.startsWith("http://") || profile.avatar_url.startsWith("https://")) {
+        return profile.avatar_url
+      }
+      if (profile.avatar_url.startsWith("/")) {
+        return profile.avatar_url
+      }
     }
-    return `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(profile.full_name || "professional")} portrait`
+    return null
+  }
+
+  const getInitials = (name: string): string => {
+    if (!name) return "?"
+    const parts = name.trim().split(" ")
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return name.substring(0, 2).toUpperCase()
   }
 
   if (isLoading) {
@@ -92,7 +132,7 @@ export function MatchesPage() {
               variant="ghost"
               size="icon"
               onClick={() => router.back()}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -125,6 +165,8 @@ export function MatchesPage() {
               if (!profile) return null
 
               const hasPhone = !!profile.phone
+              const avatarUrl = getAvatarUrl(profile)
+              const isExpanded = expandedCards.has(match.id)
 
               return (
                 <div
@@ -132,18 +174,27 @@ export function MatchesPage() {
                   className="bg-card rounded-xl border border-border p-4 hover:border-primary/50 transition-colors"
                 >
                   <div className="flex gap-4">
-                    {/* Avatar - Show actual profile photo */}
-                    <div className="relative">
-                      <div className="w-16 h-16 rounded-full overflow-hidden bg-secondary">
-                        <img
-                          src={getAvatarUrl(profile) || "/placeholder.svg"}
-                          alt={profile.full_name}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement
-                            target.src = `/placeholder.svg?height=64&width=64&query=professional`
-                          }}
-                        />
+                    <div className="relative flex-shrink-0">
+                      <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-purple-600 to-pink-500">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl || "/placeholder.svg"}
+                            alt={profile.full_name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.style.display = "none"
+                              const parent = target.parentElement
+                              if (parent) {
+                                parent.innerHTML = `<span class="text-xl font-bold text-white flex items-center justify-center w-full h-full">${getInitials(profile.full_name)}</span>`
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span className="text-xl font-bold text-white flex items-center justify-center w-full h-full">
+                            {getInitials(profile.full_name)}
+                          </span>
+                        )}
                       </div>
                       {isOnline(profile.id) && (
                         <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-card rounded-full" />
@@ -171,43 +222,89 @@ export function MatchesPage() {
                   </div>
 
                   {profile.industry && (
-                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 mt-3 text-xs text-muted-foreground">
                       <Building2 className="w-3 h-3" />
-                      <span>{profile.industry}</span>
+                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">{profile.industry}</span>
                     </div>
                   )}
 
-                  {/* Interests */}
                   {profile.interests && profile.interests.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-3">
-                      {profile.interests.slice(0, 3).map((interest) => (
-                        <span key={interest} className="px-2 py-0.5 bg-secondary text-foreground rounded-full text-xs">
-                          {interest}
-                        </span>
-                      ))}
-                      {profile.interests.length > 3 && (
-                        <span className="px-2 py-0.5 text-muted-foreground text-xs">
-                          +{profile.interests.length - 3}
-                        </span>
-                      )}
+                    <div className="mt-3">
+                      <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        Interesses:
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {profile.interests.slice(0, isExpanded ? undefined : 3).map((interest) => (
+                          <span
+                            key={interest}
+                            className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full text-xs"
+                          >
+                            {interest}
+                          </span>
+                        ))}
+                        {!isExpanded && profile.interests.length > 3 && (
+                          <span className="px-2 py-0.5 text-muted-foreground text-xs">
+                            +{profile.interests.length - 3}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
 
                   {profile.looking_for && profile.looking_for.length > 0 && (
-                    <div className="mt-2">
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                    <div className="mt-3">
+                      <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
                         <Target className="w-3 h-3" />
-                        <span>Procura:</span>
-                      </div>
+                        Procura:
+                      </p>
                       <div className="flex flex-wrap gap-1">
-                        {profile.looking_for.slice(0, 2).map((item) => (
-                          <span key={item} className="px-2 py-0.5 bg-primary/20 text-primary rounded-full text-xs">
+                        {profile.looking_for.slice(0, isExpanded ? undefined : 2).map((item) => (
+                          <span key={item} className="px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full text-xs">
                             {item}
                           </span>
                         ))}
+                        {!isExpanded && profile.looking_for.length > 2 && (
+                          <span className="px-2 py-0.5 text-muted-foreground text-xs">
+                            +{profile.looking_for.length - 2}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
+
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-border space-y-2">
+                      {profile.bio && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            Bio:
+                          </p>
+                          <p className="text-sm text-foreground">{profile.bio}</p>
+                        </div>
+                      )}
+                      {profile.seniority && (
+                        <div className="flex items-center gap-1 text-xs">
+                          <Briefcase className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">Senioridade:</span>
+                          <span className="text-foreground">{profile.seniority}</span>
+                        </div>
+                      )}
+                      {profile.country && (
+                        <div className="flex items-center gap-1 text-xs">
+                          <MapPin className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-foreground">
+                            {profile.city}, {profile.country}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button onClick={() => toggleExpand(match.id)} className="text-xs text-primary hover:underline mt-2">
+                    {isExpanded ? "Ver menos" : "Ver mais detalhes"}
+                  </button>
 
                   <div className="flex gap-2 mt-4">
                     <Button
