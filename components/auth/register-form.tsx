@@ -245,25 +245,33 @@ export function RegisterForm() {
 
       // Determine the correct redirect URL - always use production domain in production
       const getRedirectUrl = () => {
-        // In production, always use the main domain
-        if (typeof window !== "undefined" && window.location.hostname === "www.connextapp.com.br") {
-          return "https://www.connextapp.com.br/auth/callback"
+        // Produção - domínio principal
+        const productionUrl = "https://www.connextapp.com.br"
+
+        // Verifica se está no domínio de produção (server ou client)
+        if (typeof window !== "undefined") {
+          if (window.location.hostname.includes("connextapp.com.br")) {
+            return `${productionUrl}/auth/callback`
+          }
         }
-        if (typeof window !== "undefined" && window.location.hostname === "connextapp.com.br") {
-          return "https://www.connextapp.com.br/auth/callback"
-        }
-        // Use environment variable for development/staging
+
+        // Variável de ambiente para desenvolvimento/staging
         if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
           return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
         }
-        // Use NEXT_PUBLIC_SITE_URL if available
+
+        // SITE_URL se disponível
         if (process.env.NEXT_PUBLIC_SITE_URL) {
           return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
         }
-        // Fallback to current origin (for local development)
-        return typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
-          : "https://www.connextapp.com.br/auth/callback"
+
+        // Em desenvolvimento local, usar a origin atual
+        if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+          return `${window.location.origin}/auth/callback`
+        }
+
+        // Fallback para produção
+        return `${productionUrl}/auth/callback`
       }
 
       // 1. Create user account

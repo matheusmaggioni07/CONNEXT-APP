@@ -54,7 +54,23 @@ export function LoginForm() {
     })
 
     if (authError) {
-      setError(authError.message === "Invalid login credentials" ? "Email ou senha incorretos" : authError.message)
+      let errorMessage = authError.message
+
+      if (authError.message === "Invalid login credentials") {
+        errorMessage = "Email ou senha incorretos"
+      } else if (
+        authError.message === "Email not confirmed" ||
+        authError.message.toLowerCase().includes("email not confirmed")
+      ) {
+        errorMessage =
+          "📧 Confirme seu email para continuar! Verifique sua caixa de entrada (e spam) e clique no link de confirmação que enviamos."
+      } else if (authError.message.includes("Too many requests")) {
+        errorMessage = "Muitas tentativas. Aguarde alguns minutos e tente novamente."
+      } else if (authError.message.includes("User not found")) {
+        errorMessage = "Usuário não encontrado. Verifique seu email ou crie uma conta."
+      }
+
+      setError(errorMessage)
       setIsLoading(false)
       return
     }

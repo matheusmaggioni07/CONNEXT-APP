@@ -44,14 +44,30 @@ export async function signUp(formData: {
     return { error: "Por favor, use seu email profissional (corporativo). Emails pessoais não são aceitos." }
   }
 
+  const getEmailRedirectUrl = () => {
+    // Sempre usar a URL de produção para emails de confirmação
+    const productionUrl = "https://www.connextapp.com.br"
+
+    // Se tiver variável de ambiente de desenvolvimento, usar ela (para testes)
+    if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
+      return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
+    }
+
+    // Usar SITE_URL se disponível
+    if (process.env.NEXT_PUBLIC_SITE_URL) {
+      return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+    }
+
+    // Fallback para produção
+    return `${productionUrl}/auth/callback`
+  }
+
   // Sign up user with metadata
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: formData.email,
     password: formData.password,
     options: {
-      emailRedirectTo:
-        process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-        `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/dashboard`,
+      emailRedirectTo: getEmailRedirectUrl(),
       data: {
         full_name: formData.fullName,
       },
