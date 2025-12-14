@@ -177,6 +177,14 @@ Polling a cada 500ms para baixa latência
 
 ---
 
+## HISTÓRICO DE CORREÇÕES
+
+| Data | Problema | Solução |
+|------|----------|---------|
+| 14/12/2025 | Answer duplicado causava "Called in wrong state: stable" | Adicionado check `hasRemoteDescriptionRef.current` em `processAnswer()` |
+
+---
+
 ## ASSINATURA DE ESTABILIDADE
 
 Esta implementação foi testada e aprovada em 14/12/2025.
