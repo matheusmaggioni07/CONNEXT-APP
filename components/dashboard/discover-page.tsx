@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import {
   X,
   Heart,
-  Video,
+  Undo2,
   MapPin,
   Building2,
   Sparkles,
@@ -16,6 +16,7 @@ import {
   ChevronDown,
   RefreshCw,
   Target,
+  Video,
 } from "lucide-react"
 import { likeUser, checkLikeLimit } from "@/app/actions/likes"
 import { getProfilesToDiscover } from "@/app/actions/profile"
@@ -32,6 +33,7 @@ export function DiscoverPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isLiking, setIsLiking] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
+  const [skippedHistory, setSkippedHistory] = useState<number[]>([])
   const [likeStatus, setLikeStatus] = useState<{ canLike: boolean; remaining: number; isPro?: boolean }>({
     canLike: true,
     remaining: 5,
@@ -48,6 +50,7 @@ export function DiscoverPage() {
       setProfiles(fetchedProfiles)
       setOnlineUsers(online)
       setLikeStatus(limitStatus as { canLike: boolean; remaining: number; isPro?: boolean })
+      setSkippedHistory([])
     } catch (error) {
       console.error("Error fetching data:", error)
     } finally {
@@ -101,7 +104,17 @@ export function DiscoverPage() {
   }
 
   const handleSkip = () => {
+    setSkippedHistory((prev) => [...prev, currentIndex])
     nextProfile()
+  }
+
+  const handleUndo = () => {
+    if (skippedHistory.length > 0) {
+      const lastIndex = skippedHistory[skippedHistory.length - 1]
+      setSkippedHistory((prev) => prev.slice(0, -1))
+      setCurrentIndex(lastIndex)
+      setShowDetails(false)
+    }
   }
 
   const nextProfile = () => {
@@ -133,10 +146,28 @@ export function DiscoverPage() {
   const isOnline = (userId: string) => onlineUsers.includes(userId)
 
   const getAvatarUrl = (profile: Profile) => {
-    if (profile.avatar_url && profile.avatar_url.startsWith("http")) {
-      return profile.avatar_url
+    // Check for avatar_url first (uploaded photo)
+    if (profile.avatar_url) {
+      // If it's a valid URL, use it directly
+      if (profile.avatar_url.startsWith("http")) {
+        return profile.avatar_url
+      }
+      // If it starts with /, it's a local path
+      if (profile.avatar_url.startsWith("/")) {
+        return profile.avatar_url
+      }
     }
-    return `/placeholder.svg?height=600&width=400&query=${encodeURIComponent(profile.full_name || "professional")} portrait photo`
+
+    // Check for photos array (multiple photos)
+    if (profile.photos && Array.isArray(profile.photos) && profile.photos.length > 0) {
+      const firstPhoto = profile.photos[0]
+      if (typeof firstPhoto === "string" && firstPhoto.startsWith("http")) {
+        return firstPhoto
+      }
+    }
+
+    // Fallback to placeholder with user name
+    return `/placeholder.svg?height=600&width=400&query=professional ${encodeURIComponent(profile.full_name || "person")} portrait`
   }
 
   if (isLoading) {
@@ -216,7 +247,7 @@ export function DiscoverPage() {
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement
-                  target.src = `/placeholder.svg?height=600&width=400&query=professional person`
+                  target.src = `/placeholder.svg?height=600&width=400&query=professional person portrait`
                 }}
               />
               {/* Gradient overlay */}
@@ -306,8 +337,24 @@ export function DiscoverPage() {
                 </div>
               )}
 
-              {/* Action Buttons */}
+              {/* Action Buttons - Replace Video button with Undo button */}
               <div className="flex items-center justify-center gap-4">
+                {/* Undo button - go back to previous profile */}
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className={`w-14 h-14 rounded-full border-2 transition-all duration-200 ${
+                    skippedHistory.length > 0
+                      ? "border-amber-500 text-amber-500 hover:bg-amber-500 hover:text-white bg-white/10 backdrop-blur-sm"
+                      : "border-gray-500 text-gray-500 bg-white/5 cursor-not-allowed opacity-50"
+                  }`}
+                  onClick={handleUndo}
+                  disabled={skippedHistory.length === 0}
+                  title="Voltar ao perfil anterior"
+                >
+                  <Undo2 className="w-6 h-6" />
+                </Button>
+
                 <Button
                   size="lg"
                   variant="outline"
@@ -331,13 +378,15 @@ export function DiscoverPage() {
                   {isLiking ? <Loader2 className="w-8 h-8 animate-spin" /> : <Heart className="w-8 h-8" />}
                 </Button>
 
+                {/* Video call button - smaller on the right */}
                 <Link href="/dashboard/video">
                   <Button
                     size="lg"
                     variant="outline"
                     className="w-14 h-14 rounded-full border-2 border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white bg-white/10 backdrop-blur-sm"
+                    title="Videochamada"
                   >
-                    <Video className="w-7 h-7" />
+                    <Video className="w-6 h-6" />
                   </Button>
                 </Link>
               </div>
@@ -362,7 +411,7 @@ export function DiscoverPage() {
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement
-                      target.src = `/placeholder.svg?height=96&width=96&query=professional`
+                      target.src = `/placeholder.svg?height=96&width=96&query=professional person`
                     }}
                   />
                 </div>

@@ -743,6 +743,118 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
 }`
   }
 
+  const generatePreviewHtml = (code: string): string => {
+    // Extract the component name from the code
+    const componentMatch = code.match(/export\s+default\s+function\s+(\w+)/)
+    const componentName = componentMatch ? componentMatch[1] : "GeneratedComponent"
+
+    // Create a base64 encoded version of the code to avoid escaping issues
+    const base64Code = btoa(unescape(encodeURIComponent(code)))
+
+    return (
+      "<!DOCTYPE html>" +
+      '<html lang="pt-BR">' +
+      "<head>" +
+      '  <meta charset="UTF-8">' +
+      '  <meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+      '  <script src="https://cdn.tailwindcss.com"></script>' +
+      "  <script>" +
+      "    tailwind.config = {" +
+      "      theme: {" +
+      "        extend: {" +
+      '          fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] },' +
+      "          animation: {" +
+      '            "gradient": "gradient 8s linear infinite",' +
+      '            "float": "float 6s ease-in-out infinite",' +
+      '            "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",' +
+      '            "shimmer": "shimmer 3s linear infinite",' +
+      '            "bounce-slow": "bounce 2s infinite"' +
+      "          }" +
+      "        }" +
+      "      }" +
+      "    }" +
+      "  </script>" +
+      "  <style>" +
+      '    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");' +
+      "    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }" +
+      "    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }" +
+      "    @keyframes shimmer { to { background-position: 200% center; } }" +
+      "    @keyframes pulse-glow { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }" +
+      "    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }" +
+      "    .animate-gradient { animation: gradient 8s ease infinite; background-size: 200% 200%; }" +
+      "    .float { animation: float 4s ease-in-out infinite; }" +
+      "    .shimmer { animation: shimmer 3s linear infinite; background-size: 200% auto; }" +
+      "    .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }" +
+      "    .fade-in { animation: fadeIn 0.6s ease-out forwards; }" +
+      "    * { margin: 0; padding: 0; box-sizing: border-box; }" +
+      "    html { scroll-behavior: smooth; }" +
+      "    html, body, #root { min-height: 100%; width: 100%; }" +
+      '    body { font-family: "Inter", system-ui, sans-serif; background: #030014; color: white; -webkit-font-smoothing: antialiased; }' +
+      "    img { max-width: 100%; height: auto; }" +
+      "    a { color: inherit; text-decoration: none; }" +
+      "    button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }" +
+      "  </style>" +
+      "</head>" +
+      "<body>" +
+      '  <div id="root"></div>' +
+      '  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>' +
+      '  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>' +
+      '  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>' +
+      '  <script type="text/babel" data-presets="react">' +
+      "    const { useState, useEffect, useRef, useCallback, useMemo } = React;" +
+      "    " +
+      "    // Error handler" +
+      "    window.onerror = function(msg, url, lineNo, columnNo, error) {" +
+      '      console.error("Preview Error:", msg, error);' +
+      '      var root = document.getElementById("root");' +
+      "      root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e1b4b 0%,#0f0f23 100%);padding:2rem;\">' +" +
+      "        '<div style=\"text-align:center;max-width:500px;\">' +" +
+      "        '<div style=\"font-size:4rem;margin-bottom:1rem;\">⚠️</div>' +" +
+      "        '<h1 style=\"font-size:1.5rem;margin-bottom:0.5rem;color:white;\">Erro no Preview</h1>' +" +
+      "        '<p style=\"color:#9ca3af;\">' + msg + '</p>' +" +
+      "        '<p style=\"color:#6b7280;font-size:0.875rem;margin-top:1rem;\">Tente gerar novamente com um prompt diferente.</p>' +" +
+      "        '</div></div>';" +
+      "      return true;" +
+      "    };" +
+      "    " +
+      "    try {" +
+      "      // Decode the base64 code" +
+      '      var encodedCode = "' +
+      base64Code +
+      '";' +
+      "      var decodedCode = decodeURIComponent(escape(atob(encodedCode)));" +
+      "      " +
+      "      // Create a function from the code" +
+      "      var ComponentFunction = null;" +
+      "      " +
+      "      // Use Function constructor to evaluate the component" +
+      '      var wrappedCode = "(function() { " + decodedCode.replace("export default function", "return function") + " })()";' +
+      '      ComponentFunction = eval(Babel.transform(wrappedCode, { presets: ["react"] }).code);' +
+      "      " +
+      "      if (ComponentFunction) {" +
+      '        var root = ReactDOM.createRoot(document.getElementById("root"));' +
+      "        root.render(React.createElement(ComponentFunction));" +
+      '        console.log("[Connext] Rendered successfully");' +
+      "      } else {" +
+      '        throw new Error("Could not create component");' +
+      "      }" +
+      "    } catch (err) {" +
+      '      console.error("[Connext] Render error:", err);' +
+      '      var root = document.getElementById("root");' +
+      "      root.innerHTML = '<div style=\"min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e1b4b 0%,#0f0f23 100%);padding:2rem;\">' +" +
+      "        '<div style=\"text-align:center;max-width:500px;\">' +" +
+      "        '<div style=\"font-size:4rem;margin-bottom:1rem;\">⚠️</div>' +" +
+      "        '<h1 style=\"font-size:1.5rem;margin-bottom:0.5rem;color:white;\">Erro ao Renderizar</h1>' +" +
+      "        '<p style=\"color:#9ca3af;\">' + err.message + '</p>' +" +
+      "        '<p style=\"color:#6b7280;font-size:0.875rem;margin-top:1rem;\">Tente gerar novamente com um prompt mais simples.</p>' +" +
+      "        '</div></div>';" +
+      "    }" +
+      "  </script>" +
+      "</body>" +
+      "</html>"
+    )
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isLoading) return
@@ -996,135 +1108,6 @@ export function BuilderPage({ user, profile }: BuilderPageProps) {
       setPublishSuccess(false)
       setShowPublishModal(false)
     }, 2000)
-  }
-
-  const generatePreviewHtml = (code: string) => {
-    // Extract the component name from the code
-    const componentMatch = code.match(/export\s+default\s+function\s+(\w+)/)
-    const componentName = componentMatch ? componentMatch[1] : null
-
-    // Log for debugging
-    console.log("[v0] Generating preview, detected component:", componentName)
-
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          animation: {
-            'gradient': 'gradient 8s linear infinite',
-            'float': 'float 6s ease-in-out infinite',
-            'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            'ping': 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
-            'shimmer': 'shimmer 3s linear infinite',
-            'spin': 'spin 1s linear infinite',
-            'bounce': 'bounce 1s infinite',
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-    @keyframes shimmer { to { background-position: 200% center; } }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes bounce { 0%, 100% { transform: translateY(-5%); } 50% { transform: translateY(0); } }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    .animate-gradient { animation: gradient 8s ease infinite; background-size: 200% 200%; }
-    .animate-float { animation: float 6s ease-in-out infinite; }
-    .shimmer { animation: shimmer 3s linear infinite; background-size: 200% auto; }
-    .float { animation: float 4s ease-in-out infinite; }
-    .fade-in { animation: fadeIn 0.6s ease-out forwards; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    html, body, #root { min-height: 100%; width: 100%; }
-    body { 
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #030014;
-      color: white;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    img { max-width: 100%; height: auto; }
-    a { color: inherit; text-decoration: none; }
-    button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useRef, useCallback, useMemo } = React;
-    
-    // Inject user generated code
-    ${code}
-    
-    // Dynamic component detection - find any exported default function
-    let ComponentToRender = null;
-    
-    // Try to find the component by checking common names and the detected name
-    const possibleNames = [
-      ${componentName ? `'${componentName}',` : ""}
-      'ManuellaJoias', 'ManuellamaggioniBijuterias', 'EleganciaJoias', 'JoiasSite',
-      'Grenal', 'GremioFBPA', 'Internacional', 'FlamengoSite', 'TimeSite',
-      'LandingPage', 'Portfolio', 'Site', 'Component', 'Page', 'App', 'Home',
-      'MainComponent', 'Website', 'Landing', 'HomePage', 'MainPage',
-      'BijouxSite', 'BijuteriaSite', 'JewelrySite', 'StoreSite', 'EcommerceSite',
-      'StartupSite', 'SaaSLanding', 'AgencySite', 'RestaurantSite', 'CafeSite'
-    ];
-    
-    for (const name of possibleNames) {
-      try {
-        const comp = eval(name);
-        if (typeof comp === 'function') {
-          ComponentToRender = comp;
-          console.log('[Connext] Found component:', name);
-          break;
-        }
-      } catch (e) {
-        // Component not found, try next
-      }
-    }
-    
-    // If still not found, try to find any function that returns JSX
-    if (!ComponentToRender) {
-      // Look for the default export pattern
-      try {
-        const match = \`${code.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`.match(/export\\s+default\\s+function\\s+(\\w+)/);
-        if (match && match[1]) {
-          ComponentToRender = eval(match[1]);
-        }
-      } catch (e) {
-        console.error('[Connext] Could not find component:', e);
-      }
-    }
-    
-    // Fallback error component
-    if (!ComponentToRender) {
-      ComponentToRender = () => React.createElement('div', {
-        className: 'min-h-screen bg-gradient-to-br from-purple-900 to-black flex items-center justify-center text-white p-8'
-      }, 
-        React.createElement('div', { className: 'text-center' },
-          React.createElement('div', { className: 'text-6xl mb-4' }, '⚠️'),
-          React.createElement('h1', { className: 'text-2xl font-bold mb-2' }, 'Erro ao Renderizar'),
-          React.createElement('p', { className: 'text-gray-400' }, 'Não foi possível encontrar o componente. Tente novamente.')
-        )
-      );
-    }
-    
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(ComponentToRender));
-  </script>
-</body>
-</html>`
   }
 
   const isPro = profile?.plan === "pro"

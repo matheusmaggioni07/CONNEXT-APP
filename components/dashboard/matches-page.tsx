@@ -2,16 +2,18 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw, Building2, Target } from "lucide-react"
+import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw, Building2, Target, ArrowLeft } from "lucide-react"
 import { getMatches } from "@/app/actions/likes"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
 
   const fetchData = async () => {
     setIsLoading(true)
@@ -85,9 +87,19 @@ export function MatchesPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Seus Matches</h1>
-            <p className="text-muted-foreground">Empreendedores que demonstraram interesse mútuo</p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.back()}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Seus Matches</h1>
+              <p className="text-muted-foreground">Empreendedores que demonstraram interesse mútuo</p>
+            </div>
           </div>
           <Button onClick={fetchData} variant="ghost" size="icon" className="text-muted-foreground">
             <RefreshCw className="w-5 h-5" />

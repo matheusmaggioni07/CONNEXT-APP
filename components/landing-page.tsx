@@ -247,9 +247,9 @@ export function LandingPage() {
                 </span>
               </div>
 
-              <div className="inline-flex items-center gap-2 bg-secondary/10 px-4 py-2 rounded-full mb-6 border border-secondary/20">
-                <Zap className="w-4 h-4 text-secondary" />
-                <span className="text-sm text-secondary font-medium">
+              <div className="inline-flex items-center gap-2 bg-primary/15 px-4 py-2 rounded-full mb-6 border border-primary/30">
+                <Zap className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium bg-gradient-to-r from-primary via-pink-400 to-orange-400 bg-clip-text text-transparent">
                   Primeira plataforma de networking profissional via vídeo
                 </span>
               </div>

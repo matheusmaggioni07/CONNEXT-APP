@@ -3,19 +3,14 @@ import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 
 const ATTACK_PATTERNS = [
-  // SQL Injection - apenas padrões específicos
   /(\bUNION\s+ALL\s+SELECT\b)/i,
   /(\bSELECT\s+.*\s+FROM\s+.*\s+WHERE\b)/i,
   /(\bINSERT\s+INTO\s+.*\s+VALUES\b)/i,
   /(\bDROP\s+TABLE\b)/i,
   /(\bDELETE\s+FROM\b)/i,
   /(--|#|\/\*).*(SELECT|INSERT|UPDATE|DELETE|DROP)/i,
-
-  // XSS - apenas scripts reais
   /<script[^>]*>[\s\S]*?<\/script>/i,
   /javascript\s*:\s*[a-z]/i,
-
-  // Path Traversal - apenas sequências reais
   /\.\.\//,
   /%2e%2e%2f/i,
 ]
@@ -62,7 +57,7 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
   return { isAttack: false }
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
 
   if (path.startsWith("/auth/")) {
@@ -119,4 +114,16 @@ export async function proxy(request: NextRequest) {
   response.headers.delete("X-Powered-By")
 
   return response
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
 }
