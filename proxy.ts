@@ -57,7 +57,7 @@ function checkForAttacks(request: NextRequest): { isAttack: boolean; type?: stri
   return { isAttack: false }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
 
   if (path.startsWith("/auth/")) {
