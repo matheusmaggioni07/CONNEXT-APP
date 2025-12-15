@@ -8,6 +8,16 @@ export async function POST(req: Request) {
 
   console.log("[v0] Builder API called with prompt:", prompt?.substring(0, 100))
 
+  if (!prompt || prompt.trim().length < 3) {
+    return Response.json(
+      {
+        error: "Prompt muito curto",
+        code: null,
+      },
+      { status: 400 },
+    )
+  }
+
   try {
     const supabase = await createClient()
     const {
@@ -39,61 +49,70 @@ INSTRUÇÕES CRÍTICAS:
 9. Design moderno com Tailwind CSS e gradientes
 10. Animações sutis com hover e transition`
 
-    console.log("[v0] Calling Claude API...")
+    console.log("[v0] Calling AI API...")
 
-    const { text } = await generateText({
-      model: "anthropic/claude-sonnet-4-20250514",
-      system: SYSTEM_PROMPT,
-      prompt: enhancedPrompt,
-      maxTokens: 16000,
-      temperature: 0.7,
-    })
+    try {
+      const { text } = await generateText({
+        model: "anthropic/claude-sonnet-4-20250514",
+        system: SYSTEM_PROMPT,
+        prompt: enhancedPrompt,
+        maxTokens: 16000,
+        temperature: 0.7,
+      })
 
-    console.log("[v0] Claude response length:", text?.length)
+      console.log("[v0] AI response length:", text?.length)
 
-    if (!text || text.length < 100) {
-      console.log("[v0] Empty response, using fallback")
+      if (!text || text.length < 100) {
+        console.log("[v0] Empty response, using fallback")
+        return Response.json({
+          code: generateFallbackCode(prompt),
+          explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
+          remainingRequests: 20,
+        })
+      }
+
+      let code = text
+        .trim()
+        .replace(/^```(?:jsx|tsx|javascript|typescript|react)?\s*\n?/gm, "")
+        .replace(/\n?```\s*$/gm, "")
+        .replace(/^Here.*?:\s*\n/gim, "")
+        .replace(/^Aqui.*?:\s*\n/gim, "")
+        .replace(/^Vou criar.*?:\s*\n/gim, "")
+        .replace(/^Claro.*?:\s*\n/gim, "")
+        .trim()
+
+      const exportIndex = code.indexOf("export default function")
+      if (exportIndex > 0) {
+        code = code.substring(exportIndex)
+      }
+
+      const hasValidStructure =
+        code.includes("export default function") &&
+        code.includes("return") &&
+        code.includes("<") &&
+        code.includes("</") &&
+        code.length > 500
+
+      if (!hasValidStructure) {
+        console.log("[v0] Invalid code structure, using fallback")
+        code = generateFallbackCode(prompt)
+      }
+
+      console.log("[v0] Final code length:", code?.length)
+
+      return Response.json({
+        code,
+        explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
+        remainingRequests: user ? -1 : 20,
+      })
+    } catch (aiError) {
+      console.error("[v0] AI Error, using fallback:", aiError)
       return Response.json({
         code: generateFallbackCode(prompt),
         explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
         remainingRequests: 20,
       })
     }
-
-    let code = text
-      .trim()
-      .replace(/^```(?:jsx|tsx|javascript|typescript|react)?\s*\n?/gm, "")
-      .replace(/\n?```\s*$/gm, "")
-      .replace(/^Here.*?:\s*\n/gim, "")
-      .replace(/^Aqui.*?:\s*\n/gim, "")
-      .replace(/^Vou criar.*?:\s*\n/gim, "")
-      .replace(/^Claro.*?:\s*\n/gim, "")
-      .trim()
-
-    const exportIndex = code.indexOf("export default function")
-    if (exportIndex > 0) {
-      code = code.substring(exportIndex)
-    }
-
-    const hasValidStructure =
-      code.includes("export default function") &&
-      code.includes("return") &&
-      code.includes("<") &&
-      code.includes("</") &&
-      code.length > 500
-
-    if (!hasValidStructure) {
-      console.log("[v0] Invalid code structure, using fallback")
-      code = generateFallbackCode(prompt)
-    }
-
-    console.log("[v0] Final code length:", code?.length)
-
-    return Response.json({
-      code,
-      explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
-      remainingRequests: user ? -1 : 20,
-    })
   } catch (error) {
     console.error("[v0] Builder Error:", error)
 
