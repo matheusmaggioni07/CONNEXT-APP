@@ -99,7 +99,7 @@ export function VideoChat() {
             <Video className="w-6 h-6 text-primary" />
             Videochamada
           </h1>
-          <p className="text-muted-foreground">Conecte-se com profissionais em tempo real</p>
+          <p className="text-muted-foreground">Conecte-se com empreendedores em tempo real</p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 gradient-border rounded-full bg-card/50 backdrop-blur-sm">
           <Users className="w-4 h-4 text-primary" />
@@ -120,7 +120,7 @@ export function VideoChat() {
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Pronto para conectar?</h2>
             <p className="text-muted-foreground text-center mb-8 max-w-md">
-              Clique no botão abaixo para iniciar uma videochamada com um profissional que compartilha seus interesses.
+              Clique no botão abaixo para iniciar uma videochamada com um empreendedor que compartilha seus interesses.
             </p>
             <Button
               onClick={startSearching}
@@ -143,7 +143,7 @@ export function VideoChat() {
                 <Users className="w-10 h-10 text-primary animate-pulse" />
               </div>
             </div>
-            <p className="text-foreground mt-6 text-lg">Buscando profissional...</p>
+            <p className="text-foreground mt-6 text-lg">Buscando empreendedor...</p>
             <p className="text-muted-foreground text-sm">Baseado nos seus interesses e localização</p>
           </div>
         ) : (
@@ -154,7 +154,8 @@ export function VideoChat() {
               <img
                 src={
                   currentMatch?.avatar ||
-                  `/placeholder.svg?height=600&width=800&query=professional person video call futuristic`
+                  `/placeholder.svg?height=600&width=800&query=professional person video call futuristic` ||
+                  "/placeholder.svg"
                 }
                 alt={currentMatch?.name}
                 className="w-full h-full object-cover"

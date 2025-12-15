@@ -535,7 +535,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       return
     }
 
-    setConnectionStatus("Buscando profissional...")
+    setConnectionStatus("Buscando empreendedor...")
 
     try {
       const result = await joinVideoQueue()
@@ -723,7 +723,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Videochamada</h1>
-            <p className="text-sm text-muted-foreground">Conecte-se instantaneamente com profissionais</p>
+            <p className="text-sm text-muted-foreground">Conecte-se instantaneamente com empreendedores</p>
           </div>
           {remainingCalls !== null && remainingCalls !== -1 && (
             <div className="text-right">
@@ -745,7 +745,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
               <h2 className="mb-2 text-2xl font-bold text-foreground">Pronto para conectar?</h2>
               <p className="mb-6 max-w-sm text-muted-foreground">
-                Inicie uma videochamada e conheça profissionais em tempo real
+                Inicie uma videochamada e conheça empreendedores em tempo real
               </p>
               <Button
                 onClick={startSearching}
@@ -767,7 +767,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-pink-500"></div>
                 </div>
               </div>
-              <h2 className="mb-2 text-2xl font-bold text-foreground">Buscando profissional...</h2>
+              <h2 className="mb-2 text-2xl font-bold text-foreground">Buscando empreendedor...</h2>
               <p className="mb-4 flex items-center gap-2 text-muted-foreground">
                 <Clock className="h-4 w-4" />
                 Tempo de espera: {formatWaitTime(waitTime)}
