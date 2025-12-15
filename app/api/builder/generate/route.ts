@@ -14,15 +14,6 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      console.log("[v0] User not authenticated, using fallback")
-      return Response.json({
-        code: generateFallbackCode(prompt),
-        explanation: "Site gerado com sucesso!",
-        remainingRequests: 0,
-      })
-    }
-
     const projectFiles =
       projectContext?.map((f: { name: string; content: string }) => `// ${f.name}\n${f.content}`).join("\n\n") || ""
     const historyContext =
@@ -36,14 +27,17 @@ export async function POST(req: Request) {
 ${projectFiles ? `\nCONTEXTO DO PROJETO:\n${projectFiles}` : ""}
 ${historyContext ? `\nHISTÓRICO:\n${historyContext}` : ""}
 
-INSTRUÇÕES:
-- Analise o pedido e identifique o tipo de site
-- Use cores e design apropriados para o contexto
-- Inclua todas as seções: navbar, hero, features, CTA, footer
-- Retorne APENAS o código JSX, começando com "export default function"
-- Implemente navegação funcional com href="#secao" e id="secao"
-- Inclua formulário de contato funcional
-- Adicione menu mobile com useState`
+INSTRUÇÕES CRÍTICAS:
+1. Retorne APENAS o código JSX, começando com "export default function Site()"
+2. NÃO inclua markdown, explicações ou comentários fora do código
+3. Use React.useState para estados (não import useState)
+4. Inclua todas as seções: navbar, hero, sobre, features, contato, footer
+5. Use cores apropriadas para o contexto (times de futebol usam cores do time)
+6. Menu mobile funcional com useState
+7. Navegação suave com scrollToSection
+8. Formulário de contato funcional
+9. Design moderno com Tailwind CSS e gradientes
+10. Animações sutis com hover e transition`
 
     console.log("[v0] Calling Claude API...")
 
@@ -51,11 +45,20 @@ INSTRUÇÕES:
       model: "anthropic/claude-sonnet-4-20250514",
       system: SYSTEM_PROMPT,
       prompt: enhancedPrompt,
-      maxTokens: 12000,
+      maxTokens: 16000,
       temperature: 0.7,
     })
 
     console.log("[v0] Claude response length:", text?.length)
+
+    if (!text || text.length < 100) {
+      console.log("[v0] Empty response, using fallback")
+      return Response.json({
+        code: generateFallbackCode(prompt),
+        explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
+        remainingRequests: 20,
+      })
+    }
 
     let code = text
       .trim()
@@ -64,6 +67,7 @@ INSTRUÇÕES:
       .replace(/^Here.*?:\s*\n/gim, "")
       .replace(/^Aqui.*?:\s*\n/gim, "")
       .replace(/^Vou criar.*?:\s*\n/gim, "")
+      .replace(/^Claro.*?:\s*\n/gim, "")
       .trim()
 
     const exportIndex = code.indexOf("export default function")
@@ -71,8 +75,15 @@ INSTRUÇÕES:
       code = code.substring(exportIndex)
     }
 
-    if (!code.includes("export default function") || !code.includes("return") || !code.includes("<")) {
-      console.log("[v0] Invalid code, using fallback")
+    const hasValidStructure =
+      code.includes("export default function") &&
+      code.includes("return") &&
+      code.includes("<") &&
+      code.includes("</") &&
+      code.length > 500
+
+    if (!hasValidStructure) {
+      console.log("[v0] Invalid code structure, using fallback")
       code = generateFallbackCode(prompt)
     }
 
@@ -81,14 +92,14 @@ INSTRUÇÕES:
     return Response.json({
       code,
       explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
-      remainingRequests: -1,
+      remainingRequests: user ? -1 : 20,
     })
   } catch (error) {
     console.error("[v0] Builder Error:", error)
 
     return Response.json({
       code: generateFallbackCode(prompt),
-      explanation: "Site gerado! Tente novamente com mais detalhes para um resultado ainda melhor.",
+      explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
       remainingRequests: 20,
     })
   }

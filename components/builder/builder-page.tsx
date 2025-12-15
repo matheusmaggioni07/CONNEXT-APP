@@ -240,9 +240,10 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       }
 
       if (!jsxContent) {
-        const match = code.match(/return\s*$$\s*([\s\S]*)\s*$$\s*;?\s*\}?\s*$/)
-        if (match) {
-          jsxContent = match[1]
+        // Try simple regex extraction without $$
+        const simpleMatch = code.match(/return\s*$$\s*([\s\S]*)\s*$$\s*;?\s*\}?\s*$/)
+        if (simpleMatch) {
+          jsxContent = simpleMatch[1]
         }
       }
 
@@ -250,139 +251,360 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
         return getErrorHtml("Não foi possível extrair o JSX do código")
       }
 
-      // Step 1: Remove ALL JSX comments {/* ... */}
-      let html = jsxContent.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+      let html = jsxContent
 
-      // Handle various .map patterns by removing entire expressions
-      html = html.replace(/\{[^{}]*\.map[^{}]*\{[^{}]*\}[^{}]*\}/g, "")
-      html = html.replace(/\{[^{}]*\.map[^{}]*\}/g, "")
+      // Step 1: Remove ALL JSX comments {/* ... */} - handle multiline
+      html = html.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
 
-      // Step 3: Handle array .map patterns like {['a','b'].map(...)}
-      html = html.replace(/\{\s*\[[^\]]*\][^}]*\}/g, "")
+      // Step 2: Remove conditional rendering {condition && <JSX>}
+      // This is the main fix - handle patterns like {menuOpen && <div>...</div>}
+      // First, remove simple conditionals
+      html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*/g, "")
+      // Remove negated conditionals {!condition && ...}
+      html = html.replace(/\{![a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*/g, "")
+      // Clean up orphaned closing braces after removing conditionals
+      let braceCount = 0
+      let cleanedHtml = ""
+      for (let i = 0; i < html.length; i++) {
+        const char = html[i]
+        if (char === "{" && html[i + 1] !== "/" && html[i + 1] !== "*") {
+          // Check if this is a JSX expression (not a comment)
+          const remaining = html.substring(i)
+          if (remaining.match(/^\{[a-zA-Z_!]/)) {
+            braceCount++
+            continue
+          }
+        }
+        if (char === "}" && braceCount > 0) {
+          braceCount--
+          continue
+        }
+        cleanedHtml += char
+      }
+      html = cleanedHtml
 
-      // Step 4: Remove ternary expressions - keep the truthy part or nothing
-      // Handle: {condition ? <something> : <something>}
-      html = html.replace(/\{[^{}]*\?\s*(<[^{}]*>)\s*:\s*[^}]*\}/g, "$1")
-      html = html.replace(/\{[^{}]*\?[^:]*:[^}]*\}/g, "")
+      // Step 3: Remove .map expressions completely - multiple passes
+      for (let i = 0; i < 5; i++) {
+        // Remove array.map patterns
+        html = html.replace(/\{[^{}]*\.map\s*$$[^)]*$$\s*\}/g, "")
+        // Remove inline array map like {['a','b'].map(...)}
+        html = html.replace(/\{\s*\[[^\]]*\]\s*\.map[^}]*\}/g, "")
+        // Remove any remaining map expressions
+        html = html.replace(/\.map\s*$$[^)]*=>[^)]*$$/g, "")
+      }
 
-      // Step 5: Remove remaining JavaScript expressions
-      html = html.replace(/\{menuOpen[^}]*\}/g, "")
-      html = html.replace(/\{formData\.[^}]*\}/g, '""')
+      // Step 4: Remove ternary expressions {cond ? a : b}
+      html = html.replace(/\{[^{}?]*\?[^{}:]*:[^{}]*\}/g, "")
+
+      // Step 5: Remove state/prop expressions
+      html = html.replace(/\{menuOpen\}/g, "")
+      html = html.replace(/\{formData\.[a-zA-Z_][a-zA-Z0-9_]*\}/g, '""')
       html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_.]*\}/g, "")
-      html = html.replace(/\{\s*`[^`]*`\s*\}/g, "") // Template literals
 
-      // Step 6: Convert React attributes to HTML
+      // Step 6: Remove template literals
+      html = html.replace(/\{\s*`[^`]*`\s*\}/g, "")
+
+      // Step 7: Convert React attributes to HTML
       html = html.replace(/className=/g, "class=")
       html = html.replace(/htmlFor=/g, "for=")
+      html = html.replace(/tabIndex=/g, "tabindex=")
+      html = html.replace(/autoFocus/g, "autofocus")
+      html = html.replace(/autoComplete=/g, "autocomplete=")
+      html = html.replace(/spellCheck=/g, "spellcheck=")
+      html = html.replace(/contentEditable=/g, "contenteditable=")
+      html = html.replace(/crossOrigin=/g, "crossorigin=")
+      html = html.replace(/dateTime=/g, "datetime=")
+      html = html.replace(/encType=/g, "enctype=")
+      html = html.replace(/formAction=/g, "formaction=")
+      html = html.replace(/formEncType=/g, "formenctype=")
+      html = html.replace(/formMethod=/g, "formmethod=")
+      html = html.replace(/formNoValidate=/g, "formnovalidate=")
+      html = html.replace(/formTarget=/g, "formtarget=")
+      html = html.replace(/hrefLang=/g, "hreflang=")
+      html = html.replace(/inputMode=/g, "inputmode=")
+      html = html.replace(/maxLength=/g, "maxlength=")
+      html = html.replace(/minLength=/g, "minlength=")
+      html = html.replace(/noValidate=/g, "novalidate=")
+      html = html.replace(/readOnly=/g, "readonly=")
+      html = html.replace(/srcDoc=/g, "srcdoc=")
+      html = html.replace(/srcLang=/g, "srclang=")
+      html = html.replace(/srcSet=/g, "srcset=")
+      html = html.replace(/useMap=/g, "usemap=")
+      // SVG attributes
       html = html.replace(/strokeWidth=/g, "strokeWidth=")
       html = html.replace(/strokeLinecap=/g, "strokeLinecap=")
       html = html.replace(/strokeLinejoin=/g, "strokeLinejoin=")
-      html = html.replace(/viewBox=/g, "viewBox=")
       html = html.replace(/fillRule=/g, "fillRule=")
       html = html.replace(/clipRule=/g, "clipRule=")
+      html = html.replace(/clipPath=/g, "clipPath=")
 
-      // Step 7: Remove event handlers
-      html = html.replace(/\s+on[A-Z][a-zA-Z]*=\{[^}]*\}/g, "")
-      html = html.replace(/\s+onClick=\{[^}]*\}/g, "")
-      html = html.replace(/\s+onChange=\{[^}]*\}/g, "")
-      html = html.replace(/\s+onSubmit=\{[^}]*\}/g, "")
-      html = html.replace(/\s+onMouseEnter=\{[^}]*\}/g, "")
-      html = html.replace(/\s+onMouseLeave=\{[^}]*\}/g, "")
-
-      // Step 8: Remove value and key props
-      html = html.replace(/\s+value=\{[^}]*\}/g, "")
-      html = html.replace(/\s+key=\{[^}]*\}/g, "")
-      html = html.replace(/\s+ref=\{[^}]*\}/g, "")
-
-      // Step 9: Convert style={{...}} to style="..."
-      html = html.replace(/style=\{\{([^}]+)\}\}/g, (_, styles) => {
-        const cssStyles = styles
-          .split(",")
-          .map((s: string) => {
-            const colonIdx = s.indexOf(":")
-            if (colonIdx === -1) return ""
-            const key = s.substring(0, colonIdx).trim()
-            const value = s
-              .substring(colonIdx + 1)
-              .trim()
-              .replace(/['"]/g, "")
-              .replace(/}$/, "")
-            const cssKey = key.replace(/([A-Z])/g, "-$1").toLowerCase()
-            return `${cssKey}: ${value}`
-          })
-          .filter(Boolean)
-          .join("; ")
-        return `style="${cssStyles}"`
+      // Step 8: Remove ALL event handlers - comprehensive list
+      const eventHandlers = [
+        "onClick",
+        "onChange",
+        "onSubmit",
+        "onFocus",
+        "onBlur",
+        "onKeyDown",
+        "onKeyUp",
+        "onKeyPress",
+        "onMouseDown",
+        "onMouseUp",
+        "onMouseMove",
+        "onMouseEnter",
+        "onMouseLeave",
+        "onMouseOver",
+        "onMouseOut",
+        "onTouchStart",
+        "onTouchMove",
+        "onTouchEnd",
+        "onScroll",
+        "onWheel",
+        "onDrag",
+        "onDragStart",
+        "onDragEnd",
+        "onDragEnter",
+        "onDragLeave",
+        "onDragOver",
+        "onDrop",
+        "onInput",
+        "onInvalid",
+        "onReset",
+        "onSelect",
+        "onLoad",
+        "onError",
+        "onAnimationStart",
+        "onAnimationEnd",
+        "onTransitionEnd",
+        "onContextMenu",
+        "onDoubleClick",
+        "onCopy",
+        "onCut",
+        "onPaste",
+      ]
+      eventHandlers.forEach((handler) => {
+        // Match handler={...} or handler={() => ...}
+        const regex = new RegExp(`\\s*${handler}=\\{[^}]*\\}`, "g")
+        html = html.replace(regex, "")
       })
 
-      // Step 10: Clean up any leftover curly braces with expressions
-      html = html.replace(/\{[^{}]*\}/g, "")
+      // Step 9: Remove React-specific props
+      const reactProps = [
+        "key",
+        "ref",
+        "dangerouslySetInnerHTML",
+        "suppressContentEditableWarning",
+        "suppressHydrationWarning",
+      ]
+      reactProps.forEach((prop) => {
+        const regex = new RegExp(`\\s*${prop}=\\{[^}]*\\}`, "g")
+        html = html.replace(regex, "")
+      })
 
-      // Step 11: Clean up empty attributes and double spaces
+      // Step 10: Remove value props from inputs (keep placeholder)
+      html = html.replace(/\s+value=\{[^}]*\}/g, "")
+      html = html.replace(/\s+checked=\{[^}]*\}/g, "")
+      html = html.replace(/\s+selected=\{[^}]*\}/g, "")
+      html = html.replace(/\s+disabled=\{[^}]*\}/g, "")
+
+      // Step 11: Convert style={{...}} to style="..."
+      html = html.replace(/style=\{\{([^}]+)\}\}/g, (_, styles) => {
+        try {
+          const cssStyles = styles
+            .split(",")
+            .map((s: string) => {
+              const colonIdx = s.indexOf(":")
+              if (colonIdx === -1) return ""
+              const key = s.substring(0, colonIdx).trim()
+              const value = s
+                .substring(colonIdx + 1)
+                .trim()
+                .replace(/['"]/g, "")
+                .replace(/}$/, "")
+              const cssKey = key.replace(/([A-Z])/g, "-$1").toLowerCase()
+              return `${cssKey}: ${value}`
+            })
+            .filter(Boolean)
+            .join("; ")
+          return `style="${cssStyles}"`
+        } catch {
+          return ""
+        }
+      })
+
+      // Step 12: Clean up any remaining curly braces
+      // Do multiple passes to catch nested patterns
+      for (let i = 0; i < 3; i++) {
+        html = html.replace(/\{[^{}]*\}/g, "")
+      }
+
+      // Step 13: Fix self-closing tags for HTML5
+      html = html.replace(/<(img|input|br|hr|meta|link)([^>]*)\s*\/>/gi, "<$1$2>")
+
+      // Step 14: Clean up whitespace
       html = html.replace(/\s+/g, " ")
       html = html.replace(/>\s+</g, "><")
+      html = html.replace(/\s+>/g, ">")
+      html = html.replace(/<\s+/g, "<")
 
-      // Wrap in HTML document with Tailwind CSS
+      // Step 15: Ensure proper HTML structure
+      html = html.trim()
+
+      // Wrap in complete HTML document
       return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preview</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com"><\/script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
     html { scroll-behavior: smooth; }
-    a { cursor: pointer; text-decoration: none; color: inherit; }
-    button { cursor: pointer; border: none; background: none; }
-    input, textarea { outline: none; font-family: inherit; }
-    input:focus, textarea:focus { border-color: #8B5CF6 !important; }
-    @keyframes gradient { to { background-position: 200% center; } }
-    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
-    .animate-gradient { animation: gradient 8s linear infinite; background-size: 200% auto; }
-    .animate-float { animation: float 6s ease-in-out infinite; }
-    .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-    .animate-ping { animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
+    a { cursor: pointer; text-decoration: none; color: inherit; transition: all 0.2s ease; }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; transition: all 0.2s ease; }
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    input, textarea, select { 
+      outline: none; 
+      font-family: inherit; 
+      transition: all 0.2s ease;
+    }
+    input:focus, textarea:focus, select:focus { 
+      border-color: #8B5CF6 !important; 
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+    }
+    img { max-width: 100%; height: auto; }
+    
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    
+    .animate-fadeIn { animation: fadeIn 0.6s ease-out forwards; }
+    .animate-slideIn { animation: slideIn 0.6s ease-out forwards; }
+    .animate-pulse { animation: pulse 2s ease-in-out infinite; }
+    .animate-float { animation: float 3s ease-in-out infinite; }
+    .animate-gradient { 
+      background-size: 200% auto;
+      animation: gradient 3s ease infinite;
+    }
+    .animate-shimmer {
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite;
+    }
+    
+    /* Hover effects */
+    .hover-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
+    .hover-glow:hover { box-shadow: 0 0 30px rgba(139, 92, 246, 0.3); }
+    .hover-scale:hover { transform: scale(1.02); }
+    
+    /* Utility classes */
+    .glass { 
+      background: rgba(255, 255, 255, 0.1); 
+      backdrop-filter: blur(10px); 
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
   </style>
 </head>
-<body>
+<body class="antialiased">
   ${html}
   <script>
-    // Make anchor navigation work
+    // Smooth scroll for anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       anchor.addEventListener('click', function(e) {
         e.preventDefault();
-        const id = this.getAttribute('href')?.substring(1);
-        if (id) {
-          const el = document.getElementById(id);
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        const targetId = this.getAttribute('href').slice(1);
+        const target = document.getElementById(targetId);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       });
     });
-    // Make forms work
+    
+    // Mobile menu toggle
+    document.querySelectorAll('[data-mobile-menu-toggle]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const menu = document.querySelector('[data-mobile-menu]');
+        if (menu) {
+          menu.classList.toggle('hidden');
+        }
+      });
+    });
+    
+    // Form handling
     document.querySelectorAll('form').forEach(form => {
       form.addEventListener('submit', function(e) {
         e.preventDefault();
-        alert('Mensagem enviada com sucesso!');
-        this.reset();
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) {
+          const originalText = btn.innerHTML;
+          btn.innerHTML = 'Enviado!';
+          btn.style.background = '#10B981';
+          setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.style.background = '';
+            form.reset();
+          }, 2000);
+        }
       });
     });
-    // Mobile menu toggle
-    document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const menu = document.querySelector('[data-mobile-menu]');
-        if (menu) menu.classList.toggle('hidden');
+    
+    // Intersection Observer for scroll animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('animate-fadeIn');
+        }
       });
+    }, { threshold: 0.1 });
+    
+    document.querySelectorAll('section').forEach(section => {
+      observer.observe(section);
     });
-  </script>
+  <\/script>
 </body>
 </html>`
-    } catch (err) {
-      console.error("Preview generation error:", err)
-      return getErrorHtml("Erro ao gerar preview: " + (err as Error).message)
+    } catch (error) {
+      console.error("[v0] Preview generation error:", error)
+      return getErrorHtml("Erro ao processar o código")
     }
   }, [])
 
