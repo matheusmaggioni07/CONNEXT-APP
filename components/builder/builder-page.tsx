@@ -389,6 +389,36 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       html = html.replace(/clipRule=/g, "clipRule=")
       html = html.replace(/clipPath=/g, "clipPath=")
 
+      // Extract onClick handlers and convert to appropriate actions
+
+      // Convert buttons with scrollTo to anchor links
+      html = html.replace(
+        /<button([^>]*)onClick=\{[^}]*scrollTo[^}]*['"]([^'"]+)['"][^}]*\}([^>]*)>([^<]*)<\/button>/gi,
+        '<a href="#$2"$1$3 style="cursor: pointer;">$4</a>',
+      )
+
+      // Convert buttons/links with WhatsApp to functional WhatsApp links
+      html = html.replace(
+        /<button([^>]*)onClick=\{[^}]*whatsapp[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
+        '<a href="https://wa.me/5500000000000" target="_blank"$1$2>$3</a>',
+      )
+      html = html.replace(
+        /<button([^>]*)onClick=\{[^}]*window\.open[^}]*wa\.me[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
+        '<a href="https://wa.me/5500000000000" target="_blank"$1$2>$3</a>',
+      )
+
+      // Convert buttons with tel: to phone links
+      html = html.replace(
+        /<button([^>]*)onClick=\{[^}]*tel:[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
+        '<a href="tel:+5500000000000"$1$2>$3</a>',
+      )
+
+      // Convert buttons with mailto: to email links
+      html = html.replace(
+        /<button([^>]*)onClick=\{[^}]*mailto:[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
+        '<a href="mailto:contato@exemplo.com"$1$2>$3</a>',
+      )
+
       // Step 8: Remove ALL event handlers - comprehensive list
       const eventHandlers = [
         "onClick",
@@ -521,9 +551,27 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     }
     html { scroll-behavior: smooth; }
     a { cursor: pointer; text-decoration: none; color: inherit; transition: all 0.2s ease; }
-    button { cursor: pointer; border: none; background: none; font-family: inherit; transition: all 0.2s ease; }
-    button:hover { transform: translateY(-1px); }
-    button:active { transform: translateY(0); }
+    /* Make buttons functional with hover effects */
+    button, a.btn { 
+      cursor: pointer; 
+      border: none; 
+      font-family: inherit; 
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    button:hover, a.btn:hover { 
+      transform: translateY(-2px); 
+      filter: brightness(1.1);
+    }
+    button:active, a.btn:active { 
+      transform: translateY(0); 
+    }
+    /* Smooth scroll for anchor links */
+    [href^="#"] {
+      scroll-behavior: smooth;
+    }
     input, textarea, select { 
       outline: none; 
       font-family: inherit; 
@@ -2077,19 +2125,30 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
             </div>
             <div className="space-y-4">
               <p className="text-muted-foreground text-sm">
-                Para publicar seu site, copie o código e use uma plataforma como Vercel, Netlify ou GitHub Pages.
+                Para publicar seu site com um domínio próprio, registre seu domínio .com.br no Registro.br.
               </p>
               <div className="bg-muted/50 rounded-lg p-4">
-                <h4 className="font-medium mb-2">Opções de publicação:</h4>
-                <ul className="text-sm text-muted-foreground space-y-2">
-                  <li>• Vercel - vercel.com</li>
-                  <li>• Netlify - netlify.com</li>
-                  <li>• GitHub Pages</li>
-                </ul>
+                <h4 className="font-medium mb-2">Registrar Domínio:</h4>
+                <a
+                  href="https://registro.br"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  registro.br - Registre seu domínio .com.br
+                </a>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Após registrar seu domínio, você pode usar serviços como Vercel ou Netlify para hospedar seu site
+                  gratuitamente.
+                </p>
               </div>
-              <Button onClick={handleCopyCode} className="w-full gap-2">
+              <Button
+                onClick={handleCopyCode}
+                className="w-full gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
                 {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copiedCode ? "Código Copiado!" : "Copiar Código"}
+                {copiedCode ? "Código Copiado!" : "Copiar Código HTML"}
               </Button>
             </div>
           </div>

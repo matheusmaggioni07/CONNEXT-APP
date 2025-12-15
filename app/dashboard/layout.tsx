@@ -17,6 +17,13 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const supabaseRef = useRef(createClient())
   const supabase = supabaseRef.current
   const redirectAttempted = useRef(false)
+  const hadUser = useRef(false)
+
+  useEffect(() => {
+    if (user) {
+      hadUser.current = true
+    }
+  }, [user])
 
   useEffect(() => {
     let mounted = true
@@ -43,7 +50,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
     if (user) {
       checkTerms()
-      redirectAttempted.current = false // Reset when user is found
+      redirectAttempted.current = false
     } else if (!isLoading) {
       setTermsChecked(true)
     }
@@ -54,14 +61,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   }, [user, isLoading])
 
   useEffect(() => {
-    if (!isLoading && !user && !redirectAttempted.current) {
-      // Wait 3 seconds before redirecting to give session time to load
+    if (!isLoading && !user && !hadUser.current && !redirectAttempted.current) {
+      // Wait 5 seconds before redirecting to give session time to load
       const timer = setTimeout(() => {
-        if (!user && !redirectAttempted.current) {
+        if (!user && !hadUser.current && !redirectAttempted.current) {
+          console.log("[v0] No user found after timeout, redirecting to login")
           redirectAttempted.current = true
           router.push("/login")
         }
-      }, 3000)
+      }, 5000)
       return () => clearTimeout(timer)
     }
   }, [isLoading, user, router])
@@ -74,13 +82,18 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user) {
+  if (!user && !hadUser.current) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         <p className="text-muted-foreground text-sm">Carregando sessão...</p>
       </div>
     )
+  }
+
+  if (!user && hadUser.current) {
+    router.push("/login")
+    return null
   }
 
   if (!termsChecked) {

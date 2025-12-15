@@ -16,13 +16,15 @@ import {
   Briefcase,
   User,
 } from "lucide-react"
-import { getMatches } from "@/app/actions/likes"
+import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/auth-context"
 import { getOnlineUserIds } from "@/app/actions/presence"
 import type { Match, Profile } from "@/lib/types"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export function MatchesPage() {
+  const { user } = useAuth()
   const [matches, setMatches] = useState<Match[]>([])
   const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -30,10 +32,52 @@ export function MatchesPage() {
   const router = useRouter()
 
   const fetchData = async () => {
+    if (!user) {
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     try {
-      const [fetchedMatches, online] = await Promise.all([getMatches(), getOnlineUserIds()])
-      setMatches(fetchedMatches)
+      const supabase = createClient()
+
+      // Get matches where user is either user1 or user2
+      const { data: matchesData, error } = await supabase
+        .from("matches")
+        .select("id, user1_id, user2_id, created_at")
+        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("[v0] Get matches error:", error)
+        setMatches([])
+        setIsLoading(false)
+        return
+      }
+
+      if (!matchesData || matchesData.length === 0) {
+        setMatches([])
+        const online = await getOnlineUserIds()
+        setOnlineUsers(online)
+        setIsLoading(false)
+        return
+      }
+
+      // Get the other user's profile for each match
+      const matchesWithProfiles = await Promise.all(
+        matchesData.map(async (match) => {
+          const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id
+          const { data: profile } = await supabase.from("profiles").select("*").eq("id", otherUserId).single()
+
+          return {
+            ...match,
+            matched_profile: profile,
+          }
+        }),
+      )
+
+      setMatches(matchesWithProfiles)
+      const online = await getOnlineUserIds()
       setOnlineUsers(online)
     } catch (error) {
       console.error("Error fetching matches:", error)
@@ -43,8 +87,10 @@ export function MatchesPage() {
   }
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (user) {
+      fetchData()
+    }
+  }, [user])
 
   const toggleExpand = (id: string) => {
     setExpandedCards((prev) => {

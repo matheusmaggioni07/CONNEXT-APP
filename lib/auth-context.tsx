@@ -12,26 +12,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const RECENT_LOGIN_KEY = "connext_recent_login"
+function saveSessionToCookies(session: { access_token: string; refresh_token: string } | null) {
+  if (typeof document === "undefined") return
 
-export function setRecentLogin() {
-  if (typeof window !== "undefined") {
-    sessionStorage.setItem(RECENT_LOGIN_KEY, Date.now().toString())
-  }
-}
-
-function getRecentLogin(): boolean {
-  if (typeof window === "undefined") return false
-  const timestamp = sessionStorage.getItem(RECENT_LOGIN_KEY)
-  if (!timestamp) return false
-  // Consider "recent" if within 10 seconds
-  const isRecent = Date.now() - Number.parseInt(timestamp) < 10000
-  return isRecent
-}
-
-function clearRecentLogin() {
-  if (typeof window !== "undefined") {
-    sessionStorage.removeItem(RECENT_LOGIN_KEY)
+  if (session) {
+    const maxAge = 60 * 60 * 24 * 7 // 7 days
+    document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${maxAge}; SameSite=Lax`
+    document.cookie = `sb-refresh-token=${session.refresh_token}; path=/; max-age=${maxAge}; SameSite=Lax`
+  } else {
+    document.cookie = "sb-access-token=; path=/; max-age=0"
+    document.cookie = "sb-refresh-token=; path=/; max-age=0"
   }
 }
 
@@ -50,7 +40,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initAuth = async () => {
       try {
-        // First, try to get the current session
         const {
           data: { session },
           error,
@@ -63,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) {
           if (session?.user) {
             setUser(session.user)
+            saveSessionToCookies(session)
           }
           setIsLoading(false)
         }
@@ -74,21 +64,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Set up auth state listener FIRST
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("[v0] Auth state change:", event)
       if (mounted) {
         setUser(session?.user ?? null)
-        // Only set loading false on sign in/out events, not on initial
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          saveSessionToCookies(session)
+        } else if (event === "SIGNED_OUT") {
+          saveSessionToCookies(null)
+        }
         if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
           setIsLoading(false)
         }
       }
     })
 
-    // Then check initial session
     initAuth()
 
     return () => {
@@ -99,10 +91,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      saveSessionToCookies(null)
       await supabase.auth.signOut()
       setUser(null)
     } catch (err) {
       console.log("[v0] Sign out error:", err)
+      saveSessionToCookies(null)
       setUser(null)
     }
   }
