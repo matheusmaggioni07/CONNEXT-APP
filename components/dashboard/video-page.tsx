@@ -109,6 +109,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
   }, [videoState])
 
+  useEffect(() => {
+    if (localStreamRef.current && localVideoRef.current) {
+      if (localVideoRef.current.srcObject !== localStreamRef.current) {
+        console.log("[v0] Re-attaching local stream to video element")
+        localVideoRef.current.srcObject = localStreamRef.current
+        localVideoRef.current.play().catch((e) => console.log("[v0] Local video play error:", e))
+      }
+      setLocalVideoReady(true)
+    }
+  }, [videoState])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -186,9 +197,18 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.onloadedmetadata = () => {
-          localVideoRef.current?.play().catch((e) => console.log("[v0] Video autoplay blocked:", e))
+        const playVideo = async () => {
+          try {
+            await localVideoRef.current?.play()
+            console.log("[v0] Local video playing successfully")
+          } catch (e: any) {
+            console.log("[v0] Local video autoplay blocked, will retry:", e.message)
+            // On mobile, user interaction might be needed
+          }
         }
+        localVideoRef.current.onloadedmetadata = playVideo
+        // Also try immediately
+        playVideo()
       }
 
       setLocalVideoReady(true)
@@ -942,11 +962,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             autoPlay
             playsInline
             muted
-            className={`h-full w-full object-cover ${!localVideoReady ? "hidden" : ""}`}
+            className={`h-full w-full object-cover transition-opacity ${!localVideoReady ? "opacity-0" : "opacity-100"}`}
           />
 
           {!localVideoReady && (
-            <div className="flex h-full items-center justify-center">
+            <div className="absolute inset-0 flex h-full items-center justify-center">
               <p className="text-muted-foreground">Câmera desativada</p>
             </div>
           )}
