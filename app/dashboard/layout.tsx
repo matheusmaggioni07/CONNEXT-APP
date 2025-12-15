@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
 import { Sidebar, MobileHeader, MobileBottomNav } from "@/components/dashboard/sidebar"
 import { TermsModal } from "@/components/terms-modal"
@@ -11,10 +11,12 @@ import { createClient } from "@/lib/supabase/client"
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [termsChecked, setTermsChecked] = useState(false)
   const supabaseRef = useRef(createClient())
   const supabase = supabaseRef.current
+  const redirectAttempted = useRef(false)
 
   useEffect(() => {
     let mounted = true
@@ -41,6 +43,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
     if (user) {
       checkTerms()
+      redirectAttempted.current = false // Reset when user is found
     } else if (!isLoading) {
       setTermsChecked(true)
     }
@@ -51,8 +54,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   }, [user, isLoading])
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push("/login")
+    if (!isLoading && !user && !redirectAttempted.current) {
+      // Wait 3 seconds before redirecting to give session time to load
+      const timer = setTimeout(() => {
+        if (!user && !redirectAttempted.current) {
+          redirectAttempted.current = true
+          router.push("/login")
+        }
+      }, 3000)
+      return () => clearTimeout(timer)
     }
   }, [isLoading, user, router])
 
@@ -66,8 +76,9 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted-foreground text-sm">Carregando sessão...</p>
       </div>
     )
   }

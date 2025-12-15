@@ -12,51 +12,84 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const RECENT_LOGIN_KEY = "connext_recent_login"
+
+export function setRecentLogin() {
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(RECENT_LOGIN_KEY, Date.now().toString())
+  }
+}
+
+function getRecentLogin(): boolean {
+  if (typeof window === "undefined") return false
+  const timestamp = sessionStorage.getItem(RECENT_LOGIN_KEY)
+  if (!timestamp) return false
+  // Consider "recent" if within 10 seconds
+  const isRecent = Date.now() - Number.parseInt(timestamp) < 10000
+  return isRecent
+}
+
+function clearRecentLogin() {
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(RECENT_LOGIN_KEY)
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const supabaseRef = useRef(createClient())
   const supabase = supabaseRef.current
+  const initRef = useRef(false)
 
   useEffect(() => {
+    if (initRef.current) return
+    initRef.current = true
+
     let mounted = true
 
-    // Get initial session with error handling
-    const getUser = async () => {
+    const initAuth = async () => {
       try {
+        // First, try to get the current session
         const {
-          data: { user },
+          data: { session },
           error,
-        } = await supabase.auth.getUser()
+        } = await supabase.auth.getSession()
 
         if (error) {
-          console.log("[v0] Auth error (expected if not logged in):", error.message)
+          console.log("[v0] Session error:", error.message)
         }
 
         if (mounted) {
-          setUser(user)
+          if (session?.user) {
+            setUser(session.user)
+          }
           setIsLoading(false)
         }
       } catch (err) {
-        console.log("[v0] Auth fetch error:", err)
+        console.log("[v0] Auth init error:", err)
         if (mounted) {
-          setUser(null)
           setIsLoading(false)
         }
       }
     }
 
-    getUser()
-
-    // Listen for auth changes
+    // Set up auth state listener FIRST
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[v0] Auth state change:", event)
       if (mounted) {
         setUser(session?.user ?? null)
-        setIsLoading(false)
+        // Only set loading false on sign in/out events, not on initial
+        if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+          setIsLoading(false)
+        }
       }
     })
+
+    // Then check initial session
+    initAuth()
 
     return () => {
       mounted = false

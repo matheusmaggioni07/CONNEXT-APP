@@ -2,7 +2,6 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,7 +17,6 @@ export function LoginForm() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const router = useRouter()
   const [onlineCount, setOnlineCount] = useState(847)
   const [showMatch, setShowMatch] = useState(true)
 
@@ -48,7 +46,7 @@ export function LoginForm() {
 
     const supabase = createClient()
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -75,8 +73,15 @@ export function LoginForm() {
       return
     }
 
-    router.push("/dashboard")
-    router.refresh()
+    if (data.session) {
+      console.log("[v0] Login successful, session confirmed")
+      // Small delay to ensure session is persisted to localStorage
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      window.location.href = "/dashboard"
+    } else {
+      setError("Erro ao criar sessão. Tente novamente.")
+      setIsLoading(false)
+    }
   }
 
   return (
