@@ -156,31 +156,50 @@ export function DiscoverPage() {
 
   const isOnline = (userId: string) => onlineUsers.includes(userId)
 
-  const getAvatarUrl = (profile: Profile): string | null => {
+  const getAvatarUrl = (profile: Profile): string => {
     // Check for avatar_url first (uploaded photo)
     if (profile.avatar_url) {
-      // Already a valid HTTP URL
       if (profile.avatar_url.startsWith("http://") || profile.avatar_url.startsWith("https://")) {
         return profile.avatar_url
       }
-      // Local path
       if (profile.avatar_url.startsWith("/")) {
         return profile.avatar_url
       }
+      return profile.avatar_url
     }
 
     // Check for photos array (multiple photos)
     if (profile.photos && Array.isArray(profile.photos) && profile.photos.length > 0) {
       const firstPhoto = profile.photos[0]
-      if (typeof firstPhoto === "string") {
+      if (typeof firstPhoto === "string" && firstPhoto.length > 0) {
         if (firstPhoto.startsWith("http://") || firstPhoto.startsWith("https://")) {
           return firstPhoto
         }
+        if (firstPhoto.startsWith("/")) {
+          return firstPhoto
+        }
+        return firstPhoto
       }
     }
 
-    // Return null if no valid avatar found - will show initials
-    return null
+    // Fallback to UI Avatars - always returns a working URL
+    const name = profile.full_name || "User"
+    const initials = getInitials(name)
+    const colors = [
+      { bg: "6366f1", fg: "ffffff" }, // Indigo
+      { bg: "8b5cf6", fg: "ffffff" }, // Violet
+      { bg: "ec4899", fg: "ffffff" }, // Pink
+      { bg: "f43f5e", fg: "ffffff" }, // Rose
+      { bg: "f97316", fg: "ffffff" }, // Orange
+      { bg: "eab308", fg: "000000" }, // Yellow
+      { bg: "22c55e", fg: "ffffff" }, // Green
+      { bg: "06b6d4", fg: "ffffff" }, // Cyan
+    ]
+
+    const colorIndex = profile.id ? profile.id.charCodeAt(0) % colors.length : 0
+    const color = colors[colorIndex]
+
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${color.bg}&color=${color.fg}&size=256&bold=true&format=svg`
   }
 
   const getInitials = (name: string): string => {

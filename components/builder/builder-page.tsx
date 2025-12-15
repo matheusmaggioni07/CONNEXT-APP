@@ -240,10 +240,19 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       }
 
       if (!jsxContent) {
-        // Try simple regex extraction without $$
-        const simpleMatch = code.match(/return\s*$$\s*([\s\S]*)\s*$$\s*;?\s*\}?\s*$/)
-        if (simpleMatch) {
-          jsxContent = simpleMatch[1]
+        // Try alternative extraction method without problematic regex
+        const returnMatch = code.indexOf("return")
+        if (returnMatch !== -1) {
+          const afterReturn = code.substring(returnMatch + 6).trim()
+          if (afterReturn.startsWith("(")) {
+            // Already handled above
+          } else if (afterReturn.startsWith("<")) {
+            // Direct JSX return without parentheses
+            const endMatch = code.lastIndexOf("}")
+            if (endMatch > returnMatch) {
+              jsxContent = afterReturn.substring(0, endMatch - returnMatch - 6).trim()
+            }
+          }
         }
       }
 
@@ -256,53 +265,95 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       // Step 1: Remove ALL JSX comments {/* ... */} - handle multiline
       html = html.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
 
-      // Step 2: Remove conditional rendering {condition && <JSX>}
-      // This is the main fix - handle patterns like {menuOpen && <div>...</div>}
-      // First, remove simple conditionals
-      html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*/g, "")
-      // Remove negated conditionals {!condition && ...}
-      html = html.replace(/\{![a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*/g, "")
-      // Clean up orphaned closing braces after removing conditionals
-      let braceCount = 0
-      let cleanedHtml = ""
+      // Step 2: Remove conditional rendering completely
+      // Handle patterns like {menuOpen && <div>...</div>}
+      // Handle patterns like {!condition && <div>...</div>}
+      // Process multiple times to handle nested conditionals
+      for (let pass = 0; pass < 10; pass++) {
+        const prevHtml = html
+
+        // Remove simple boolean conditionals {variable && ...}
+        html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*(<[^>]*>[\s\S]*?<\/[^>]*>|<[^/>]*\/>)\}/g, "")
+        html = html.replace(/\{![a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*(<[^>]*>[\s\S]*?<\/[^>]*>|<[^/>]*\/>)\}/g, "")
+
+        // Remove comparison conditionals {var === val && ...}
+        html = html.replace(
+          /\{[a-zA-Z_][a-zA-Z0-9_.]*\s*[=!<>]+\s*[^&]*&&\s*(<[^>]*>[\s\S]*?<\/[^>]*>|<[^/>]*\/>)\}/g,
+          "",
+        )
+
+        // Remove remaining conditional starts {variable &&
+        html = html.replace(/\{[a-zA-Z_!][a-zA-Z0-9_]*\s*&&\s*/g, "")
+
+        // If no changes were made, break
+        if (html === prevHtml) break
+      }
+
+      // Clean orphaned closing braces
+      let result = ""
+      let braceDepth = 0
+      let inTag = false
+      let inString = false
+      let stringChar = ""
+
       for (let i = 0; i < html.length; i++) {
         const char = html[i]
-        if (char === "{" && html[i + 1] !== "/" && html[i + 1] !== "*") {
-          // Check if this is a JSX expression (not a comment)
-          const remaining = html.substring(i)
-          if (remaining.match(/^\{[a-zA-Z_!]/)) {
-            braceCount++
-            continue
+        const prevChar = i > 0 ? html[i - 1] : ""
+
+        // Track string state
+        if ((char === '"' || char === "'") && prevChar !== "\\") {
+          if (!inString) {
+            inString = true
+            stringChar = char
+          } else if (char === stringChar) {
+            inString = false
           }
         }
-        if (char === "}" && braceCount > 0) {
-          braceCount--
-          continue
+
+        // Track tag state
+        if (!inString) {
+          if (char === "<") inTag = true
+          if (char === ">") inTag = false
         }
-        cleanedHtml += char
-      }
-      html = cleanedHtml
 
-      // Step 3: Remove .map expressions completely - multiple passes
+        // Handle braces outside of tags and strings
+        if (!inString && !inTag) {
+          if (char === "{") {
+            // Check if this looks like a JSX expression (not HTML)
+            const remaining = html.substring(i + 1, i + 50)
+            if (remaining.match(/^[a-zA-Z_!]/)) {
+              braceDepth++
+              continue // Skip this opening brace
+            }
+          }
+          if (char === "}" && braceDepth > 0) {
+            braceDepth--
+            continue // Skip this closing brace
+          }
+        }
+
+        result += char
+      }
+      html = result
+
+      // Step 3: Remove .map expressions - multiple approaches
       for (let i = 0; i < 5; i++) {
-        // Remove array.map patterns
-        html = html.replace(/\{[^{}]*\.map\s*$$[^)]*$$\s*\}/g, "")
-        // Remove inline array map like {['a','b'].map(...)}
-        html = html.replace(/\{\s*\[[^\]]*\]\s*\.map[^}]*\}/g, "")
-        // Remove any remaining map expressions
-        html = html.replace(/\.map\s*$$[^)]*=>[^)]*$$/g, "")
+        // Remove {array.map(...)}
+        html = html.replace(/\{[^{}]*\.map[^{}]*\}/g, "")
+        // Remove {[...].map(...)}
+        html = html.replace(/\{\s*\[[^\]]*\][^{}]*\}/g, "")
       }
 
-      // Step 4: Remove ternary expressions {cond ? a : b}
-      html = html.replace(/\{[^{}?]*\?[^{}:]*:[^{}]*\}/g, "")
+      // Step 4: Remove ternary expressions {a ? b : c}
+      html = html.replace(/\{[^{}]*\?[^{}]*:[^{}]*\}/g, "")
 
-      // Step 5: Remove state/prop expressions
-      html = html.replace(/\{menuOpen\}/g, "")
-      html = html.replace(/\{formData\.[a-zA-Z_][a-zA-Z0-9_]*\}/g, '""')
+      // Step 5: Remove remaining JSX expressions
       html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_.]*\}/g, "")
-
-      // Step 6: Remove template literals
       html = html.replace(/\{\s*`[^`]*`\s*\}/g, "")
+
+      // Step 6: Clean up any remaining orphan braces
+      html = html.replace(/\{\s*\}/g, "")
+      html = html.replace(/\{\s*\n\s*\}/g, "")
 
       // Step 7: Convert React attributes to HTML
       html = html.replace(/className=/g, "class=")
