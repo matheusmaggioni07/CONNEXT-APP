@@ -76,6 +76,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const signalingPollingRef = useRef<NodeJS.Timeout | null>(null)
   const processedSignalingIds = useRef<Set<string>>(new Set())
   const processedIceCandidateIds = useRef<Set<string>>(new Set())
+  const remoteStreamRef = useRef<MediaStream | null>(null)
 
   // Check remaining calls on mount
   useEffect(() => {
@@ -110,6 +111,23 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [videoState])
 
   useEffect(() => {
+    if (remoteStreamRef.current && remoteVideoRef.current) {
+      console.log("[v0] Re-attaching remote stream to video element")
+      remoteVideoRef.current.srcObject = remoteStreamRef.current
+      const playVideo = async () => {
+        try {
+          await remoteVideoRef.current?.play()
+          console.log("[v0] Remote video re-play successful")
+          setRemoteVideoReady(true)
+        } catch (e) {
+          console.log("[v0] Remote video re-play failed:", e)
+        }
+      }
+      playVideo()
+    }
+  }, [videoState])
+
+  useEffect(() => {
     if (localStreamRef.current && localVideoRef.current) {
       if (localVideoRef.current.srcObject !== localStreamRef.current) {
         console.log("[v0] Re-attaching local stream to video element")
@@ -117,6 +135,39 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         localVideoRef.current.play().catch((e) => console.log("[v0] Local video play error:", e))
       }
       setLocalVideoReady(true)
+    }
+  }, [videoState])
+
+  useEffect(() => {
+    if (videoState === "connected" && remoteStreamRef.current && remoteVideoRef.current) {
+      console.log("[v0] Re-attaching remote stream on connected state")
+      remoteVideoRef.current.srcObject = remoteStreamRef.current
+
+      const playRemote = async () => {
+        try {
+          if (remoteVideoRef.current) {
+            await remoteVideoRef.current.play()
+            console.log("[v0] Remote video playing after re-attach!")
+            setRemoteVideoReady(true)
+          }
+        } catch (e: any) {
+          console.log("[v0] Remote play error:", e.message)
+        }
+      }
+
+      playRemote()
+    }
+  }, [videoState])
+
+  useEffect(() => {
+    if (
+      (videoState === "connected" || videoState === "searching" || videoState === "connecting") &&
+      localStreamRef.current &&
+      localVideoRef.current
+    ) {
+      console.log("[v0] Re-attaching local stream")
+      localVideoRef.current.srcObject = localStreamRef.current
+      localVideoRef.current.play().catch(() => {})
     }
   }, [videoState])
 
@@ -291,37 +342,72 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       // Handle remote track - THIS IS KEY for video
       pc.ontrack = (event) => {
         console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind)
+
+        if (event.streams && event.streams[0]) {
+          remoteStreamRef.current = event.streams[0]
+          console.log("[v0] Stored remote stream with", event.streams[0].getTracks().length, "tracks")
+        }
+
+        if (event.track.kind === "video") {
+          event.track.enabled = true
+          console.log("[v0] Video track enabled:", event.track.enabled, "readyState:", event.track.readyState)
+        }
+
         if (remoteVideoRef.current && event.streams[0]) {
           console.log("[v0] Setting remote video srcObject")
           remoteVideoRef.current.srcObject = event.streams[0]
 
           event.streams[0].getTracks().forEach((track) => {
             track.enabled = true
-            console.log("[v0] Remote track enabled:", track.kind, track.enabled)
+            console.log("[v0] Remote track:", track.kind, "enabled:", track.enabled, "readyState:", track.readyState)
           })
 
-          const tryPlay = async (attempts = 0) => {
+          const tryPlay = async (attempt = 0) => {
+            if (!remoteVideoRef.current) return
+
             try {
-              await remoteVideoRef.current?.play()
-              console.log("[v0] Remote video playing!")
+              // Always re-set srcObject before playing
+              if (remoteStreamRef.current) {
+                remoteVideoRef.current.srcObject = remoteStreamRef.current
+              }
+              await remoteVideoRef.current.play()
+              console.log("[v0] Remote video playing! Attempt:", attempt)
               setRemoteVideoReady(true)
               setVideoState("connected")
               setConnectionStatus("Conectado!")
             } catch (e: any) {
-              console.log("[v0] Remote play attempt", attempts, "failed:", e.message)
-              if (attempts < 5) {
-                setTimeout(() => tryPlay(attempts + 1), 500)
+              console.log("[v0] Remote play attempt", attempt, "failed:", e.message)
+              if (attempt < 15) {
+                setTimeout(() => tryPlay(attempt + 1), 300)
+              } else {
+                console.log("[v0] Max attempts reached, forcing ready state")
+                setRemoteVideoReady(true)
+                setVideoState("connected")
               }
             }
           }
 
+          // Events for video ready
           remoteVideoRef.current.onloadedmetadata = () => {
             console.log("[v0] Remote video metadata loaded")
             tryPlay()
           }
 
-          // Also try immediately
-          setTimeout(() => tryPlay(), 100)
+          remoteVideoRef.current.oncanplay = () => {
+            console.log("[v0] Remote video canplay")
+            setRemoteVideoReady(true)
+            tryPlay()
+          }
+
+          remoteVideoRef.current.onplaying = () => {
+            console.log("[v0] Remote video is now playing!")
+            setRemoteVideoReady(true)
+          }
+
+          // Try immediately and with delays
+          tryPlay()
+          setTimeout(() => tryPlay(5), 500)
+          setTimeout(() => tryPlay(10), 1500)
         }
       }
 
@@ -875,14 +961,18 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className={`h-full w-full object-cover ${!remoteVideoReady ? "hidden" : ""}`}
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{
+                  visibility: remoteVideoReady ? "visible" : "hidden",
+                  backgroundColor: "#000",
+                }}
               />
 
               {!remoteVideoReady && videoState === "connected" && (
-                <div className="flex h-full w-full items-center justify-center bg-card">
+                <div className="absolute inset-0 flex items-center justify-center bg-card">
                   <div className="text-center">
                     <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-                    <p className="text-muted-foreground">Aguardando vídeo do parceiro...</p>
+                    <p className="text-muted-foreground">Carregando vídeo...</p>
                   </div>
                 </div>
               )}
@@ -962,11 +1052,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             autoPlay
             playsInline
             muted
-            className={`h-full w-full object-cover transition-opacity ${!localVideoReady ? "opacity-0" : "opacity-100"}`}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              visibility: localVideoReady ? "visible" : "hidden",
+              backgroundColor: "#1a1a2e",
+            }}
           />
 
           {!localVideoReady && (
-            <div className="absolute inset-0 flex h-full items-center justify-center">
+            <div className="absolute inset-0 flex h-full items-center justify-center bg-card">
               <p className="text-muted-foreground">Câmera desativada</p>
             </div>
           )}
