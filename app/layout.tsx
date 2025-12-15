@@ -8,6 +8,8 @@ import "./globals.css"
 const _inter = Inter({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
+const siteUrl = "https://www.connextapp.com.br"
+
 export const metadata: Metadata = {
   title: "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
   description:
@@ -29,24 +31,32 @@ export const metadata: Metadata = {
   authors: [{ name: "Connext App" }],
   creator: "Connext",
   publisher: "Connext",
-  metadataBase: new URL("https://www.connextapp.com.br"),
+  metadataBase: new URL(siteUrl),
   alternates: {
-    canonical: "https://www.connextapp.com.br",
+    canonical: siteUrl,
   },
   openGraph: {
     type: "website",
     locale: "pt_BR",
-    url: "https://www.connextapp.com.br",
+    url: siteUrl,
     siteName: "Connext",
     title: "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
     description:
       "A primeira plataforma de networking profissional via videochamada do Brasil. Conecte-se com empreendedores e investidores em tempo real.",
     images: [
       {
-        url: "/og-image.png",
+        url: `${siteUrl}/og-image.png`,
         width: 1200,
         height: 630,
         alt: "Connext - Networking Profissional via Videochamada",
+        type: "image/png",
+      },
+      {
+        url: `${siteUrl}/og-image.jpg`,
+        width: 1200,
+        height: 630,
+        alt: "Connext - Networking Profissional via Videochamada",
+        type: "image/jpeg",
       },
     ],
   },
@@ -54,8 +64,9 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Connext - 1ª Plataforma de Networking Profissional via Videochamada",
     description: "A primeira plataforma de networking profissional via videochamada do Brasil.",
-    images: ["/og-image.png"],
+    images: [`${siteUrl}/og-image.png`],
     creator: "@connextapp",
+    site: "@connextapp",
   },
   appleWebApp: {
     capable: true,
@@ -83,6 +94,9 @@ export const metadata: Metadata = {
       "max-image-preview": "large",
       "max-snippet": -1,
     },
+  },
+  verification: {
+    google: "google-site-verification-code", // Replace with your actual verification code
   },
 }
 

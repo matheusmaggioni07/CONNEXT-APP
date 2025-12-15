@@ -29,27 +29,27 @@
 ## FLUXO DE CONEXÃO WEBRTC
 
 ### 1. Iniciando Busca
-\`\`\`
+```
 User1 clica "Começar" → joinVideoQueue() → Cria sala com status "waiting"
-\`\`\`
+```
 
 ### 2. Match de Usuários
-\`\`\`
+```
 User2 clica "Começar" → joinVideoQueue() → Encontra sala de User1 → Atualiza para "active"
-\`\`\`
+```
 
 ### 3. Troca de Signaling
-\`\`\`
+```
 User1 (initiator=true)  → Cria OFFER → Salva em `signaling` table
 User2 (initiator=false) → Poll `signaling` → Recebe OFFER → Cria ANSWER → Salva em `signaling`
 User1 → Poll `signaling` → Recebe ANSWER → Conexão estabelecida
-\`\`\`
+```
 
 ### 4. ICE Candidates
-\`\`\`
+```
 Ambos usuários trocam ICE candidates via tabela `ice_candidates`
 Polling a cada 500ms para baixa latência
-\`\`\`
+```
 
 ---
 
@@ -72,23 +72,23 @@ Polling a cada 500ms para baixa latência
 ## CONFIGURAÇÕES DE MÍDIA
 
 ### Vídeo
-\`\`\`javascript
+```javascript
 {
   width: { ideal: 1280, max: 1920 },    // Mobile: 640
   height: { ideal: 720, max: 1080 },    // Mobile: 480
   frameRate: { ideal: 30, max: 30 },
   facingMode: "user"
 }
-\`\`\`
+```
 
 ### Áudio
-\`\`\`javascript
+```javascript
 {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true
 }
-\`\`\`
+```
 
 ---
 
