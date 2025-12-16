@@ -536,7 +536,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
       }
 
-      signalingPollingRef.current = setInterval(pollForSignaling, 500)
+      signalingPollingRef.current = setInterval(pollForSignaling, 100)
       pollForSignaling()
 
       if (isInitiator) {
@@ -548,14 +548,31 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           })
           await pc.setLocalDescription(offer)
 
-          await supabase.from("signaling").insert({
-            room_id: roomId,
-            from_user_id: userId,
-            to_user_id: partnerId,
-            type: "offer",
-            sdp: JSON.stringify(offer),
-          })
-          console.log("[v0] Offer sent to database")
+          // Send offer with retries
+          let offerSent = false
+          let retries = 0
+          const sendOfferWithRetry = async () => {
+            try {
+              await supabase.from("signaling").insert({
+                room_id: roomId,
+                from_user_id: userId,
+                to_user_id: partnerId,
+                type: "offer",
+                sdp: JSON.stringify(offer),
+              })
+              offerSent = true
+              console.log("[v0] Offer sent to database")
+            } catch (error) {
+              retries++
+              if (retries < 5) {
+                console.log("[v0] Retrying offer send (attempt", retries, ")...")
+                setTimeout(sendOfferWithRetry, 200)
+              } else {
+                console.error("[v0] Failed to send offer after 5 retries:", error)
+              }
+            }
+          }
+          sendOfferWithRetry()
         } catch (error) {
           console.error("[v0] Error creating offer:", error)
         }
