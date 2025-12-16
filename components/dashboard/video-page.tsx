@@ -112,79 +112,39 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const attachStreamToVideo = useCallback(
     (videoElement: HTMLVideoElement | null, stream: MediaStream, label: string): boolean => {
-      if (!videoElement || !stream) {
-        console.log(`[v0] Cannot attach ${label}: missing element or stream`)
+      if (!videoElement) {
+        console.log(`[v0] ${label}: No video element`)
+        return false
+      }
+      if (!stream) {
+        console.log(`[v0] ${label}: No stream`)
         return false
       }
 
-      console.log(`[v0] Attaching ${label} stream to video element`)
+      console.log(`[v0] Attaching ${label} - tracks:`, stream.getTracks().length)
 
-      // Force visibility
-      videoElement.style.visibility = "visible"
-      videoElement.style.opacity = "1"
-      videoElement.style.display = "block"
-
-      // Force all tracks to be enabled
+      // Enable all tracks
       stream.getTracks().forEach((track) => {
         track.enabled = true
-        console.log(`[v0] ${label} track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`)
       })
 
-      // Set srcObject
-      if (videoElement.srcObject !== stream) {
-        videoElement.srcObject = stream
-        console.log(`[v0] ${label}: srcObject set`)
-      }
-
-      // Video attributes
+      // Set stream to video element
+      videoElement.srcObject = stream
       videoElement.muted = label.includes("local")
       videoElement.autoplay = true
       videoElement.playsInline = true
-      videoElement.setAttribute("playsinline", "true")
-      videoElement.setAttribute("webkit-playsinline", "true")
 
-      // Aggressive play attempts
-      const tryPlay = async (attempt: number) => {
-        try {
-          await videoElement.play()
-          console.log(`[v0] ${label}: playing successfully on attempt ${attempt}`)
-          return true
-        } catch (e) {
-          console.log(`[v0] ${label}: play attempt ${attempt} failed:`, e)
-          return false
-        }
+      // Force play
+      const playVideo = () => {
+        videoElement.play().catch(() => {
+          // Retry
+          setTimeout(() => videoElement.play().catch(() => {}), 100)
+        })
       }
 
-      // Try immediately
-      tryPlay(1)
-
-      // Try on loadedmetadata
-      videoElement.onloadedmetadata = () => {
-        console.log(`[v0] ${label}: loadedmetadata event`)
-        tryPlay(2)
-      }
-
-      // Try on canplay
-      videoElement.oncanplay = () => {
-        console.log(`[v0] ${label}: canplay event`)
-        tryPlay(3)
-      }
-
-      // Try on canplaythrough
-      videoElement.oncanplaythrough = () => {
-        console.log(`[v0] ${label}: canplaythrough event`)
-        tryPlay(4)
-      }
-
-      // Additional delayed attempts
-      const delays = [100, 250, 500, 1000, 2000, 3000]
-      delays.forEach((delay, index) => {
-        setTimeout(() => {
-          if (videoElement.paused && videoElement.srcObject) {
-            tryPlay(5 + index)
-          }
-        }, delay)
-      })
+      playVideo()
+      videoElement.onloadedmetadata = playVideo
+      videoElement.oncanplay = playVideo
 
       return true
     },
@@ -306,7 +266,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       console.log("[v0] Room:", roomId)
       console.log("[v0] I am initiator:", isInitiator)
       console.log("[v0] Partner ID:", partnerId)
-      console.log("[v0] My ID:", userId)
 
       isInitiatorRef.current = isInitiator
       processedSignalingIds.current.clear()
@@ -358,80 +317,46 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       pc.ontrack = (event) => {
         console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind)
-        console.log("[v0] Track readyState:", event.track.readyState)
-        console.log("[v0] Track enabled:", event.track.enabled)
 
+        // Enable track
         event.track.enabled = true
 
-        event.track.onended = () => {
-          console.log(`[v0] Remote ${event.track.kind} track ended!`)
-        }
-
-        event.track.onmute = () => {
-          console.log(`[v0] Remote ${event.track.kind} track muted`)
-        }
-
-        event.track.onunmute = () => {
-          console.log(`[v0] Remote ${event.track.kind} track unmuted`)
-          event.track.enabled = true
-        }
-
+        // Get or create stream
         let stream: MediaStream
-
         if (event.streams && event.streams[0]) {
           stream = event.streams[0]
-          console.log("[v0] Using stream from event.streams[0]")
+        } else if (remoteStreamRef.current) {
+          remoteStreamRef.current.addTrack(event.track)
+          stream = remoteStreamRef.current
         } else {
-          console.log("[v0] No streams array, creating MediaStream from track")
-          if (remoteStreamRef.current) {
-            remoteStreamRef.current.addTrack(event.track)
-            stream = remoteStreamRef.current
-          } else {
-            stream = new MediaStream([event.track])
-          }
+          stream = new MediaStream([event.track])
         }
 
         remoteStreamRef.current = stream
 
-        console.log("[v0] Remote stream ID:", stream.id)
-        console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
-
-        stream.getTracks().forEach((track) => {
-          track.enabled = true
-          console.log(`[v0] Remote ${track.kind} track: enabled=${track.enabled}, readyState=${track.readyState}`)
+        // Enable all tracks in stream
+        stream.getTracks().forEach((t) => {
+          t.enabled = true
         })
 
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.style.visibility = "visible"
-          remoteVideoRef.current.style.opacity = "1"
-          remoteVideoRef.current.style.display = "block"
-        }
+        console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
 
-        const attached = attachStreamToVideo(remoteVideoRef.current, stream, "remote")
-        if (attached) {
-          console.log("[v0] Remote stream attached successfully")
+        // Attach immediately
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = stream
+          remoteVideoRef.current.play().catch(() => {})
           setRemoteVideoReady(true)
           setVideoState("connected")
           setConnectionStatus("Conectado!")
         }
 
-        const retryDelays = [100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000]
-        retryDelays.forEach((delay, index) => {
+        // Retry attachments
+        const delays = [200, 500, 1000, 2000, 3000]
+        delays.forEach((delay) => {
           setTimeout(() => {
-            if (remoteStreamRef.current && remoteVideoRef.current) {
-              console.log(`[v0] Retry ${index + 1} attaching remote stream at ${delay}ms`)
-
-              // Force tracks enabled again
-              remoteStreamRef.current.getTracks().forEach((track) => {
-                track.enabled = true
-              })
-
-              // Force visibility
-              remoteVideoRef.current.style.visibility = "visible"
-              remoteVideoRef.current.style.opacity = "1"
-              remoteVideoRef.current.style.display = "block"
-
-              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, `remote-retry-${index + 1}`)
+            if (remoteVideoRef.current && remoteStreamRef.current) {
+              remoteVideoRef.current.srcObject = remoteStreamRef.current
+              remoteVideoRef.current.play().catch(() => {})
               setRemoteVideoReady(true)
             }
           }, delay)
@@ -447,49 +372,24 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           setVideoState("connected")
           setConnectionStatus("Conectado!")
 
-          // Re-attach both local and remote streams
-          if (localStreamRef.current && localVideoRef.current) {
-            console.log("[v0] Re-attaching local stream on connection")
-            localStreamRef.current.getTracks().forEach((track) => {
-              track.enabled = true
-            })
-            attachStreamToVideo(localVideoRef.current, localStreamRef.current, "local-on-connected")
-            setLocalVideoReady(true)
-          }
-
-          if (remoteStreamRef.current && remoteVideoRef.current) {
-            console.log("[v0] Re-attaching remote stream on connection established")
-            remoteStreamRef.current.getTracks().forEach((track) => {
-              track.enabled = true
-            })
-            remoteVideoRef.current.style.visibility = "visible"
-            remoteVideoRef.current.style.opacity = "1"
-            remoteVideoRef.current.style.display = "block"
-            attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-on-connected")
-            setRemoteVideoReady(true)
-          }
-
-          const postConnectDelays = [500, 1000, 2000, 3000, 5000]
-          postConnectDelays.forEach((delay) => {
-            setTimeout(() => {
-              if (remoteStreamRef.current && remoteVideoRef.current && pc.connectionState === "connected") {
-                console.log(`[v0] Post-connect retry at ${delay}ms`)
-                remoteStreamRef.current.getTracks().forEach((t) => (t.enabled = true))
-                remoteVideoRef.current.style.visibility = "visible"
-                remoteVideoRef.current.style.opacity = "1"
-                attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, `remote-post-connect-${delay}`)
-              }
-            }, delay)
-          })
+          // Re-attach both streams when connected
+          setTimeout(() => {
+            if (localStreamRef.current && localVideoRef.current) {
+              localVideoRef.current.srcObject = localStreamRef.current
+              localVideoRef.current.play().catch(() => {})
+              setLocalVideoReady(true)
+            }
+            if (remoteStreamRef.current && remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = remoteStreamRef.current
+              remoteVideoRef.current.play().catch(() => {})
+              setRemoteVideoReady(true)
+            }
+          }, 500)
         } else if (pc.connectionState === "disconnected") {
-          console.log("[v0] Connection disconnected, will retry...")
           setConnectionStatus("Reconectando...")
         } else if (pc.connectionState === "failed") {
-          console.log("[v0] Connection failed")
           setConnectionStatus("Conexão falhou")
-          // Try ICE restart
           if (isInitiatorRef.current && peerConnectionRef.current) {
-            console.log("[v0] Attempting ICE restart...")
             peerConnectionRef.current.restartIce()
           }
         }
@@ -498,252 +398,128 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       pc.oniceconnectionstatechange = () => {
         console.log("[v0] ICE connection state:", pc.iceConnectionState)
         if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-          console.log("[v0] *** ICE CONNECTED ***")
-        }
-        if (pc.iceConnectionState === "failed") {
-          console.log("[v0] ICE failed - restarting")
-          pc.restartIce()
+          setConnectionStatus("Conectado!")
         }
       }
 
-      // Handle ICE candidates - send to database
+      // ICE candidate handling
       pc.onicecandidate = async (event) => {
         if (event.candidate) {
-          console.log("[v0] Sending ICE candidate:", event.candidate.type || "unknown")
           try {
-            await supabase.from("ice_candidates").insert({
+            await supabase.from("video_signaling").insert({
               room_id: roomId,
-              from_user_id: userId,
-              to_user_id: partnerId,
-              candidate: JSON.stringify(event.candidate.toJSON()),
+              sender_id: userId,
+              type: "ice-candidate",
+              payload: { candidate: event.candidate.toJSON() },
             })
-          } catch (err) {
-            console.error("[v0] Error sending ICE candidate:", err)
+          } catch (error) {
+            console.error("[v0] Error sending ICE candidate:", error)
           }
         }
       }
 
-      // Function to add ICE candidate
-      const addIceCandidate = async (candidateStr: string) => {
-        try {
-          const candidateObj = JSON.parse(candidateStr)
-          const candidate = new RTCIceCandidate(candidateObj)
-
-          if (hasRemoteDescriptionRef.current && pc.remoteDescription) {
-            await pc.addIceCandidate(candidate)
-            console.log("[v0] Added ICE candidate directly")
-          } else {
-            iceCandidatesQueueRef.current.push(candidate)
-            console.log("[v0] Queued ICE candidate, queue size:", iceCandidatesQueueRef.current.length)
+      // Start signaling polling
+      const pollForSignaling = async () => {
+        if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed") {
+          if (signalingPollingRef.current) {
+            clearInterval(signalingPollingRef.current)
+            signalingPollingRef.current = null
           }
-        } catch (err) {
-          console.error("[v0] Error adding ICE candidate:", err)
-        }
-      }
-
-      // Process queued ICE candidates
-      const processQueuedCandidates = async () => {
-        const queueSize = iceCandidatesQueueRef.current.length
-        if (queueSize > 0) {
-          console.log("[v0] Processing", queueSize, "queued ICE candidates")
-          while (iceCandidatesQueueRef.current.length > 0) {
-            const candidate = iceCandidatesQueueRef.current.shift()
-            if (candidate) {
-              try {
-                await pc.addIceCandidate(candidate)
-                console.log("[v0] Added queued ICE candidate")
-              } catch (e) {
-                console.error("[v0] Error adding queued candidate:", e)
-              }
-            }
-          }
-        }
-      }
-
-      // Create and send offer (for initiator)
-      const createAndSendOffer = async () => {
-        console.log("[v0] Creating offer...")
-        try {
-          const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true,
-          })
-          await pc.setLocalDescription(offer)
-          console.log("[v0] Local description set (offer)")
-
-          // Clear old signaling first
-          await supabase.from("signaling").delete().eq("room_id", roomId)
-          await supabase.from("ice_candidates").delete().eq("room_id", roomId)
-
-          // Send offer
-          const { error } = await supabase.from("signaling").insert({
-            room_id: roomId,
-            from_user_id: userId,
-            to_user_id: partnerId,
-            type: "offer",
-            sdp: offer.sdp,
-          })
-
-          if (error) {
-            console.error("[v0] Error sending offer:", error)
-          } else {
-            console.log("[v0] *** OFFER SENT TO DATABASE ***")
-          }
-        } catch (err) {
-          console.error("[v0] Error creating offer:", err)
-        }
-      }
-
-      // Process offer (for non-initiator)
-      const processOffer = async (sdp: string) => {
-        console.log("[v0] Processing received offer...")
-        try {
-          if (pc.signalingState !== "stable") {
-            console.log("[v0] Signaling state not stable:", pc.signalingState)
-            return
-          }
-
-          await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }))
-          hasRemoteDescriptionRef.current = true
-          console.log("[v0] Remote description set (offer)")
-
-          await processQueuedCandidates()
-
-          // Create and send answer
-          console.log("[v0] Creating answer...")
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          console.log("[v0] Local description set (answer)")
-
-          const { error } = await supabase.from("signaling").insert({
-            room_id: roomId,
-            from_user_id: userId,
-            to_user_id: partnerId,
-            type: "answer",
-            sdp: answer.sdp,
-          })
-
-          if (error) {
-            console.error("[v0] Error sending answer:", error)
-          } else {
-            console.log("[v0] *** ANSWER SENT TO DATABASE ***")
-          }
-        } catch (err) {
-          console.error("[v0] Error processing offer:", err)
-        }
-      }
-
-      // Process answer (for initiator)
-      const processAnswer = async (sdp: string) => {
-        if (hasRemoteDescriptionRef.current) {
-          console.log("[v0] Already has remote description, ignoring duplicate answer")
           return
         }
 
-        console.log("[v0] Processing received answer...")
         try {
-          if (pc.signalingState !== "have-local-offer") {
-            console.log("[v0] Cannot set answer, signaling state:", pc.signalingState)
-            return
-          }
-
-          await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }))
-          hasRemoteDescriptionRef.current = true
-          console.log("[v0] *** REMOTE DESCRIPTION SET (ANSWER) ***")
-
-          await processQueuedCandidates()
-        } catch (err) {
-          console.error("[v0] Error processing answer:", err)
-        }
-      }
-
-      const pollSignaling = async () => {
-        if (!peerConnectionRef.current) return
-
-        try {
-          // Check for signaling messages
-          const { data: signals, error: sigError } = await supabase
-            .from("signaling")
+          const { data: signals } = await supabase
+            .from("video_signaling")
             .select("*")
             .eq("room_id", roomId)
-            .eq("to_user_id", userId)
+            .eq("sender_id", partnerId)
             .order("created_at", { ascending: true })
-
-          if (sigError) {
-            console.error("[v0] Error fetching signals:", sigError)
-          }
 
           if (signals && signals.length > 0) {
             for (const signal of signals) {
               if (processedSignalingIds.current.has(signal.id)) continue
               processedSignalingIds.current.add(signal.id)
 
-              console.log("[v0] Processing signaling:", signal.type, "from:", signal.from_user_id)
+              const pc = peerConnectionRef.current
+              if (!pc || pc.connectionState === "closed") break
 
-              if (signal.type === "offer" && !isInitiatorRef.current) {
-                await processOffer(signal.sdp)
-              } else if (signal.type === "answer" && isInitiatorRef.current) {
-                await processAnswer(signal.sdp)
+              if (signal.type === "offer" && !isInitiator) {
+                console.log("[v0] Received offer from partner")
+                await pc.setRemoteDescription(new RTCSessionDescription(signal.payload))
+                hasRemoteDescriptionRef.current = true
+
+                // Process queued ICE candidates
+                for (const candidate of iceCandidatesQueueRef.current) {
+                  await pc.addIceCandidate(candidate)
+                }
+                iceCandidatesQueueRef.current = []
+
+                // Create and send answer
+                const answer = await pc.createAnswer()
+                await pc.setLocalDescription(answer)
+
+                await supabase.from("video_signaling").insert({
+                  room_id: roomId,
+                  sender_id: userId,
+                  type: "answer",
+                  payload: answer,
+                })
+              } else if (signal.type === "answer" && isInitiator) {
+                console.log("[v0] Received answer from partner")
+                await pc.setRemoteDescription(new RTCSessionDescription(signal.payload))
+                hasRemoteDescriptionRef.current = true
+
+                // Process queued ICE candidates
+                for (const candidate of iceCandidatesQueueRef.current) {
+                  await pc.addIceCandidate(candidate)
+                }
+                iceCandidatesQueueRef.current = []
+              } else if (signal.type === "ice-candidate") {
+                if (processedIceCandidateIds.current.has(signal.id)) continue
+                processedIceCandidateIds.current.add(signal.id)
+
+                const candidate = new RTCIceCandidate(signal.payload.candidate)
+
+                if (hasRemoteDescriptionRef.current) {
+                  await pc.addIceCandidate(candidate)
+                } else {
+                  iceCandidatesQueueRef.current.push(candidate)
+                }
               }
             }
           }
-
-          // Check for ICE candidates
-          const { data: candidates, error: iceError } = await supabase
-            .from("ice_candidates")
-            .select("*")
-            .eq("room_id", roomId)
-            .eq("to_user_id", userId)
-            .order("created_at", { ascending: true })
-
-          if (iceError) {
-            console.error("[v0] Error fetching ICE candidates:", iceError)
-          }
-
-          if (candidates && candidates.length > 0) {
-            for (const ice of candidates) {
-              if (processedIceCandidateIds.current.has(ice.id)) continue
-              processedIceCandidateIds.current.add(ice.id)
-
-              await addIceCandidate(ice.candidate)
-            }
-          }
-        } catch (err) {
-          console.error("[v0] Error polling signaling:", err)
+        } catch (error) {
+          console.error("[v0] Signaling poll error:", error)
         }
       }
 
-      console.log("[v0] Starting signaling polling...")
-      pollSignaling() // Poll immediately
-      signalingPollingRef.current = setInterval(pollSignaling, 300) // Poll every 300ms
+      signalingPollingRef.current = setInterval(pollForSignaling, 500)
+      pollForSignaling()
 
-      // If initiator, send offer after a short delay
+      // If initiator, create and send offer
       if (isInitiator) {
-        console.log("[v0] I am initiator, sending offer in 500ms...")
-        setTimeout(createAndSendOffer, 500)
-      } else {
-        console.log("[v0] I am NOT initiator, waiting for offer...")
+        try {
+          console.log("[v0] Creating offer as initiator...")
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true,
+          })
+          await pc.setLocalDescription(offer)
+
+          await supabase.from("video_signaling").insert({
+            room_id: roomId,
+            sender_id: userId,
+            type: "offer",
+            payload: offer,
+          })
+          console.log("[v0] Offer sent")
+        } catch (error) {
+          console.error("[v0] Error creating offer:", error)
+        }
       }
     },
     [userId, attachStreamToVideo],
-  )
-
-  const handleMatch = useCallback(
-    async (partnerId: string, roomId: string, isInitiator: boolean, partnerProfile: PartnerProfile) => {
-      console.log("[v0] ====== MATCH FOUND ======")
-      console.log("[v0] Partner:", partnerProfile.full_name)
-      console.log("[v0] I am initiator:", isInitiator)
-
-      setCurrentPartner(partnerProfile)
-      currentPartnerIdRef.current = partnerId
-      setVideoState("connecting")
-      setConnectionStatus(`Conectando com ${partnerProfile.full_name}...`)
-
-      currentRoomIdRef.current = roomId
-
-      await setupWebRTC(roomId, isInitiator, partnerId)
-    },
-    [setupWebRTC],
   )
 
   const startSearching = useCallback(async () => {
@@ -751,152 +527,127 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     setIsLoading(true)
     setVideoState("searching")
-    setConnectionStatus("Preparando câmera...")
-
-    setCurrentPartner(null)
-    currentPartnerIdRef.current = null
-    setIsLiked(false)
-    setRemoteVideoReady(false)
-
-    const stream = await getLocalStream()
-    if (!stream) {
-      setIsLoading(false)
-      return
-    }
-
-    setConnectionStatus("Buscando empreendedor...")
 
     try {
+      const stream = await getLocalStream()
+      if (!stream) {
+        setIsLoading(false)
+        return
+      }
+
       const result = await joinVideoQueue()
 
       if (!result.success) {
-        setConnectionStatus(result.error || "Erro ao entrar na fila")
+        console.error("[v0] Failed to join queue:", result.error)
         setVideoState("idle")
         setIsLoading(false)
         return
       }
 
-      currentRoomIdRef.current = result.roomId!
+      currentRoomIdRef.current = result.roomId
 
-      // Joined existing room (User2 - NOT initiator)
-      if (result.matched && result.partnerId && result.partnerProfile) {
-        console.log("[v0] Joined existing room as User2 (NOT initiator)")
-        await handleMatch(result.partnerId, result.roomId!, false, {
-          id: result.partnerId,
-          full_name: result.partnerProfile.full_name || "Usuário",
-          avatar_url: result.partnerProfile.avatar_url || "",
-          bio: result.partnerProfile.bio,
-          city: result.partnerProfile.city,
-        })
-        setIsLoading(false)
-        return
-      }
-
-      // Created new room (User1 - IS initiator)
-      console.log("[v0] Created new room as User1, waiting for partner...")
+      // Poll for room status
       pollingRef.current = setInterval(async () => {
         if (!currentRoomIdRef.current) return
 
         const status = await checkRoomStatus(currentRoomIdRef.current)
 
-        if (status.status === "active" && status.partnerId && status.partnerProfile) {
+        if (status.matched && status.partnerId && status.partnerProfile) {
           if (pollingRef.current) {
             clearInterval(pollingRef.current)
             pollingRef.current = null
           }
 
-          console.log("[v0] Partner joined! I am User1 (initiator)")
-          await handleMatch(status.partnerId, currentRoomIdRef.current!, true, {
-            id: status.partnerId,
-            full_name: status.partnerProfile.full_name || "Usuário",
-            avatar_url: status.partnerProfile.avatar_url || "",
-            bio: status.partnerProfile.bio,
-            city: status.partnerProfile.city,
-          })
+          currentPartnerIdRef.current = status.partnerId
+          setCurrentPartner(status.partnerProfile as PartnerProfile)
+          setVideoState("connecting")
+          setConnectionStatus("Estabelecendo conexão...")
+
+          // Determine initiator
+          const isInitiator = userId < status.partnerId
+
+          await setupWebRTC(currentRoomIdRef.current!, isInitiator, status.partnerId)
         }
       }, 1500)
-
-      setIsLoading(false)
     } catch (error) {
       console.error("[v0] Error starting search:", error)
-      setConnectionStatus("Erro ao iniciar busca")
       setVideoState("idle")
+    } finally {
       setIsLoading(false)
     }
-  }, [getLocalStream, handleMatch, limitReached])
+  }, [userId, getLocalStream, setupWebRTC, limitReached])
+
+  const endCall = useCallback(async () => {
+    await cleanup()
+    setVideoState("ended")
+    setCurrentPartner(null)
+  }, [cleanup])
+
+  const skipToNext = useCallback(async () => {
+    await cleanup()
+    setVideoState("idle")
+    setCurrentPartner(null)
+    startSearching()
+  }, [cleanup, startSearching])
 
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0]
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled
-        setIsMuted(!audioTrack.enabled)
-      }
+      const audioTracks = localStreamRef.current.getAudioTracks()
+      audioTracks.forEach((track) => {
+        track.enabled = !track.enabled
+      })
+      setIsMuted(!isMuted)
     }
-  }, [])
+  }, [isMuted])
 
   const toggleVideo = useCallback(() => {
     if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0]
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled
-        setIsVideoOff(!videoTrack.enabled)
-      }
+      const videoTracks = localStreamRef.current.getVideoTracks()
+      videoTracks.forEach((track) => {
+        track.enabled = !track.enabled
+      })
+      setIsVideoOff(!isVideoOff)
     }
-  }, [])
+  }, [isVideoOff])
 
   const flipCamera = useCallback(async () => {
     facingModeRef.current = facingModeRef.current === "user" ? "environment" : "user"
+
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach((track) => track.stop())
+      localStreamRef.current.getTracks().forEach((track) => track.stop())
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const newStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facingModeRef.current },
         audio: true,
       })
-      localStreamRef.current = stream
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream
-      }
+      localStreamRef.current = newStream
+      attachStreamToVideo(localVideoRef.current, newStream, "local-flipped")
 
       if (peerConnectionRef.current) {
-        const videoTrack = stream.getVideoTracks()[0]
-        const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === "video")
-        if (sender && videoTrack) {
-          await sender.replaceTrack(videoTrack)
+        const senders = peerConnectionRef.current.getSenders()
+        const videoSender = senders.find((s) => s.track?.kind === "video")
+        const audioSender = senders.find((s) => s.track?.kind === "audio")
+
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        const newAudioTrack = newStream.getAudioTracks()[0]
+
+        if (videoSender && newVideoTrack) {
+          await videoSender.replaceTrack(newVideoTrack)
+        }
+        if (audioSender && newAudioTrack) {
+          await audioSender.replaceTrack(newAudioTrack)
         }
       }
     } catch (error) {
       console.error("[v0] Error flipping camera:", error)
     }
-  }, [])
-
-  const endCall = useCallback(async () => {
-    console.log("[v0] Ending call...")
-    await cleanup()
-    setVideoState("ended")
-    setCurrentPartner(null)
-    setConnectionStatus("")
-  }, [cleanup])
-
-  const skipToNext = useCallback(async () => {
-    console.log("[v0] Skipping to next...")
-    await cleanup()
-    setVideoState("idle")
-    setCurrentPartner(null)
-    setConnectionStatus("")
-
-    // Small delay then start searching again
-    setTimeout(() => {
-      startSearching()
-    }, 500)
-  }, [cleanup, startSearching])
+  }, [attachStreamToVideo])
 
   const handleLike = useCallback(async () => {
-    if (!currentPartner) return
+    if (!currentPartner || isLiked) return
     setIsLiked(true)
 
     try {
@@ -904,7 +655,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     } catch (error) {
       console.error("Error liking user:", error)
     }
-  }, [currentPartner])
+  }, [currentPartner, isLiked])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -961,40 +712,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         </div>
       )}
 
-      {/* Main Video Container - ALWAYS 50/50 split */}
+      {/* Main Video Container */}
       {videoState !== "permission_denied" && !limitReached && (
         <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
-          {/* Remote Video */}
-          <div
-            className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden"
-            style={{ backgroundColor: "#0f172a" }}
-          >
-            {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
-              <>
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  webkit-playsinline="true"
-                  className="absolute inset-0 h-full w-full object-cover"
-                  style={{
-                    backgroundColor: "#0f172a",
-                  }}
-                />
+          {/* Remote Video - Left/Top */}
+          <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full bg-slate-900">
+            {/* Video element always rendered */}
+            <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
 
-                {!remoteVideoReady && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 pointer-events-none">
-                    <div className="text-center">
-                      <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-                      <p className="text-muted-foreground">Conectando vídeo...</p>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
+            {/* Idle state overlay */}
             {videoState === "idle" && (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
                 <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20">
                   <Video className="h-12 w-12 text-primary" />
                 </div>
@@ -1014,8 +742,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
             )}
 
+            {/* Searching state overlay */}
             {videoState === "searching" && (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
                 <div className="relative mb-6">
                   <div className="h-24 w-24 animate-spin rounded-full border-4 border-primary/20 border-t-primary"></div>
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -1033,8 +762,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
             )}
 
+            {/* Connecting state overlay */}
             {videoState === "connecting" && currentPartner && (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
                 <Avatar className="mb-4 h-24 w-24 ring-4 ring-primary/20">
                   <AvatarImage src={currentPartner.avatar_url || undefined} alt={currentPartner.full_name} />
                   <AvatarFallback className="bg-gradient-to-br from-primary to-pink-500 text-2xl text-white">
@@ -1049,10 +779,21 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
             )}
 
+            {/* Connected state - partner info and controls */}
             {videoState === "connected" && currentPartner && (
               <>
+                {/* Loading overlay when remote video not ready */}
+                {!remoteVideoReady && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-10">
+                    <div className="text-center">
+                      <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+                      <p className="text-muted-foreground">Carregando vídeo...</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Partner Info */}
-                <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
+                <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm z-20">
                   <Avatar className="h-10 w-10">
                     <AvatarImage src={currentPartner.avatar_url || undefined} />
                     <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
@@ -1063,8 +804,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   </div>
                 </div>
 
-                {/* Action buttons on remote video */}
-                <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                {/* Action buttons */}
+                <div className="absolute bottom-4 right-4 flex items-center gap-2 z-20">
                   <Button
                     onClick={handleLike}
                     disabled={isLiked}
@@ -1086,15 +827,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 <Button
                   onClick={endCall}
                   size="icon"
-                  className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600"
+                  className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600 z-20"
                 >
                   <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
                 </Button>
               </>
             )}
 
+            {/* Ended state */}
             {videoState === "ended" && (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
                 <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
                   <PhoneOff className="h-12 w-12 text-muted-foreground" />
                 </div>
@@ -1113,23 +855,18 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             )}
           </div>
 
-          {/* Local Video */}
-          <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden bg-card">
+          {/* Local Video - Right/Bottom */}
+          <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full bg-slate-800">
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
-              webkit-playsinline="true"
               muted
               className="absolute inset-0 h-full w-full object-cover"
-              style={{ backgroundColor: "#1e293b" }}
             />
 
             {!localVideoReady && (
-              <div
-                className="absolute inset-0 flex h-full items-center justify-center pointer-events-none"
-                style={{ backgroundColor: "#1e293b" }}
-              >
+              <div className="absolute inset-0 flex h-full items-center justify-center bg-slate-800">
                 <p className="text-muted-foreground">Câmera desativada</p>
               </div>
             )}

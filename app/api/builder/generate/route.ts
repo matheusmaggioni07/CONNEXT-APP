@@ -4,11 +4,16 @@ import { SYSTEM_PROMPT } from "./constants"
 import { generateFallbackCode } from "./fallback"
 
 export async function POST(req: Request) {
-  const { prompt, projectContext, history } = await req.json()
-
-  console.log("[v0] Builder API called with prompt:", prompt?.substring(0, 100))
+  let prompt = ""
 
   try {
+    const body = await req.json()
+    prompt = body.prompt || ""
+    const projectContext = body.projectContext
+    const history = body.history
+
+    console.log("[v0] Builder API called with prompt:", prompt?.substring(0, 100))
+
     const supabase = await createClient()
     const {
       data: { user },
@@ -100,9 +105,11 @@ INSTRUÇÕES CRÍTICAS:
   } catch (error) {
     console.error("[v0] Builder Error:", error)
 
+    const fallbackCode = generateFallbackCode(prompt || "site profissional")
+
     return Response.json({
-      code: generateFallbackCode(prompt),
-      explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
+      code: fallbackCode,
+      explanation: `Site gerado com sucesso!`,
       remainingRequests: 20,
     })
   }

@@ -1376,7 +1376,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     const currentInput = input
     const currentImage = attachedImage
     setInput("")
-    setAttachedImage(null) // Clear attached image after sending
+    setAttachedImage(null)
     setIsLoading(true)
     setError(null)
 
@@ -1411,18 +1411,28 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
         content: f.content,
       }))
 
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60s timeout
+
       const res = await fetch("/api/builder/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: currentInput,
-          image_url: currentImage, // Send image if available
+          image_url: currentImage,
           projectContext,
           history: messages.slice(-4).map((m) => ({ role: m.role, content: m.content })),
         }),
+        signal: controller.signal,
       })
 
-      if (!res.ok) throw new Error("Erro na geração")
+      clearTimeout(timeoutId)
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "Erro desconhecido")
+        console.error("[v0] API Error:", res.status, errorText)
+        throw new Error(`Erro ${res.status}: ${errorText}`)
+      }
 
       const data = await res.json()
 
@@ -1453,10 +1463,25 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           setUserCredits(newCredits)
           localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
         }
+
+        if (window.innerWidth < 1024) {
+          setMobileView("preview")
+        }
+      } else {
+        throw new Error("Resposta inválida da API")
       }
     } catch (err) {
-      console.error("Builder error:", err)
-      setError("Erro ao gerar o site. Tente novamente.")
+      console.error("[v0] Builder error:", err)
+
+      if (err instanceof Error) {
+        if (err.name === "AbortError") {
+          setError("Tempo limite excedido. Tente novamente.")
+        } else {
+          setError(err.message || "Erro ao gerar o site. Tente novamente.")
+        }
+      } else {
+        setError("Erro ao gerar o site. Tente novamente.")
+      }
     } finally {
       setIsLoading(false)
       setThoughts([])
