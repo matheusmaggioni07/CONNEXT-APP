@@ -766,7 +766,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           {/* Remote Video - Left/Top */}
           <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full bg-slate-900">
             {/* Video element always rendered */}
-            <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="absolute inset-0 h-full w-full object-contain z-0"
+            />
 
             {/* Idle state overlay */}
             {videoState === "idle" && (
@@ -830,9 +835,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             {/* Connected state - partner info and controls */}
             {videoState === "connected" && currentPartner && (
               <>
-                {/* Loading overlay when remote video not ready */}
+                {/* Loading indicator moved to non-blocking position with pointer-events-none */}
                 {!remoteVideoReady && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-10">
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="text-center">
                       <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
                       <p className="text-muted-foreground">Carregando vídeo...</p>
