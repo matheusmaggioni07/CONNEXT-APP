@@ -262,320 +262,323 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const setupWebRTC = useCallback(
     async (roomId: string, isInitiator: boolean, partnerId: string) => {
-      console.log("[v0] ====== WEBRTC SETUP ======")
-      console.log("[v0] Room:", roomId)
-      console.log("[v0] I am initiator:", isInitiator)
-      console.log("[v0] Partner ID:", partnerId)
-      console.log("[v0] My ID:", userId)
-
-      isInitiatorRef.current = isInitiator
-      processedSignalingIds.current.clear()
-      processedIceCandidateIds.current.clear()
-      hasRemoteDescriptionRef.current = false
-      iceCandidatesQueueRef.current = []
-      remoteStreamRef.current = null
-      setRemoteVideoReady(false)
-
-      // Fetch ICE servers
-      let iceServers: RTCIceServer[] = [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ]
-
       try {
-        const response = await fetch("/api/turn-credentials")
-        if (response.ok) {
-          const data = await response.json()
-          if (data.iceServers && data.iceServers.length > 0) {
-            iceServers = data.iceServers
-            console.log("[v0] Got", iceServers.length, "ICE servers from API")
+        processedSignalingIds.current = new Set()
+        processedIceCandidateIds.current = new Set()
+
+        console.log("[v0] ====== WEBRTC SETUP ======")
+        console.log("[v0] Room:", roomId)
+        console.log("[v0] I am initiator:", isInitiator)
+        console.log("[v0] Partner ID:", partnerId)
+        console.log("[v0] My ID:", userId)
+
+        isInitiatorRef.current = isInitiator
+        currentRoomIdRef.current = roomId
+        currentPartnerIdRef.current = partnerId
+
+        // Fetch ICE servers
+        let iceServers: RTCIceServer[] = [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ]
+
+        try {
+          const response = await fetch("/api/turn-credentials")
+          if (response.ok) {
+            const data = await response.json()
+            if (data.iceServers && data.iceServers.length > 0) {
+              iceServers = data.iceServers
+              console.log("[v0] Got", iceServers.length, "ICE servers from API")
+            }
           }
-        }
-      } catch (error) {
-        console.error("[v0] Error fetching TURN credentials:", error)
-      }
-
-      // Create peer connection
-      const pc = new RTCPeerConnection({
-        iceServers,
-        iceCandidatePoolSize: 10,
-      })
-
-      peerConnectionRef.current = pc
-      const supabase = createClient()
-
-      await supabase.from("signaling").delete().eq("room_id", roomId)
-      await supabase.from("ice_candidates").delete().eq("room_id", roomId)
-
-      // Add local tracks FIRST
-      if (localStreamRef.current) {
-        const tracks = localStreamRef.current.getTracks()
-        console.log("[v0] Adding", tracks.length, "local tracks to peer connection")
-        tracks.forEach((track) => {
-          pc.addTrack(track, localStreamRef.current!)
-        })
-      } else {
-        console.error("[v0] ERROR: No local stream available!")
-        return
-      }
-
-      pc.ontrack = (event) => {
-        console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind)
-
-        // Enable track
-        event.track.enabled = true
-
-        // Get or create stream
-        let stream: MediaStream
-        if (event.streams && event.streams[0]) {
-          stream = event.streams[0]
-        } else if (remoteStreamRef.current) {
-          remoteStreamRef.current.addTrack(event.track)
-          stream = remoteStreamRef.current
-        } else {
-          stream = new MediaStream([event.track])
+        } catch (error) {
+          console.error("[v0] Error fetching TURN credentials:", error)
         }
 
-        remoteStreamRef.current = stream
-
-        // Enable all tracks in stream
-        stream.getTracks().forEach((t) => {
-          t.enabled = true
+        // Create peer connection
+        const pc = new RTCPeerConnection({
+          iceServers,
+          iceCandidatePoolSize: 10,
         })
 
-        console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
+        peerConnectionRef.current = pc
+        const supabase = createClient()
 
-        // Attach immediately
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = stream
-          remoteVideoRef.current.play().catch(() => {})
-          setRemoteVideoReady(true)
-          setVideoState("connected")
-          setConnectionStatus("Conectado!")
-        }
+        await supabase.from("signaling").delete().eq("room_id", roomId)
+        await supabase.from("ice_candidates").delete().eq("room_id", roomId)
 
-        // Retry attachments
-        const delays = [200, 500, 1000, 2000, 3000]
-        delays.forEach((delay) => {
-          setTimeout(() => {
-            if (remoteVideoRef.current && remoteStreamRef.current) {
-              remoteVideoRef.current.srcObject = remoteStreamRef.current
-              remoteVideoRef.current.play().catch(() => {})
-              setRemoteVideoReady(true)
-            }
-          }, delay)
-        })
-      }
-
-      // Connection state monitoring
-      pc.onconnectionstatechange = () => {
-        console.log("[v0] Connection state:", pc.connectionState)
-
-        if (pc.connectionState === "connected") {
-          console.log("[v0] *** CONNECTION ESTABLISHED ***")
-          setVideoState("connected")
-          setConnectionStatus("Conectado!")
-
-          // Re-attach both streams when connected
-          setTimeout(() => {
-            if (localStreamRef.current && localVideoRef.current) {
-              localVideoRef.current.srcObject = localStreamRef.current
-              localVideoRef.current.play().catch(() => {})
-              setLocalVideoReady(true)
-            }
-            if (remoteStreamRef.current && remoteVideoRef.current) {
-              remoteVideoRef.current.srcObject = remoteStreamRef.current
-              remoteVideoRef.current.play().catch(() => {})
-              setRemoteVideoReady(true)
-            }
-          }, 500)
-        } else if (pc.connectionState === "disconnected") {
-          setConnectionStatus("Reconectando...")
-        } else if (pc.connectionState === "failed") {
-          setConnectionStatus("Conexão falhou")
-          if (isInitiatorRef.current && peerConnectionRef.current) {
-            peerConnectionRef.current.restartIce()
-          }
-        }
-      }
-
-      pc.oniceconnectionstatechange = () => {
-        console.log("[v0] ICE connection state:", pc.iceConnectionState)
-        if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-          setConnectionStatus("Conectado!")
-        }
-      }
-
-      pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-          console.log("[v0] *** ICE CANDIDATE GENERATED ***", {
-            candidate: event.candidate.candidate.substring(0, 50),
-            sdpMLineIndex: event.candidate.sdpMLineIndex,
+        // Add local tracks FIRST
+        if (localStreamRef.current) {
+          const tracks = localStreamRef.current.getTracks()
+          console.log("[v0] Adding", tracks.length, "local tracks to peer connection")
+          tracks.forEach((track) => {
+            pc.addTrack(track, localStreamRef.current!)
           })
-          try {
-            await supabase.from("ice_candidates").insert({
-              room_id: roomId,
-              from_user_id: userId,
-              to_user_id: partnerId,
-              candidate: JSON.stringify(event.candidate.toJSON()),
-            })
-            console.log("[v0] ✓ ICE candidate sent to database")
-          } catch (error) {
-            console.error("[v0] ✗ Error sending ICE candidate:", error)
-          }
         } else {
-          console.log("[v0] ICE gathering complete (event.candidate is null)")
-        }
-      }
-
-      const pollForSignaling = async () => {
-        if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed") {
-          if (signalingPollingRef.current) {
-            clearInterval(signalingPollingRef.current)
-            signalingPollingRef.current = null
-          }
+          console.error("[v0] ERROR: No local stream available!")
           return
         }
 
-        try {
-          // Poll for signaling messages (offer/answer)
-          const { data: signals } = await supabase
-            .from("signaling")
-            .select("*")
-            .eq("room_id", roomId)
-            .eq("from_user_id", partnerId)
-            .eq("to_user_id", userId)
-            .order("created_at", { ascending: true })
+        pc.ontrack = (event) => {
+          console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind)
 
-          if (signals && signals.length > 0) {
-            for (const signal of signals) {
-              if (processedSignalingIds.current.has(signal.id)) continue
-              processedSignalingIds.current.add(signal.id)
+          // Enable track
+          event.track.enabled = true
 
-              const pc = peerConnectionRef.current
-              if (!pc || pc.connectionState === "closed") break
+          // Get or create stream
+          let stream: MediaStream
+          if (event.streams && event.streams[0]) {
+            stream = event.streams[0]
+          } else if (remoteStreamRef.current) {
+            remoteStreamRef.current.addTrack(event.track)
+            stream = remoteStreamRef.current
+          } else {
+            stream = new MediaStream([event.track])
+          }
 
-              console.log("[v0] Processing signal type:", signal.type)
+          remoteStreamRef.current = stream
 
-              if (signal.type === "offer" && !isInitiator) {
-                console.log("[v0] Received offer from partner")
-                const offerDesc = JSON.parse(signal.sdp)
-                await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
-                hasRemoteDescriptionRef.current = true
+          // Enable all tracks in stream
+          stream.getTracks().forEach((t) => {
+            t.enabled = true
+          })
 
-                // Process queued ICE candidates
-                console.log("[v0] Processing", iceCandidatesQueueRef.current.length, "queued ICE candidates")
-                for (const candidate of iceCandidatesQueueRef.current) {
-                  await pc.addIceCandidate(candidate)
+          console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
+
+          // Attach immediately
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream
+            remoteVideoRef.current.play().catch(() => {})
+            setRemoteVideoReady(true)
+            setVideoState("connected")
+            setConnectionStatus("Conectado!")
+          }
+
+          // Retry attachments
+          const delays = [200, 500, 1000, 2000, 3000]
+          delays.forEach((delay) => {
+            setTimeout(() => {
+              if (remoteVideoRef.current && remoteStreamRef.current) {
+                remoteVideoRef.current.srcObject = remoteStreamRef.current
+                remoteVideoRef.current.play().catch(() => {})
+                setRemoteVideoReady(true)
+              }
+            }, delay)
+          })
+        }
+
+        // Connection state monitoring
+        pc.onconnectionstatechange = () => {
+          console.log("[v0] Connection state:", pc.connectionState)
+
+          if (pc.connectionState === "connected") {
+            console.log("[v0] *** CONNECTION ESTABLISHED ***")
+            setVideoState("connected")
+            setConnectionStatus("Conectado!")
+
+            // Re-attach both streams when connected
+            setTimeout(() => {
+              if (localStreamRef.current && localVideoRef.current) {
+                localVideoRef.current.srcObject = localStreamRef.current
+                localVideoRef.current.play().catch(() => {})
+                setLocalVideoReady(true)
+              }
+              if (remoteStreamRef.current && remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStreamRef.current
+                remoteVideoRef.current.play().catch(() => {})
+                setRemoteVideoReady(true)
+              }
+            }, 500)
+          } else if (pc.connectionState === "disconnected") {
+            setConnectionStatus("Reconectando...")
+          } else if (pc.connectionState === "failed") {
+            setConnectionStatus("Conexão falhou")
+            if (isInitiatorRef.current && peerConnectionRef.current) {
+              peerConnectionRef.current.restartIce()
+            }
+          }
+        }
+
+        pc.oniceconnectionstatechange = () => {
+          console.log("[v0] ICE connection state:", pc.iceConnectionState)
+          if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+            setConnectionStatus("Conectado!")
+          }
+        }
+
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            console.log("[v0] *** ICE CANDIDATE GENERATED ***", {
+              candidate: event.candidate.candidate.substring(0, 50),
+              sdpMLineIndex: event.candidate.sdpMLineIndex,
+            })
+            try {
+              await supabase.from("ice_candidates").insert({
+                room_id: roomId,
+                from_user_id: userId,
+                to_user_id: partnerId,
+                candidate: JSON.stringify(event.candidate.toJSON()),
+              })
+              console.log("[v0] ✓ ICE candidate sent to database")
+            } catch (error) {
+              console.error("[v0] ✗ Error sending ICE candidate:", error)
+            }
+          } else {
+            console.log("[v0] ICE gathering complete (event.candidate is null)")
+          }
+        }
+
+        const pollForSignaling = async () => {
+          if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed") {
+            if (signalingPollingRef.current) {
+              clearInterval(signalingPollingRef.current)
+              signalingPollingRef.current = null
+            }
+            return
+          }
+
+          try {
+            // Poll for signaling messages (offer/answer)
+            const { data: signals } = await supabase
+              .from("signaling")
+              .select("*")
+              .eq("room_id", roomId)
+              .eq("from_user_id", partnerId)
+              .eq("to_user_id", userId)
+              .order("created_at", { ascending: true })
+
+            if (signals && signals.length > 0) {
+              for (const signal of signals) {
+                if (processedSignalingIds.current.has(signal.id)) continue
+                processedSignalingIds.current.add(signal.id)
+
+                const pc = peerConnectionRef.current
+                if (!pc || pc.connectionState === "closed") break
+
+                console.log("[v0] Processing signal type:", signal.type)
+
+                if (signal.type === "offer" && !isInitiator) {
+                  console.log("[v0] Received offer from partner")
+                  const offerDesc = JSON.parse(signal.sdp)
+                  await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
+                  hasRemoteDescriptionRef.current = true
+
+                  // Process queued ICE candidates
+                  console.log("[v0] Processing", iceCandidatesQueueRef.current.length, "queued ICE candidates")
+                  for (const candidate of iceCandidatesQueueRef.current) {
+                    await pc.addIceCandidate(candidate)
+                  }
+                  iceCandidatesQueueRef.current = []
+
+                  // Create and send answer
+                  const answer = await pc.createAnswer()
+                  await pc.setLocalDescription(answer)
+
+                  await supabase.from("signaling").insert({
+                    room_id: roomId,
+                    from_user_id: userId,
+                    to_user_id: partnerId,
+                    type: "answer",
+                    sdp: JSON.stringify(answer),
+                  })
+                  console.log("[v0] Answer sent")
+                } else if (signal.type === "answer" && isInitiator) {
+                  console.log("[v0] Received answer from partner")
+                  const answerDesc = JSON.parse(signal.sdp)
+                  await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
+                  hasRemoteDescriptionRef.current = true
+
+                  // Process queued ICE candidates
+                  console.log("[v0] Processing", iceCandidatesQueueRef.current.length, "queued ICE candidates")
+                  for (const candidate of iceCandidatesQueueRef.current) {
+                    await pc.addIceCandidate(candidate)
+                  }
+                  iceCandidatesQueueRef.current = []
                 }
-                iceCandidatesQueueRef.current = []
+              }
+            }
 
-                // Create and send answer
-                const answer = await pc.createAnswer()
-                await pc.setLocalDescription(answer)
+            // Poll for ICE candidates
+            const { data: iceCandidates } = await supabase
+              .from("ice_candidates")
+              .select("*")
+              .eq("room_id", roomId)
+              .eq("from_user_id", partnerId)
+              .eq("to_user_id", userId)
+              .order("created_at", { ascending: true })
 
+            if (iceCandidates && iceCandidates.length > 0) {
+              for (const ice of iceCandidates) {
+                if (processedIceCandidateIds.current.has(ice.id)) continue
+                processedIceCandidateIds.current.add(ice.id)
+
+                const pc = peerConnectionRef.current
+                if (!pc || pc.connectionState === "closed") break
+
+                try {
+                  const candidateObj = JSON.parse(ice.candidate)
+                  const candidate = new RTCIceCandidate(candidateObj)
+
+                  if (hasRemoteDescriptionRef.current) {
+                    await pc.addIceCandidate(candidate)
+                    console.log("[v0] Added ICE candidate directly")
+                  } else {
+                    iceCandidatesQueueRef.current.push(candidate)
+                    console.log("[v0] Queued ICE candidate")
+                  }
+                } catch (error) {
+                  console.error("[v0] Error processing ICE candidate:", error)
+                }
+              }
+            }
+          } catch (error) {
+            console.error("[v0] Signaling poll error:", error)
+          }
+        }
+
+        signalingPollingRef.current = setInterval(pollForSignaling, 100)
+        pollForSignaling()
+
+        if (isInitiator) {
+          try {
+            console.log("[v0] Creating offer as initiator...")
+            const offer = await pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true,
+            })
+            await pc.setLocalDescription(offer)
+
+            // Send offer with retries
+            let offerSent = false
+            let retries = 0
+            const sendOfferWithRetry = async () => {
+              try {
                 await supabase.from("signaling").insert({
                   room_id: roomId,
                   from_user_id: userId,
                   to_user_id: partnerId,
-                  type: "answer",
-                  sdp: JSON.stringify(answer),
+                  type: "offer",
+                  sdp: JSON.stringify(offer),
                 })
-                console.log("[v0] Answer sent")
-              } else if (signal.type === "answer" && isInitiator) {
-                console.log("[v0] Received answer from partner")
-                const answerDesc = JSON.parse(signal.sdp)
-                await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
-                hasRemoteDescriptionRef.current = true
-
-                // Process queued ICE candidates
-                console.log("[v0] Processing", iceCandidatesQueueRef.current.length, "queued ICE candidates")
-                for (const candidate of iceCandidatesQueueRef.current) {
-                  await pc.addIceCandidate(candidate)
-                }
-                iceCandidatesQueueRef.current = []
-              }
-            }
-          }
-
-          // Poll for ICE candidates
-          const { data: iceCandidates } = await supabase
-            .from("ice_candidates")
-            .select("*")
-            .eq("room_id", roomId)
-            .eq("from_user_id", partnerId)
-            .eq("to_user_id", userId)
-            .order("created_at", { ascending: true })
-
-          if (iceCandidates && iceCandidates.length > 0) {
-            for (const ice of iceCandidates) {
-              if (processedIceCandidateIds.current.has(ice.id)) continue
-              processedIceCandidateIds.current.add(ice.id)
-
-              const pc = peerConnectionRef.current
-              if (!pc || pc.connectionState === "closed") break
-
-              try {
-                const candidateObj = JSON.parse(ice.candidate)
-                const candidate = new RTCIceCandidate(candidateObj)
-
-                if (hasRemoteDescriptionRef.current) {
-                  await pc.addIceCandidate(candidate)
-                  console.log("[v0] Added ICE candidate directly")
-                } else {
-                  iceCandidatesQueueRef.current.push(candidate)
-                  console.log("[v0] Queued ICE candidate")
-                }
+                offerSent = true
+                console.log("[v0] Offer sent to database")
               } catch (error) {
-                console.error("[v0] Error processing ICE candidate:", error)
+                retries++
+                if (retries < 5) {
+                  console.log("[v0] Retrying offer send (attempt", retries, ")...")
+                  setTimeout(sendOfferWithRetry, 200)
+                } else {
+                  console.error("[v0] Failed to send offer after 5 retries:", error)
+                }
               }
             }
+            sendOfferWithRetry()
+          } catch (error) {
+            console.error("[v0] Error creating offer:", error)
           }
-        } catch (error) {
-          console.error("[v0] Signaling poll error:", error)
         }
-      }
-
-      signalingPollingRef.current = setInterval(pollForSignaling, 100)
-      pollForSignaling()
-
-      if (isInitiator) {
-        try {
-          console.log("[v0] Creating offer as initiator...")
-          const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true,
-          })
-          await pc.setLocalDescription(offer)
-
-          // Send offer with retries
-          let offerSent = false
-          let retries = 0
-          const sendOfferWithRetry = async () => {
-            try {
-              await supabase.from("signaling").insert({
-                room_id: roomId,
-                from_user_id: userId,
-                to_user_id: partnerId,
-                type: "offer",
-                sdp: JSON.stringify(offer),
-              })
-              offerSent = true
-              console.log("[v0] Offer sent to database")
-            } catch (error) {
-              retries++
-              if (retries < 5) {
-                console.log("[v0] Retrying offer send (attempt", retries, ")...")
-                setTimeout(sendOfferWithRetry, 200)
-              } else {
-                console.error("[v0] Failed to send offer after 5 retries:", error)
-              }
-            }
-          }
-          sendOfferWithRetry()
-        } catch (error) {
-          console.error("[v0] Error creating offer:", error)
-        }
+      } catch (error) {
+        console.error("[v0] Error setting up WebRTC:", error)
       }
     },
     [userId, attachStreamToVideo],
