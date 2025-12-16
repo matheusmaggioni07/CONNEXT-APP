@@ -360,11 +360,23 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             setVideoState("connected")
             setConnectionStatus("Conectado!")
           } else if (pc.connectionState === "disconnected") {
+            console.log("[v0] Connection disconnected")
             setConnectionStatus("Reconectando...")
           } else if (pc.connectionState === "failed") {
+            console.log("[v0] Connection FAILED - ICE connection state:", pc.iceConnectionState)
             setConnectionStatus("Conexão falhou")
-            if (isInitiatorRef.current && peerConnectionRef.current && pc.iceConnectionState !== "connected") {
-              pc.restartIce()
+            if (
+              isInitiatorRef.current &&
+              peerConnectionRef.current &&
+              pc.iceConnectionState !== "connected" &&
+              pc.iceConnectionState !== "completed"
+            ) {
+              console.log("[v0] Attempting ICE restart...")
+              try {
+                pc.restartIce()
+              } catch (e) {
+                console.error("[v0] Error restarting ICE:", e)
+              }
             }
           }
         }
@@ -372,8 +384,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         pc.oniceconnectionstatechange = () => {
           console.log("[v0] ICE connection state:", pc.iceConnectionState)
           if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+            console.log("[v0] *** ICE CONNECTED ***")
             setConnectionStatus("Conectado!")
             setVideoState("connected")
+          } else if (pc.iceConnectionState === "failed") {
+            console.log("[v0] *** ICE FAILED ***")
+            console.log("[v0] Connection state:", pc.connectionState)
           }
         }
 
@@ -514,14 +530,26 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   const candidate = new RTCIceCandidate(candidateObj)
 
                   if (hasRemoteDescriptionRef.current) {
-                    await pc.addIceCandidate(candidate)
-                    console.log("[v0] Added ICE candidate directly")
+                    try {
+                      await pc.addIceCandidate(candidate)
+                      console.log("[v0] Added ICE candidate directly")
+                    } catch (error) {
+                      const err = error as Error
+                      if (err.message && err.message.includes("not in correct state")) {
+                        console.log("[v0] ICE candidate rejected (state mismatch) - will queue")
+                        iceCandidatesQueueRef.current.push(candidate)
+                      } else if (err.message && err.message.includes("duplicate")) {
+                        console.log("[v0] Duplicate ICE candidate (ignored)")
+                      } else {
+                        console.error("[v0] Error adding ICE candidate:", err.message || err)
+                      }
+                    }
                   } else {
                     iceCandidatesQueueRef.current.push(candidate)
-                    console.log("[v0] Queued ICE candidate")
+                    console.log("[v0] Queued ICE candidate (no remote description yet)")
                   }
                 } catch (error) {
-                  console.error("[v0] Error processing ICE candidate:", error)
+                  console.error("[v0] Error parsing ICE candidate:", error)
                 }
               }
             }
