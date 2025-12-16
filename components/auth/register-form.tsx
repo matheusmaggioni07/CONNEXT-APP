@@ -140,6 +140,7 @@ export function RegisterForm() {
   const [showPassword, setShowPassword] = useState(false) // Password visibility toggle
   const [showConfirmPassword, setShowConfirmPassword] = useState(false) // Confirm password visibility toggle
   const [termsAccepted, setTermsAccepted] = useState(false) // Added terms acceptance state
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false) // Added verification message state
   const router = useRouter()
 
   const totalSteps = 7 // Added step for terms (now 7 steps total)
@@ -911,6 +912,13 @@ export function RegisterForm() {
         {error && (
           <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-destructive text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Verification Message */}
+        {showVerificationMessage && (
+          <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
+            <p className="text-success text-sm">Um email de verificação foi enviado para seu endereço.</p>
           </div>
         )}
 

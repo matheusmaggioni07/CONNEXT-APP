@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useRouter } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -40,9 +40,11 @@ interface PartnerProfile {
   city?: string
 }
 
-type VideoState = "idle" | "searching" | "connecting" | "connected" | "ended" | "permission_denied"
+type VideoState = "idle" | "searching" | "connecting" | "connected" | "ended" | "permission_denied" | "matched"
 
 export function VideoPage({ userId, userProfile }: VideoPageProps) {
+  const router = useRouter()
+
   // State
   const [videoState, setVideoState] = useState<VideoState>("idle")
   const [currentPartner, setCurrentPartner] = useState<PartnerProfile | null>(null)
@@ -687,6 +689,31 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       console.error("Error liking user:", error)
     }
   }, [currentPartner, isLiked])
+
+  const handleMatchSuccess = useCallback(() => {
+    const recordAndRedirect = async () => {
+      if (!currentPartner || !userId) return
+
+      try {
+        // Record the match
+        const { error } = await createClient()
+          .from("matches")
+          .insert({
+            user1_id: userId < currentPartner.id ? userId : currentPartner.id,
+            user2_id: userId < currentPartner.id ? currentPartner.id : userId,
+          })
+
+        if (!error) {
+          // Redirect to matches page to show both profiles
+          router.push(`/dashboard/matches?highlight=${currentPartner.id}`)
+        }
+      } catch (err) {
+        console.error("[v0] Error recording match:", err)
+      }
+    }
+
+    setTimeout(recordAndRedirect, 1500)
+  }, [currentPartner, userId, router])
 
   // Cleanup on unmount
   useEffect(() => {
