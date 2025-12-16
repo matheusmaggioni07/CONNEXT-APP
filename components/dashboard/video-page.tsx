@@ -408,6 +408,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       pc.onicecandidate = async (event) => {
         if (event.candidate) {
+          console.log("[v0] *** ICE CANDIDATE GENERATED ***", {
+            candidate: event.candidate.candidate.substring(0, 50),
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+          })
           try {
             await supabase.from("ice_candidates").insert({
               room_id: roomId,
@@ -415,10 +419,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               to_user_id: partnerId,
               candidate: JSON.stringify(event.candidate.toJSON()),
             })
-            console.log("[v0] Sent ICE candidate")
+            console.log("[v0] ✓ ICE candidate sent to database")
           } catch (error) {
-            console.error("[v0] Error sending ICE candidate:", error)
+            console.error("[v0] ✗ Error sending ICE candidate:", error)
           }
+        } else {
+          console.log("[v0] ICE gathering complete (event.candidate is null)")
         }
       }
 
