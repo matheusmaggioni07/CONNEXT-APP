@@ -64,6 +64,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const currentRoomIdRef = useRef<string | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const waitTimeRef = useRef<NodeJS.Timeout | null>(null)
@@ -76,7 +77,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const signalingPollingRef = useRef<NodeJS.Timeout | null>(null)
   const processedSignalingIds = useRef<Set<string>>(new Set())
   const processedIceCandidateIds = useRef<Set<string>>(new Set())
-  const remoteStreamRef = useRef<MediaStream | null>(null)
 
   // Check remaining calls on mount
   useEffect(() => {
@@ -110,73 +110,59 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
   }, [videoState])
 
-  useEffect(() => {
-    if (remoteStreamRef.current && remoteVideoRef.current) {
-      console.log("[v0] Re-attaching remote stream to video element")
-      remoteVideoRef.current.srcObject = remoteStreamRef.current
+  const attachStreamToVideo = useCallback(
+    (videoElement: HTMLVideoElement | null, stream: MediaStream | null, label: string) => {
+      if (!videoElement || !stream) {
+        console.log(`[v0] Cannot attach ${label}: element=${!!videoElement}, stream=${!!stream}`)
+        return false
+      }
+
+      console.log(`[v0] Attaching ${label} stream with ${stream.getTracks().length} tracks`)
+
+      // Enable all tracks
+      stream.getTracks().forEach((track) => {
+        track.enabled = true
+        console.log(`[v0] ${label} track: ${track.kind}, enabled: ${track.enabled}, readyState: ${track.readyState}`)
+      })
+
+      videoElement.srcObject = stream
+      videoElement.muted = label === "local" // Only mute local video
+
       const playVideo = async () => {
         try {
-          await remoteVideoRef.current?.play()
-          console.log("[v0] Remote video re-play successful")
-          setRemoteVideoReady(true)
-        } catch (e) {
-          console.log("[v0] Remote video re-play failed:", e)
-        }
-      }
-      playVideo()
-    }
-  }, [videoState])
-
-  useEffect(() => {
-    if (localStreamRef.current && localVideoRef.current) {
-      if (localVideoRef.current.srcObject !== localStreamRef.current) {
-        console.log("[v0] Re-attaching local stream to video element")
-        localVideoRef.current.srcObject = localStreamRef.current
-        localVideoRef.current.play().catch((e) => console.log("[v0] Local video play error:", e))
-      }
-      setLocalVideoReady(true)
-    }
-  }, [videoState])
-
-  useEffect(() => {
-    if (videoState === "connected" && remoteStreamRef.current && remoteVideoRef.current) {
-      console.log("[v0] Re-attaching remote stream on connected state")
-      remoteVideoRef.current.srcObject = remoteStreamRef.current
-
-      const playRemote = async () => {
-        try {
-          if (remoteVideoRef.current) {
-            await remoteVideoRef.current.play()
-            console.log("[v0] Remote video playing after re-attach!")
-            setRemoteVideoReady(true)
-          }
+          await videoElement.play()
+          console.log(`[v0] ${label} video playing!`)
+          return true
         } catch (e: any) {
-          console.log("[v0] Remote play error:", e.message)
+          console.log(`[v0] ${label} play error:`, e.message)
+          return false
         }
       }
 
-      playRemote()
-    }
-  }, [videoState])
+      // Try to play immediately
+      playVideo()
 
-  useEffect(() => {
-    if (
-      (videoState === "connected" || videoState === "searching" || videoState === "connecting") &&
-      localStreamRef.current &&
-      localVideoRef.current
-    ) {
-      console.log("[v0] Re-attaching local stream")
-      localVideoRef.current.srcObject = localStreamRef.current
-      localVideoRef.current.play().catch(() => {})
-    }
-  }, [videoState])
+      // Also set up event handlers
+      videoElement.onloadedmetadata = () => {
+        console.log(`[v0] ${label} metadata loaded`)
+        playVideo()
+      }
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup()
-    }
-  }, [])
+      videoElement.oncanplay = () => {
+        console.log(`[v0] ${label} can play`)
+        playVideo()
+      }
+
+      return true
+    },
+    [],
+  )
+
+  const formatWaitTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
 
   const cleanup = useCallback(async () => {
     if (isCleaningUpRef.current) return
@@ -195,6 +181,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
 
     if (peerConnectionRef.current) {
+      peerConnectionRef.current.ontrack = null
+      peerConnectionRef.current.onicecandidate = null
+      peerConnectionRef.current.onconnectionstatechange = null
+      peerConnectionRef.current.oniceconnectionstatechange = null
       peerConnectionRef.current.close()
       peerConnectionRef.current = null
     }
@@ -202,6 +192,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
       localStreamRef.current = null
+    }
+
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current = null
     }
 
     const roomId = currentRoomIdRef.current
@@ -246,23 +240,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       localStreamRef.current = stream
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream
-        const playVideo = async () => {
-          try {
-            await localVideoRef.current?.play()
-            console.log("[v0] Local video playing successfully")
-          } catch (e: any) {
-            console.log("[v0] Local video autoplay blocked, will retry:", e.message)
-            // On mobile, user interaction might be needed
-          }
-        }
-        localVideoRef.current.onloadedmetadata = playVideo
-        // Also try immediately
-        playVideo()
+      if (attachStreamToVideo(localVideoRef.current, stream, "local")) {
+        setLocalVideoReady(true)
       }
 
-      setLocalVideoReady(true)
       return stream
     } catch (error: unknown) {
       const err = error as Error
@@ -283,7 +264,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       }
       return null
     }
-  }, [])
+  }, [attachStreamToVideo])
 
   const setupWebRTC = useCallback(
     async (roomId: string, isInitiator: boolean, partnerId: string) => {
@@ -298,6 +279,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       processedIceCandidateIds.current.clear()
       hasRemoteDescriptionRef.current = false
       iceCandidatesQueueRef.current = []
+      remoteStreamRef.current = null
+      setRemoteVideoReady(false)
 
       // Fetch ICE servers
       let iceServers: RTCIceServer[] = [
@@ -339,75 +322,36 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         return
       }
 
-      // Handle remote track - THIS IS KEY for video
       pc.ontrack = (event) => {
         console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind)
 
         if (event.streams && event.streams[0]) {
-          remoteStreamRef.current = event.streams[0]
-          console.log("[v0] Stored remote stream with", event.streams[0].getTracks().length, "tracks")
-        }
+          const stream = event.streams[0]
+          remoteStreamRef.current = stream
 
-        if (event.track.kind === "video") {
-          event.track.enabled = true
-          console.log("[v0] Video track enabled:", event.track.enabled, "readyState:", event.track.readyState)
-        }
+          console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
 
-        if (remoteVideoRef.current && event.streams[0]) {
-          console.log("[v0] Setting remote video srcObject")
-          remoteVideoRef.current.srcObject = event.streams[0]
+          // Attach to video element
+          if (attachStreamToVideo(remoteVideoRef.current, stream, "remote")) {
+            setRemoteVideoReady(true)
+            setVideoState("connected")
+            setConnectionStatus("Conectado!")
+          }
 
-          event.streams[0].getTracks().forEach((track) => {
-            track.enabled = true
-            console.log("[v0] Remote track:", track.kind, "enabled:", track.enabled, "readyState:", track.readyState)
-          })
-
-          const tryPlay = async (attempt = 0) => {
-            if (!remoteVideoRef.current) return
-
-            try {
-              // Always re-set srcObject before playing
-              if (remoteStreamRef.current) {
-                remoteVideoRef.current.srcObject = remoteStreamRef.current
-              }
-              await remoteVideoRef.current.play()
-              console.log("[v0] Remote video playing! Attempt:", attempt)
+          // Also try again after delays to ensure it works
+          setTimeout(() => {
+            if (remoteStreamRef.current && remoteVideoRef.current) {
+              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-retry1")
               setRemoteVideoReady(true)
-              setVideoState("connected")
-              setConnectionStatus("Conectado!")
-            } catch (e: any) {
-              console.log("[v0] Remote play attempt", attempt, "failed:", e.message)
-              if (attempt < 15) {
-                setTimeout(() => tryPlay(attempt + 1), 300)
-              } else {
-                console.log("[v0] Max attempts reached, forcing ready state")
-                setRemoteVideoReady(true)
-                setVideoState("connected")
-              }
             }
-          }
+          }, 500)
 
-          // Events for video ready
-          remoteVideoRef.current.onloadedmetadata = () => {
-            console.log("[v0] Remote video metadata loaded")
-            tryPlay()
-          }
-
-          remoteVideoRef.current.oncanplay = () => {
-            console.log("[v0] Remote video canplay")
-            setRemoteVideoReady(true)
-            tryPlay()
-          }
-
-          remoteVideoRef.current.onplaying = () => {
-            console.log("[v0] Remote video is now playing!")
-            setRemoteVideoReady(true)
-          }
-
-          // Try immediately and with delays
-          tryPlay()
-          setTimeout(() => tryPlay(5), 500)
-          setTimeout(() => tryPlay(10), 1500)
+          setTimeout(() => {
+            if (remoteStreamRef.current && remoteVideoRef.current) {
+              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-retry2")
+              setRemoteVideoReady(true)
+            }
+          }, 1500)
         }
       }
 
@@ -418,6 +362,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           console.log("[v0] *** CONNECTION ESTABLISHED ***")
           setVideoState("connected")
           setConnectionStatus("Conectado!")
+
+          setTimeout(() => {
+            if (remoteStreamRef.current && remoteVideoRef.current) {
+              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-onconnected")
+              setRemoteVideoReady(true)
+            }
+            if (localStreamRef.current && localVideoRef.current) {
+              attachStreamToVideo(localVideoRef.current, localStreamRef.current, "local-onconnected")
+              setLocalVideoReady(true)
+            }
+          }, 100)
         } else if (pc.connectionState === "failed") {
           console.log("[v0] Connection FAILED - attempting ICE restart")
           pc.restartIce()
@@ -657,7 +612,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         console.log("[v0] I am NOT initiator, waiting for offer...")
       }
     },
-    [userId],
+    [userId, attachStreamToVideo],
   )
 
   const handleMatch = useCallback(
@@ -807,299 +762,294 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [])
 
   const endCall = useCallback(async () => {
+    console.log("[v0] Ending call...")
     await cleanup()
     setVideoState("ended")
     setCurrentPartner(null)
+    setConnectionStatus("")
   }, [cleanup])
 
   const skipToNext = useCallback(async () => {
+    console.log("[v0] Skipping to next...")
     await cleanup()
-    setCurrentPartner(null)
     setVideoState("idle")
+    setCurrentPartner(null)
+    setConnectionStatus("")
+
+    // Small delay then start searching again
     setTimeout(() => {
       startSearching()
     }, 500)
   }, [cleanup, startSearching])
 
   const handleLike = useCallback(async () => {
-    if (!currentPartner || isLiked) return
-
-    const result = await likeUser(currentPartner.id)
+    if (!currentPartner) return
     setIsLiked(true)
 
-    if (result.error) {
-      console.error("[v0] Like error:", result.error)
-      return
+    try {
+      await likeUser(currentPartner.id)
+    } catch (error) {
+      console.error("Error liking user:", error)
     }
+  }, [currentPartner])
 
-    if (result.isMatch) {
-      console.log("[v0] It's a match!")
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup()
     }
-  }, [currentPartner, isLiked])
-
-  const formatWaitTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  // RENDER
-  if (videoState === "permission_denied") {
-    return (
-      <div className="flex h-full items-center justify-center bg-background p-4">
-        <div className="max-w-md rounded-xl border border-destructive/20 bg-card p-6 text-center">
-          <AlertCircle className="mx-auto mb-4 h-12 w-12 text-destructive" />
-          <h2 className="mb-2 text-xl font-semibold text-foreground">Permissão Necessária</h2>
-          <p className="mb-4 text-muted-foreground">{permissionError}</p>
-          <Button onClick={() => setVideoState("idle")} variant="outline">
-            Voltar
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
-  if (limitReached && videoState === "idle") {
-    return (
-      <div className="flex h-full items-center justify-center bg-background p-4">
-        <div className="max-w-md rounded-xl border border-primary/20 bg-card p-6 text-center">
-          <Clock className="mx-auto mb-4 h-12 w-12 text-primary" />
-          <h2 className="mb-2 text-xl font-semibold text-foreground">Limite Diário Atingido</h2>
-          <p className="mb-4 text-muted-foreground">
-            Você atingiu o limite de chamadas diárias. Suas chamadas serão renovadas em {timeUntilReset}.
-          </p>
-          <Button className="bg-gradient-to-r from-primary to-pink-500">
-            <Sparkles className="mr-2 h-4 w-4" />
-            Fazer Upgrade para Pro
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  }, [cleanup])
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="border-b border-border p-4">
+      <div className="border-b border-border bg-card p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Videochamada</h1>
+            <h1 className="text-xl font-semibold text-foreground">Videochamada</h1>
             <p className="text-sm text-muted-foreground">Conecte-se instantaneamente com empreendedores</p>
           </div>
-          {remainingCalls !== null && remainingCalls !== -1 && (
-            <div className="text-right">
-              <span className="text-sm text-muted-foreground">Chamadas restantes:</span>
-              <span className="ml-2 font-bold text-primary">{remainingCalls}</span>
+          {remainingCalls !== null && !limitReached && (
+            <div className="flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-primary">{remainingCalls} chamadas restantes</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Video Area - TRUE 50/50 split on desktop */}
-      <div className="flex flex-1 flex-col lg:flex-row lg:gap-0 overflow-hidden">
-        {/* Remote Video - 50% on mobile, 50% on desktop */}
-        <div className="relative flex h-1/2 lg:h-full lg:w-1/2 items-center justify-center overflow-hidden bg-card border-b lg:border-b-0 lg:border-r border-border">
-          {videoState === "idle" && (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20">
-                <Video className="h-12 w-12 text-primary" />
-              </div>
-              <h2 className="mb-2 text-2xl font-bold text-foreground">Pronto para conectar?</h2>
-              <p className="mb-6 max-w-sm text-muted-foreground">
-                Inicie uma videochamada e conheça empreendedores em tempo real
-              </p>
-              <Button
-                onClick={startSearching}
-                disabled={isLoading}
-                size="lg"
-                className="bg-gradient-to-r from-primary to-pink-500 px-8"
-              >
-                {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />}
-                Iniciar Videochamada
-              </Button>
+      {/* Permission Denied State */}
+      {videoState === "permission_denied" && (
+        <div className="flex flex-1 items-center justify-center p-8">
+          <div className="text-center">
+            <div className="mb-6 flex h-24 w-24 mx-auto items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-12 w-12 text-destructive" />
             </div>
-          )}
-
-          {videoState === "searching" && (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <div className="relative mb-6">
-                <div className="h-24 w-24 animate-spin rounded-full border-4 border-primary/20 border-t-primary"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-pink-500"></div>
-                </div>
-              </div>
-              <h2 className="mb-2 text-2xl font-bold text-foreground">Buscando empreendedor...</h2>
-              <p className="mb-4 flex items-center gap-2 text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                Tempo de espera: {formatWaitTime(waitTime)}
-              </p>
-              <Button onClick={endCall} variant="outline">
-                Cancelar
-              </Button>
-            </div>
-          )}
-
-          {videoState === "connecting" && currentPartner && (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <Avatar className="mb-4 h-24 w-24 ring-4 ring-primary/20">
-                <AvatarImage src={currentPartner.avatar_url || undefined} alt={currentPartner.full_name} />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-pink-500 text-2xl text-white">
-                  {currentPartner.full_name?.charAt(0) || "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="mb-4 flex items-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="text-lg font-medium text-foreground">Conectando...</span>
-              </div>
-              <p className="text-muted-foreground">{connectionStatus}</p>
-            </div>
-          )}
-
-          {(videoState === "connected" || (videoState === "connecting" && currentPartner)) && (
-            <>
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="absolute inset-0 h-full w-full object-cover"
-                style={{
-                  visibility: remoteVideoReady ? "visible" : "hidden",
-                  backgroundColor: "#000",
-                }}
-              />
-
-              {!remoteVideoReady && videoState === "connected" && (
-                <div className="absolute inset-0 flex items-center justify-center bg-card">
-                  <div className="text-center">
-                    <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-                    <p className="text-muted-foreground">Carregando vídeo...</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Partner Info */}
-              {currentPartner && videoState === "connected" && (
-                <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={currentPartner.avatar_url || undefined} />
-                    <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-white">{currentPartner.full_name}</p>
-                    {currentPartner.city && <p className="text-xs text-white/70">{currentPartner.city}</p>}
-                  </div>
-                </div>
-              )}
-
-              {/* Action buttons on remote video */}
-              {videoState === "connected" && (
-                <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                  <Button
-                    onClick={handleLike}
-                    disabled={isLiked}
-                    size="icon"
-                    className={`h-12 w-12 lg:h-14 lg:w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
-                  >
-                    <Heart className={`h-6 w-6 lg:h-7 lg:w-7 ${isLiked ? "fill-white" : ""}`} />
-                  </Button>
-                  <Button
-                    onClick={skipToNext}
-                    size="icon"
-                    className="h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-blue-500 hover:bg-blue-600"
-                  >
-                    <SkipForward className="h-6 w-6 lg:h-7 lg:w-7" />
-                  </Button>
-                </div>
-              )}
-
-              {/* End call button */}
-              {videoState === "connected" && (
-                <Button
-                  onClick={endCall}
-                  size="icon"
-                  className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600"
-                >
-                  <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
-                </Button>
-              )}
-            </>
-          )}
-
-          {videoState === "ended" && (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-                <PhoneOff className="h-12 w-12 text-muted-foreground" />
-              </div>
-              <h2 className="mb-2 text-2xl font-bold text-foreground">Chamada Encerrada</h2>
-              <p className="mb-6 text-muted-foreground">Obrigado por usar o Connext!</p>
-              <Button
-                onClick={() => {
-                  setVideoState("idle")
-                  startSearching()
-                }}
-                className="bg-gradient-to-r from-primary to-pink-500"
-              >
-                Nova Videochamada
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Local Video - TRUE 50% on mobile and desktop */}
-        <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden bg-card">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              visibility: localVideoReady ? "visible" : "hidden",
-              backgroundColor: "#1a1a2e",
-            }}
-          />
-
-          {!localVideoReady && (
-            <div className="absolute inset-0 flex h-full items-center justify-center bg-card">
-              <p className="text-muted-foreground">Câmera desativada</p>
-            </div>
-          )}
-
-          {/* Flip camera button */}
-          {localVideoReady && (
-            <Button
-              onClick={flipCamera}
-              size="icon"
-              variant="secondary"
-              className="absolute right-4 top-4 h-10 w-10 rounded-full bg-black/50 hover:bg-black/70"
-            >
-              <SwitchCamera className="h-5 w-5 text-white" />
+            <h2 className="mb-2 text-2xl font-bold text-foreground">Acesso Negado</h2>
+            <p className="mb-6 max-w-md text-muted-foreground">{permissionError}</p>
+            <Button onClick={() => setVideoState("idle")} variant="outline">
+              Tentar Novamente
             </Button>
-          )}
-
-          {/* Local video controls */}
-          {localVideoReady && (
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">
-              <Button
-                onClick={toggleMute}
-                size="icon"
-                variant={isMuted ? "destructive" : "secondary"}
-                className="h-12 w-12 rounded-full"
-              >
-                {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-              </Button>
-              <Button
-                onClick={toggleVideo}
-                size="icon"
-                variant={isVideoOff ? "destructive" : "secondary"}
-                className="h-12 w-12 rounded-full"
-              >
-                {isVideoOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
-              </Button>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Limit Reached State */}
+      {limitReached && videoState === "idle" && (
+        <div className="flex flex-1 items-center justify-center p-8">
+          <div className="text-center">
+            <div className="mb-6 flex h-24 w-24 mx-auto items-center justify-center rounded-full bg-yellow-500/10">
+              <Clock className="h-12 w-12 text-yellow-500" />
+            </div>
+            <h2 className="mb-2 text-2xl font-bold text-foreground">Limite Diário Atingido</h2>
+            <p className="mb-2 text-muted-foreground">Você atingiu o limite de 15 videochamadas por dia.</p>
+            <p className="mb-6 text-sm text-muted-foreground">Próximo reset em: {timeUntilReset}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Video Container - ALWAYS 50/50 split */}
+      {videoState !== "permission_denied" && !limitReached && (
+        <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
+          {/* Remote Video - 50% on mobile, 50% on desktop */}
+          <div className="relative flex h-1/2 lg:h-full lg:w-1/2 items-center justify-center overflow-hidden bg-card border-b lg:border-b-0 lg:border-r border-border">
+            {videoState === "idle" && (
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20">
+                  <Video className="h-12 w-12 text-primary" />
+                </div>
+                <h2 className="mb-2 text-2xl font-bold text-foreground">Pronto para conectar?</h2>
+                <p className="mb-6 max-w-sm text-muted-foreground">
+                  Inicie uma videochamada e conheça empreendedores em tempo real
+                </p>
+                <Button
+                  onClick={startSearching}
+                  disabled={isLoading}
+                  size="lg"
+                  className="bg-gradient-to-r from-primary to-pink-500 px-8"
+                >
+                  {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />}
+                  Iniciar Videochamada
+                </Button>
+              </div>
+            )}
+
+            {videoState === "searching" && (
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <div className="relative mb-6">
+                  <div className="h-24 w-24 animate-spin rounded-full border-4 border-primary/20 border-t-primary"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-pink-500"></div>
+                  </div>
+                </div>
+                <h2 className="mb-2 text-2xl font-bold text-foreground">Buscando empreendedor...</h2>
+                <p className="mb-4 flex items-center gap-2 text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  Tempo de espera: {formatWaitTime(waitTime)}
+                </p>
+                <Button onClick={endCall} variant="outline">
+                  Cancelar
+                </Button>
+              </div>
+            )}
+
+            {videoState === "connecting" && currentPartner && (
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <Avatar className="mb-4 h-24 w-24 ring-4 ring-primary/20">
+                  <AvatarImage src={currentPartner.avatar_url || undefined} alt={currentPartner.full_name} />
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-pink-500 text-2xl text-white">
+                    {currentPartner.full_name?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="mb-4 flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-lg font-medium text-foreground">Conectando...</span>
+                </div>
+                <p className="text-muted-foreground">{connectionStatus}</p>
+              </div>
+            )}
+
+            {(videoState === "connected" || (videoState === "connecting" && currentPartner)) && (
+              <>
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={`absolute inset-0 h-full w-full object-cover bg-black ${
+                    remoteVideoReady && videoState === "connected" ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+
+                {!remoteVideoReady && videoState === "connected" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-card">
+                    <div className="text-center">
+                      <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+                      <p className="text-muted-foreground">Carregando vídeo...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Partner Info */}
+                {currentPartner && videoState === "connected" && (
+                  <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={currentPartner.avatar_url || undefined} />
+                      <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium text-white">{currentPartner.full_name}</p>
+                      {currentPartner.city && <p className="text-xs text-white/70">{currentPartner.city}</p>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons on remote video */}
+                {videoState === "connected" && (
+                  <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                    <Button
+                      onClick={handleLike}
+                      disabled={isLiked}
+                      size="icon"
+                      className={`h-12 w-12 lg:h-14 lg:w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
+                    >
+                      <Heart className={`h-6 w-6 lg:h-7 lg:w-7 ${isLiked ? "fill-white" : ""}`} />
+                    </Button>
+                    <Button
+                      onClick={skipToNext}
+                      size="icon"
+                      className="h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-blue-500 hover:bg-blue-600"
+                    >
+                      <SkipForward className="h-6 w-6 lg:h-7 lg:w-7" />
+                    </Button>
+                  </div>
+                )}
+
+                {/* End call button */}
+                {videoState === "connected" && (
+                  <Button
+                    onClick={endCall}
+                    size="icon"
+                    className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600"
+                  >
+                    <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
+                  </Button>
+                )}
+              </>
+            )}
+
+            {videoState === "ended" && (
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
+                  <PhoneOff className="h-12 w-12 text-muted-foreground" />
+                </div>
+                <h2 className="mb-2 text-2xl font-bold text-foreground">Chamada Encerrada</h2>
+                <p className="mb-6 text-muted-foreground">Obrigado por usar o Connext!</p>
+                <Button
+                  onClick={() => {
+                    setVideoState("idle")
+                    startSearching()
+                  }}
+                  className="bg-gradient-to-r from-primary to-pink-500"
+                >
+                  Nova Videochamada
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Local Video - TRUE 50% on mobile and desktop */}
+          <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden bg-card">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`absolute inset-0 h-full w-full object-cover ${localVideoReady ? "opacity-100" : "opacity-0"}`}
+              style={{ backgroundColor: "#1a1a2e" }}
+            />
+
+            {!localVideoReady && (
+              <div className="absolute inset-0 flex h-full items-center justify-center bg-card">
+                <p className="text-muted-foreground">Câmera desativada</p>
+              </div>
+            )}
+
+            {/* Flip camera button */}
+            {localVideoReady && (
+              <Button
+                onClick={flipCamera}
+                size="icon"
+                variant="secondary"
+                className="absolute right-4 top-4 h-10 w-10 rounded-full bg-black/50 hover:bg-black/70"
+              >
+                <SwitchCamera className="h-5 w-5 text-white" />
+              </Button>
+            )}
+
+            {/* Local video controls */}
+            {localVideoReady && (
+              <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">
+                <Button
+                  onClick={toggleMute}
+                  size="icon"
+                  variant={isMuted ? "destructive" : "secondary"}
+                  className="h-12 w-12 rounded-full"
+                >
+                  {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                </Button>
+                <Button
+                  onClick={toggleVideo}
+                  size="icon"
+                  variant={isVideoOff ? "destructive" : "secondary"}
+                  className="h-12 w-12 rounded-full"
+                >
+                  {isVideoOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

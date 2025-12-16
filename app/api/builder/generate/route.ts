@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { generateText } from "ai"
-import { SYSTEM_PROMPT } from "./constants.tsx"
-import { generateFallbackCode } from "./fallback.tsx"
+import { SYSTEM_PROMPT } from "./constants"
+import { generateFallbackCode } from "./fallback"
 
 export async function POST(req: Request) {
   const { prompt, projectContext, history } = await req.json()
@@ -41,49 +41,52 @@ INSTRUÇÕES CRÍTICAS:
 
     console.log("[v0] Calling Claude API...")
 
-    const { text } = await generateText({
-      model: "anthropic/claude-sonnet-4-20250514",
-      system: SYSTEM_PROMPT,
-      prompt: enhancedPrompt,
-      maxTokens: 16000,
-      temperature: 0.7,
-    })
+    let code = ""
 
-    console.log("[v0] Claude response length:", text?.length)
-
-    if (!text || text.length < 100) {
-      console.log("[v0] Empty response, using fallback")
-      return Response.json({
-        code: generateFallbackCode(prompt),
-        explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
-        remainingRequests: 20,
+    try {
+      const { text } = await generateText({
+        model: "anthropic/claude-sonnet-4-20250514",
+        system: SYSTEM_PROMPT,
+        prompt: enhancedPrompt,
+        maxTokens: 16000,
+        temperature: 0.7,
       })
-    }
 
-    let code = text
-      .trim()
-      .replace(/^```(?:jsx|tsx|javascript|typescript|react)?\s*\n?/gm, "")
-      .replace(/\n?```\s*$/gm, "")
-      .replace(/^Here.*?:\s*\n/gim, "")
-      .replace(/^Aqui.*?:\s*\n/gim, "")
-      .replace(/^Vou criar.*?:\s*\n/gim, "")
-      .replace(/^Claro.*?:\s*\n/gim, "")
-      .trim()
+      console.log("[v0] Claude response length:", text?.length)
 
-    const exportIndex = code.indexOf("export default function")
-    if (exportIndex > 0) {
-      code = code.substring(exportIndex)
-    }
+      if (!text || text.length < 100) {
+        console.log("[v0] Empty response, using fallback")
+        code = generateFallbackCode(prompt)
+      } else {
+        code = text
+          .trim()
+          .replace(/^```(?:jsx|tsx|javascript|typescript|react)?\s*\n?/gm, "")
+          .replace(/\n?```\s*$/gm, "")
+          .replace(/^Here.*?:\s*\n/gim, "")
+          .replace(/^Aqui.*?:\s*\n/gim, "")
+          .replace(/^Vou criar.*?:\s*\n/gim, "")
+          .replace(/^Claro.*?:\s*\n/gim, "")
+          .trim()
 
-    const hasValidStructure =
-      code.includes("export default function") &&
-      code.includes("return") &&
-      code.includes("<") &&
-      code.includes("</") &&
-      code.length > 500
+        const exportIndex = code.indexOf("export default function")
+        if (exportIndex > 0) {
+          code = code.substring(exportIndex)
+        }
 
-    if (!hasValidStructure) {
-      console.log("[v0] Invalid code structure, using fallback")
+        const hasValidStructure =
+          code.includes("export default function") &&
+          code.includes("return") &&
+          code.includes("<") &&
+          code.includes("</") &&
+          code.length > 500
+
+        if (!hasValidStructure) {
+          console.log("[v0] Invalid code structure, using fallback")
+          code = generateFallbackCode(prompt)
+        }
+      }
+    } catch (aiError) {
+      console.error("[v0] AI Error, using fallback:", aiError)
       code = generateFallbackCode(prompt)
     }
 
