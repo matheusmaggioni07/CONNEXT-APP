@@ -1,4 +1,4 @@
-"use client"
+// NÃO adicione "use client" aqui pois causa erro de importação
 
 export const SYSTEM_PROMPT = `Você é um especialista em criar sites modernos e profissionais com React e Tailwind CSS.
 

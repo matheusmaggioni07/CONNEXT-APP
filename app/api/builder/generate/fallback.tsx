@@ -1,8 +1,10 @@
-"use client"
+// NÃO adicione "use client" aqui pois causa erro de importação
 
 import { FALLBACK_THEMES } from "./constants"
 
-function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
+type ThemeType = keyof typeof FALLBACK_THEMES
+
+function detectSiteType(prompt: string): ThemeType {
   const lowerPrompt = prompt.toLowerCase()
 
   if (
@@ -14,10 +16,7 @@ function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
     lowerPrompt.includes("inter") ||
     lowerPrompt.includes("flamengo") ||
     lowerPrompt.includes("corinthians") ||
-    lowerPrompt.includes("palmeiras") ||
-    lowerPrompt.includes("agro") ||
-    lowerPrompt.includes("fazenda") ||
-    lowerPrompt.includes("campo")
+    lowerPrompt.includes("palmeiras")
   ) {
     return "sports"
   }
@@ -26,7 +25,6 @@ function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
     lowerPrompt.includes("restaurante") ||
     lowerPrompt.includes("comida") ||
     lowerPrompt.includes("pizza") ||
-    lowerPrompt.includes("hamburger") ||
     lowerPrompt.includes("café") ||
     lowerPrompt.includes("bar")
   ) {
@@ -35,28 +33,21 @@ function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
 
   if (
     lowerPrompt.includes("tech") ||
-    lowerPrompt.includes("tecnologia") ||
     lowerPrompt.includes("software") ||
     lowerPrompt.includes("app") ||
     lowerPrompt.includes("startup") ||
-    lowerPrompt.includes("saas") ||
-    lowerPrompt.includes("inteligência artificial") ||
     lowerPrompt.includes("ia") ||
-    lowerPrompt.includes("ai")
+    lowerPrompt.includes("tecnologia")
   ) {
     return "technology"
   }
 
   if (
     lowerPrompt.includes("saúde") ||
-    lowerPrompt.includes("saude") ||
     lowerPrompt.includes("médico") ||
-    lowerPrompt.includes("medico") ||
-    lowerPrompt.includes("hospital") ||
     lowerPrompt.includes("clínica") ||
-    lowerPrompt.includes("clinica") ||
-    lowerPrompt.includes("farmácia") ||
-    lowerPrompt.includes("farmacia")
+    lowerPrompt.includes("fitness") ||
+    lowerPrompt.includes("academia")
   ) {
     return "health"
   }
@@ -65,12 +56,9 @@ function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
     lowerPrompt.includes("escola") ||
     lowerPrompt.includes("curso") ||
     lowerPrompt.includes("educação") ||
-    lowerPrompt.includes("educacao") ||
-    lowerPrompt.includes("universidade") ||
-    lowerPrompt.includes("faculdade") ||
     lowerPrompt.includes("história") ||
     lowerPrompt.includes("historia") ||
-    lowerPrompt.includes("mundo")
+    lowerPrompt.includes("aprender")
   ) {
     return "education"
   }
@@ -78,10 +66,9 @@ function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
   if (
     lowerPrompt.includes("loja") ||
     lowerPrompt.includes("ecommerce") ||
-    lowerPrompt.includes("e-commerce") ||
+    lowerPrompt.includes("produtos") ||
     lowerPrompt.includes("venda") ||
-    lowerPrompt.includes("produto") ||
-    lowerPrompt.includes("shop")
+    lowerPrompt.includes("moda")
   ) {
     return "ecommerce"
   }
@@ -89,21 +76,29 @@ function detectSiteType(prompt: string): keyof typeof FALLBACK_THEMES {
   return "default"
 }
 
-function extractTitle(prompt: string): string {
+function getSiteTitle(prompt: string): string {
   const lowerPrompt = prompt.toLowerCase()
 
-  if (lowerPrompt.includes("história") || lowerPrompt.includes("historia")) {
-    if (lowerPrompt.includes("mundo")) return "História do Mundo"
-    if (lowerPrompt.includes("brasil")) return "História do Brasil"
-    return "Portal da História"
-  }
-
+  // Times de futebol
   if (lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio")) return "Grêmio FBPA"
-  if (lowerPrompt.includes("inter")) return "Sport Club Internacional"
+  if (lowerPrompt.includes("inter") && lowerPrompt.includes("porto")) return "Sport Club Internacional"
   if (lowerPrompt.includes("flamengo")) return "Clube de Regatas do Flamengo"
-  if (lowerPrompt.includes("corinthians")) return "Sport Club Corinthians"
+  if (lowerPrompt.includes("corinthians")) return "Sport Club Corinthians Paulista"
   if (lowerPrompt.includes("palmeiras")) return "Sociedade Esportiva Palmeiras"
+  if (lowerPrompt.includes("são paulo") || lowerPrompt.includes("sao paulo")) return "São Paulo FC"
+  if (lowerPrompt.includes("santos")) return "Santos FC"
+  if (lowerPrompt.includes("botafogo")) return "Botafogo FR"
+  if (lowerPrompt.includes("fluminense")) return "Fluminense FC"
+  if (lowerPrompt.includes("vasco")) return "Club de Regatas Vasco da Gama"
+  if (lowerPrompt.includes("cruzeiro")) return "Cruzeiro Esporte Clube"
+  if (lowerPrompt.includes("atlético") || lowerPrompt.includes("atletico")) return "Clube Atlético Mineiro"
 
+  // Outros temas
+  if (lowerPrompt.includes("história") || lowerPrompt.includes("historia")) return "História do Mundo"
+  if (lowerPrompt.includes("restaurante")) return "Restaurante Gourmet"
+  if (lowerPrompt.includes("tech") || lowerPrompt.includes("tecnologia")) return "Tech Solutions"
+
+  // Extrai nome do prompt
   const words = prompt.split(" ").filter((w) => w.length > 3)
   if (words.length > 0) {
     return words
@@ -115,81 +110,85 @@ function extractTitle(prompt: string): string {
   return "Meu Site"
 }
 
-export function generateFallbackCode(prompt: string): string {
-  const siteType = detectSiteType(prompt)
-  const theme = FALLBACK_THEMES[siteType]
-  const title = extractTitle(prompt)
+function getTeamColors(prompt: string): { primary: string; secondary: string; accent: string } {
+  const lowerPrompt = prompt.toLowerCase()
 
-  const isEducation = siteType === "education"
-  const isSports = siteType === "sports"
-  const isTechnology = siteType === "technology"
-  const isRestaurant = siteType === "restaurant"
-  const isHealth = siteType === "health"
-  const isEcommerce = siteType === "ecommerce"
-
-  const heroTitle = title
-  let heroSubtitle = "Descubra uma experiência única e profissional"
-  let features = [
-    { title: "Qualidade", desc: "Excelência em cada detalhe" },
-    { title: "Inovação", desc: "Sempre à frente do tempo" },
-    { title: "Confiança", desc: "Compromisso com você" },
-  ]
-  let ctaText = "Saiba Mais"
-
-  if (isEducation) {
-    heroSubtitle = "Explore o conhecimento e descubra histórias fascinantes"
-    features = [
-      { title: "Conhecimento", desc: "Artigos detalhados e pesquisados" },
-      { title: "Timeline Interativa", desc: "Navegue pela história cronologicamente" },
-      { title: "Recursos Educacionais", desc: "Material para estudantes e curiosos" },
-    ]
-    ctaText = "Explorar Conteúdo"
-  } else if (isSports) {
-    heroSubtitle = "Paixão, história e conquistas que marcam gerações"
-    features = [
-      { title: "História", desc: "Conheça a trajetória do clube" },
-      { title: "Títulos", desc: "Conquistas que nos orgulham" },
-      { title: "Torcida", desc: "A maior força do time" },
-    ]
-    ctaText = "Ver Mais"
-  } else if (isTechnology) {
-    heroSubtitle = "Soluções inovadoras para transformar seu negócio"
-    features = [
-      { title: "Tecnologia", desc: "Stack moderna e escalável" },
-      { title: "Segurança", desc: "Proteção de dados garantida" },
-      { title: "Suporte", desc: "Equipe especializada 24/7" },
-    ]
-    ctaText = "Começar Agora"
-  } else if (isRestaurant) {
-    heroSubtitle = "Sabores únicos que encantam o paladar"
-    features = [
-      { title: "Cardápio", desc: "Pratos exclusivos e saborosos" },
-      { title: "Ambiente", desc: "Atmosfera acolhedora" },
-      { title: "Delivery", desc: "Entregamos na sua casa" },
-    ]
-    ctaText = "Ver Cardápio"
-  } else if (isHealth) {
-    heroSubtitle = "Cuidando da sua saúde com carinho e profissionalismo"
-    features = [
-      { title: "Profissionais", desc: "Equipe qualificada" },
-      { title: "Estrutura", desc: "Equipamentos modernos" },
-      { title: "Atendimento", desc: "Humanizado e dedicado" },
-    ]
-    ctaText = "Agendar Consulta"
-  } else if (isEcommerce) {
-    heroSubtitle = "Os melhores produtos com os melhores preços"
-    features = [
-      { title: "Produtos", desc: "Variedade e qualidade" },
-      { title: "Entrega", desc: "Rápida e segura" },
-      { title: "Pagamento", desc: "Formas facilitadas" },
-    ]
-    ctaText = "Ver Produtos"
+  if (lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio")) {
+    return { primary: "#0a5eb0", secondary: "#000000", accent: "#ffffff" }
   }
+  if (lowerPrompt.includes("inter") && (lowerPrompt.includes("porto") || lowerPrompt.includes("internacional"))) {
+    return { primary: "#e4002b", secondary: "#ffffff", accent: "#000000" }
+  }
+  if (lowerPrompt.includes("flamengo")) {
+    return { primary: "#e4002b", secondary: "#000000", accent: "#ffffff" }
+  }
+  if (lowerPrompt.includes("corinthians")) {
+    return { primary: "#000000", secondary: "#ffffff", accent: "#333333" }
+  }
+  if (lowerPrompt.includes("palmeiras")) {
+    return { primary: "#006437", secondary: "#ffffff", accent: "#004d2a" }
+  }
+  if (lowerPrompt.includes("são paulo") || lowerPrompt.includes("sao paulo")) {
+    return { primary: "#ff0000", secondary: "#ffffff", accent: "#000000" }
+  }
+  if (lowerPrompt.includes("santos")) {
+    return { primary: "#000000", secondary: "#ffffff", accent: "#333333" }
+  }
+  if (lowerPrompt.includes("botafogo")) {
+    return { primary: "#000000", secondary: "#ffffff", accent: "#333333" }
+  }
+  if (lowerPrompt.includes("fluminense")) {
+    return { primary: "#9b0d2a", secondary: "#006633", accent: "#ffffff" }
+  }
+  if (lowerPrompt.includes("vasco")) {
+    return { primary: "#000000", secondary: "#ffffff", accent: "#e4002b" }
+  }
+  if (lowerPrompt.includes("cruzeiro")) {
+    return { primary: "#003da5", secondary: "#ffffff", accent: "#002b75" }
+  }
+  if (lowerPrompt.includes("atlético") || lowerPrompt.includes("atletico")) {
+    return { primary: "#000000", secondary: "#ffffff", accent: "#333333" }
+  }
+
+  return FALLBACK_THEMES[detectSiteType(prompt)]
+}
+
+export function generateFallbackCode(prompt: string): string {
+  const title = getSiteTitle(prompt)
+  const colors = getTeamColors(prompt)
+
+  const lowerPrompt = prompt.toLowerCase()
+  const isTeam =
+    /grêmio|gremio|inter|flamengo|corinthians|palmeiras|são paulo|sao paulo|santos|botafogo|fluminense|vasco|cruzeiro|atlético|atletico/.test(
+      lowerPrompt,
+    )
+  const isHistory = lowerPrompt.includes("história") || lowerPrompt.includes("historia")
+
+  let heroSubtitle = "Descubra tudo sobre nós"
+  let section1Title = "Sobre"
+  let section1Text = "Conheça nossa história e valores"
+  let section2Title = "Serviços"
+  let section3Title = "Contato"
+
+  if (isTeam) {
+    heroSubtitle = "Tradição, Glória e Paixão"
+    section1Title = "História"
+    section1Text = "Décadas de tradição e conquistas"
+    section2Title = "Títulos"
+    section3Title = "Torcida"
+  } else if (isHistory) {
+    heroSubtitle = "Uma jornada através do tempo"
+    section1Title = "Antiguidade"
+    section1Text = "Das primeiras civilizações ao Império Romano"
+    section2Title = "Era Moderna"
+    section3Title = "Atualidade"
+  }
+
+  const currentYear = new Date().getFullYear()
 
   return `export default function Site() {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ nome: "", email: "", mensagem: "" })
-  const [formSent, setFormSent] = React.useState(false)
 
   const scrollToSection = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" })
@@ -198,31 +197,23 @@ export function generateFallbackCode(prompt: string): string {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    setFormSent(true)
-    setTimeout(() => setFormSent(false), 3000)
+    alert("Mensagem enviada com sucesso!")
     setFormData({ nome: "", email: "", mensagem: "" })
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm shadow-sm">
+    <div className="min-h-screen" style={{ fontFamily: "system-ui, sans-serif" }}>
+      <nav className="fixed top-0 left-0 right-0 z-50 shadow-lg" style={{ backgroundColor: "${colors.primary}" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex-shrink-0">
-              <span className="text-2xl font-bold" style={{ color: "${theme.primary}" }}>${title}</span>
+            <span className="text-xl font-bold text-white">${title}</span>
+            <div className="hidden md:flex space-x-8">
+              <button onClick={() => scrollToSection("inicio")} className="text-white hover:opacity-80 transition">Início</button>
+              <button onClick={() => scrollToSection("sobre")} className="text-white hover:opacity-80 transition">Sobre</button>
+              <button onClick={() => scrollToSection("servicos")} className="text-white hover:opacity-80 transition">Serviços</button>
+              <button onClick={() => scrollToSection("contato")} className="text-white hover:opacity-80 transition">Contato</button>
             </div>
-            
-            {/* Desktop Menu */}
-            <div className="hidden md:flex items-center space-x-8">
-              <button onClick={() => scrollToSection("inicio")} className="text-gray-700 hover:text-gray-900 transition-colors">Início</button>
-              <button onClick={() => scrollToSection("sobre")} className="text-gray-700 hover:text-gray-900 transition-colors">Sobre</button>
-              <button onClick={() => scrollToSection("recursos")} className="text-gray-700 hover:text-gray-900 transition-colors">Recursos</button>
-              <button onClick={() => scrollToSection("contato")} className="px-4 py-2 rounded-lg text-white transition-all hover:opacity-90" style={{ backgroundColor: "${theme.primary}" }}>Contato</button>
-            </div>
-            
-            {/* Mobile Menu Button */}
-            <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2 rounded-lg hover:bg-gray-100">
+            <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden text-white p-2">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {menuOpen ? (
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -233,156 +224,90 @@ export function generateFallbackCode(prompt: string): string {
             </button>
           </div>
         </div>
-        
-        {/* Mobile Menu */}
         {menuOpen && (
-          <div className="md:hidden bg-white border-t shadow-lg">
-            <div className="px-4 py-3 space-y-2">
-              <button onClick={() => scrollToSection("inicio")} className="block w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100">Início</button>
-              <button onClick={() => scrollToSection("sobre")} className="block w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100">Sobre</button>
-              <button onClick={() => scrollToSection("recursos")} className="block w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100">Recursos</button>
-              <button onClick={() => scrollToSection("contato")} className="block w-full text-left px-3 py-2 rounded-lg text-white" style={{ backgroundColor: "${theme.primary}" }}>Contato</button>
-            </div>
+          <div className="md:hidden border-t border-white/20 px-4 py-3 space-y-2">
+            <button onClick={() => scrollToSection("inicio")} className="block w-full text-left text-white py-2">Início</button>
+            <button onClick={() => scrollToSection("sobre")} className="block w-full text-left text-white py-2">Sobre</button>
+            <button onClick={() => scrollToSection("servicos")} className="block w-full text-left text-white py-2">Serviços</button>
+            <button onClick={() => scrollToSection("contato")} className="block w-full text-left text-white py-2">Contato</button>
           </div>
         )}
       </nav>
 
-      {/* Hero Section */}
-      <section id="inicio" className="pt-16 min-h-screen flex items-center" style={{ background: "linear-gradient(135deg, ${theme.secondary} 0%, ${theme.primary} 100%)" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-6">${heroTitle}</h1>
-            <p className="text-xl sm:text-2xl text-white/90 mb-8 max-w-3xl mx-auto">${heroSubtitle}</p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button onClick={() => scrollToSection("sobre")} className="px-8 py-3 bg-white rounded-lg font-semibold transition-all hover:scale-105 hover:shadow-lg" style={{ color: "${theme.primary}" }}>${ctaText}</button>
-              <button onClick={() => scrollToSection("contato")} className="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold transition-all hover:bg-white/10">Entre em Contato</button>
-            </div>
-          </div>
+      <section id="inicio" className="pt-16 min-h-screen flex items-center justify-center text-white" style={{ background: "linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)" }}>
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <h1 className="text-4xl md:text-6xl font-bold mb-6">${title}</h1>
+          <p className="text-xl md:text-2xl mb-8 opacity-90">${heroSubtitle}</p>
+          <button onClick={() => scrollToSection("sobre")} className="px-8 py-4 rounded-full text-lg font-semibold transition transform hover:scale-105" style={{ backgroundColor: "${colors.accent}", color: "${colors.primary}" }}>
+            Saiba Mais
+          </button>
         </div>
       </section>
 
-      {/* Sobre Section */}
       <section id="sobre" className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Sobre Nós</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">Conheça mais sobre nossa história, missão e valores que nos guiam todos os dias.</p>
-          </div>
+        <div className="max-w-6xl mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-12" style={{ color: "${colors.primary}" }}>${section1Title}</h2>
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Nossa História</h3>
-              <p className="text-gray-600 mb-4">Desde o início, nossa missão tem sido proporcionar experiências excepcionais. Com dedicação e paixão, construímos uma trajetória de sucesso e confiança.</p>
-              <p className="text-gray-600">Continuamos evoluindo e inovando para atender às necessidades de nossos clientes e parceiros, sempre com excelência e comprometimento.</p>
+              <p className="text-lg text-gray-600 mb-6">${section1Text}</p>
+              <p className="text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</p>
             </div>
-            <div className="rounded-2xl overflow-hidden shadow-xl" style={{ backgroundColor: "${theme.accent}" }}>
-              <div className="p-8 text-center">
-                <div className="w-24 h-24 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: "${theme.primary}" }}>
-                  <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </div>
-                <h4 className="text-xl font-bold text-gray-900">Excelência</h4>
-                <p className="text-gray-600 mt-2">Comprometidos com a qualidade em tudo que fazemos</p>
-              </div>
+            <div className="rounded-2xl overflow-hidden shadow-xl p-12 text-center text-white" style={{ backgroundColor: "${colors.primary}" }}>
+              <div className="text-6xl mb-4">★</div>
+              <h3 className="text-2xl font-bold">Excelência</h3>
+              <p className="opacity-80 mt-2">Compromisso com a qualidade</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Recursos Section */}
-      <section id="recursos" className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Nossos Recursos</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">Descubra o que nos torna únicos e por que somos a melhor escolha para você.</p>
-          </div>
+      <section id="servicos" className="py-20">
+        <div className="max-w-6xl mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-12" style={{ color: "${colors.primary}" }}>${section2Title}</h2>
           <div className="grid md:grid-cols-3 gap-8">
-            ${features
-              .map(
-                (f, i) => `
-            <div className="p-6 rounded-2xl bg-white shadow-lg hover:shadow-xl transition-shadow border border-gray-100">
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: "${theme.accent}" }}>
-                <svg className="w-6 h-6" style={{ color: "${theme.primary}" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="${i === 0 ? "M5 13l4 4L19 7" : i === 1 ? "M13 10V3L4 14h7v7l9-11h-7z" : "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"}" />
-                </svg>
+            {[
+              { icon: "⚡", title: "Rápido", desc: "Resultados em tempo recorde" },
+              { icon: "🎯", title: "Preciso", desc: "Foco no que realmente importa" },
+              { icon: "💎", title: "Premium", desc: "Qualidade incomparável" }
+            ].map((item, i) => (
+              <div key={i} className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 text-center">
+                <div className="text-4xl mb-4">{item.icon}</div>
+                <h3 className="text-xl font-bold mb-2" style={{ color: "${colors.primary}" }}>{item.title}</h3>
+                <p className="text-gray-600">{item.desc}</p>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">${f.title}</h3>
-              <p className="text-gray-600">${f.desc}</p>
-            </div>
-            `,
-              )
-              .join("")}
+            ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20" style={{ backgroundColor: "${theme.secondary}" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Pronto para Começar?</h2>
-          <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">Junte-se a nós e descubra uma experiência única. Estamos prontos para ajudá-lo.</p>
-          <button onClick={() => scrollToSection("contato")} className="px-8 py-3 bg-white rounded-lg font-semibold transition-all hover:scale-105 hover:shadow-lg" style={{ color: "${theme.primary}" }}>Fale Conosco</button>
-        </div>
-      </section>
-
-      {/* Contato Section */}
-      <section id="contato" className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Entre em Contato</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">Estamos aqui para ajudar. Envie sua mensagem e retornaremos em breve.</p>
-          </div>
-          <div className="max-w-xl mx-auto">
-            {formSent && (
-              <div className="mb-6 p-4 rounded-lg bg-green-100 text-green-700 text-center">Mensagem enviada com sucesso!</div>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-6">
+      <section id="contato" className="py-20" style={{ backgroundColor: "${colors.primary}" }}>
+        <div className="max-w-4xl mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-white">${section3Title}</h2>
+          <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 shadow-xl">
+            <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Nome</label>
-                <input type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent transition-all" style={{ focusRing: "${theme.primary}" }} placeholder="Seu nome" />
+                <input type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent transition" placeholder="Seu nome" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent transition-all" placeholder="seu@email.com" />
+                <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent transition" placeholder="seu@email.com" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Mensagem</label>
-                <textarea value={formData.mensagem} onChange={(e) => setFormData({...formData, mensagem: e.target.value})} required rows={4} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent transition-all resize-none" placeholder="Sua mensagem..." />
+                <textarea value={formData.mensagem} onChange={(e) => setFormData({...formData, mensagem: e.target.value})} rows={4} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent transition" placeholder="Sua mensagem..." required />
               </div>
-              <button type="submit" className="w-full py-3 rounded-lg text-white font-semibold transition-all hover:opacity-90 hover:scale-[1.02]" style={{ backgroundColor: "${theme.primary}" }}>Enviar Mensagem</button>
-            </form>
-          </div>
+              <button type="submit" className="w-full py-4 rounded-lg text-white font-semibold transition transform hover:scale-[1.02]" style={{ backgroundColor: "${colors.primary}" }}>
+                Enviar Mensagem
+              </button>
+            </div>
+          </form>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer style={{ backgroundColor: "${theme.secondary}" }} className="py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="md:col-span-2">
-              <span className="text-2xl font-bold text-white">${title}</span>
-              <p className="text-white/70 mt-4 max-w-md">Comprometidos em oferecer a melhor experiência para nossos clientes e parceiros.</p>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4">Links Rápidos</h4>
-              <div className="space-y-2">
-                <button onClick={() => scrollToSection("inicio")} className="block text-white/70 hover:text-white transition-colors">Início</button>
-                <button onClick={() => scrollToSection("sobre")} className="block text-white/70 hover:text-white transition-colors">Sobre</button>
-                <button onClick={() => scrollToSection("recursos")} className="block text-white/70 hover:text-white transition-colors">Recursos</button>
-              </div>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4">Contato</h4>
-              <div className="space-y-2 text-white/70">
-                <p>contato@exemplo.com</p>
-                <p>(00) 0000-0000</p>
-              </div>
-            </div>
-          </div>
-          <div className="border-t border-white/20 mt-8 pt-8 text-center">
-            <p className="text-white/60">© 2025 ${title}. Todos os direitos reservados.</p>
-          </div>
-        </div>
+      <footer className="py-8 text-center text-white" style={{ backgroundColor: "${colors.secondary}" }}>
+        <p>© ${currentYear} ${title}. Todos os direitos reservados.</p>
+        <p className="text-sm opacity-70 mt-2">Feito com Connext Builder</p>
       </footer>
     </div>
   )

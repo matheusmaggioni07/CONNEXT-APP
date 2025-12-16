@@ -113,76 +113,78 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const attachStreamToVideo = useCallback(
     (videoElement: HTMLVideoElement | null, stream: MediaStream, label: string): boolean => {
       if (!videoElement || !stream) {
-        console.log(`[v0] attachStreamToVideo(${label}): missing element or stream`)
+        console.log(`[v0] Cannot attach ${label}: missing element or stream`)
         return false
       }
 
-      console.log(`[v0] attachStreamToVideo(${label}): attaching stream with ${stream.getTracks().length} tracks`)
+      console.log(`[v0] Attaching ${label} stream to video element`)
 
+      // Force visibility
+      videoElement.style.visibility = "visible"
+      videoElement.style.opacity = "1"
+      videoElement.style.display = "block"
+
+      // Force all tracks to be enabled
       stream.getTracks().forEach((track) => {
         track.enabled = true
         console.log(`[v0] ${label} track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`)
       })
 
-      if (videoElement.srcObject) {
-        videoElement.srcObject = null
-      }
-
       // Set srcObject
-      videoElement.srcObject = stream
-      videoElement.muted = label.includes("local")
-      videoElement.playsInline = true
-      videoElement.autoplay = true
-
-      videoElement.setAttribute("webkit-playsinline", "true")
-      videoElement.setAttribute("playsinline", "true")
-
-      videoElement.style.visibility = "visible"
-      videoElement.style.opacity = "1"
-
-      videoElement.onplaying = () => {
-        console.log(`[v0] ${label} video is now PLAYING!`)
+      if (videoElement.srcObject !== stream) {
+        videoElement.srcObject = stream
+        console.log(`[v0] ${label}: srcObject set`)
       }
 
-      // Play function with retries
-      const tryPlay = async (attempt = 1): Promise<boolean> => {
+      // Video attributes
+      videoElement.muted = label.includes("local")
+      videoElement.autoplay = true
+      videoElement.playsInline = true
+      videoElement.setAttribute("playsinline", "true")
+      videoElement.setAttribute("webkit-playsinline", "true")
+
+      // Aggressive play attempts
+      const tryPlay = async (attempt: number) => {
         try {
           await videoElement.play()
-          console.log(`[v0] ${label} video playing on attempt ${attempt}!`)
+          console.log(`[v0] ${label}: playing successfully on attempt ${attempt}`)
           return true
-        } catch (err: unknown) {
-          const error = err as Error
-          console.log(`[v0] ${label} play attempt ${attempt} failed:`, error?.message)
-          if (attempt < 15) {
-            return new Promise((resolve) => {
-              setTimeout(async () => {
-                const result = await tryPlay(attempt + 1)
-                resolve(result)
-              }, 200 * attempt)
-            })
-          }
+        } catch (e) {
+          console.log(`[v0] ${label}: play attempt ${attempt} failed:`, e)
           return false
         }
       }
 
-      // Try to play immediately
+      // Try immediately
       tryPlay(1)
 
-      // Also try on various events
+      // Try on loadedmetadata
       videoElement.onloadedmetadata = () => {
-        console.log(`[v0] ${label} metadata loaded`)
-        tryPlay(1)
+        console.log(`[v0] ${label}: loadedmetadata event`)
+        tryPlay(2)
       }
 
+      // Try on canplay
       videoElement.oncanplay = () => {
-        console.log(`[v0] ${label} can play`)
-        tryPlay(1)
+        console.log(`[v0] ${label}: canplay event`)
+        tryPlay(3)
       }
 
-      videoElement.onloadeddata = () => {
-        console.log(`[v0] ${label} data loaded`)
-        tryPlay(1)
+      // Try on canplaythrough
+      videoElement.oncanplaythrough = () => {
+        console.log(`[v0] ${label}: canplaythrough event`)
+        tryPlay(4)
       }
+
+      // Additional delayed attempts
+      const delays = [100, 250, 500, 1000, 2000, 3000]
+      delays.forEach((delay, index) => {
+        setTimeout(() => {
+          if (videoElement.paused && videoElement.srcObject) {
+            tryPlay(5 + index)
+          }
+        }, delay)
+      })
 
       return true
     },
@@ -374,61 +376,66 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           event.track.enabled = true
         }
 
+        let stream: MediaStream
+
         if (event.streams && event.streams[0]) {
-          const stream = event.streams[0]
-          remoteStreamRef.current = stream
-
-          console.log("[v0] Remote stream ID:", stream.id)
-          console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
-
-          stream.getTracks().forEach((track) => {
-            console.log(
-              `[v0] Remote ${track.kind} track: enabled=${track.enabled}, readyState=${track.readyState}, muted=${track.muted}`,
-            )
-            track.enabled = true
-          })
-
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.style.visibility = "visible"
-            remoteVideoRef.current.style.opacity = "1"
-          }
-
-          const attached = attachStreamToVideo(remoteVideoRef.current, stream, "remote")
-          if (attached) {
-            console.log("[v0] Remote stream attached successfully")
-            setRemoteVideoReady(true)
-            setVideoState("connected")
-            setConnectionStatus("Conectado!")
-          }
-
-          const retryDelays = [100, 300, 500, 1000, 1500, 2000, 3000, 5000]
-          retryDelays.forEach((delay, index) => {
-            setTimeout(() => {
-              if (remoteStreamRef.current && remoteVideoRef.current) {
-                console.log(`[v0] Retry ${index + 1} attaching remote stream at ${delay}ms`)
-
-                // Force tracks enabled again
-                remoteStreamRef.current.getTracks().forEach((track) => {
-                  track.enabled = true
-                })
-
-                attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, `remote-retry-${index + 1}`)
-                setRemoteVideoReady(true)
-              }
-            }, delay)
-          })
+          stream = event.streams[0]
+          console.log("[v0] Using stream from event.streams[0]")
         } else {
-          console.log("[v0] No streams array, creating new MediaStream from track")
-          const newStream = new MediaStream([event.track])
-          remoteStreamRef.current = remoteStreamRef.current || new MediaStream()
-          remoteStreamRef.current.addTrack(event.track)
-
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.style.visibility = "visible"
-            attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-new-stream")
-            setRemoteVideoReady(true)
+          console.log("[v0] No streams array, creating MediaStream from track")
+          if (remoteStreamRef.current) {
+            remoteStreamRef.current.addTrack(event.track)
+            stream = remoteStreamRef.current
+          } else {
+            stream = new MediaStream([event.track])
           }
         }
+
+        remoteStreamRef.current = stream
+
+        console.log("[v0] Remote stream ID:", stream.id)
+        console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
+
+        stream.getTracks().forEach((track) => {
+          track.enabled = true
+          console.log(`[v0] Remote ${track.kind} track: enabled=${track.enabled}, readyState=${track.readyState}`)
+        })
+
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.style.visibility = "visible"
+          remoteVideoRef.current.style.opacity = "1"
+          remoteVideoRef.current.style.display = "block"
+        }
+
+        const attached = attachStreamToVideo(remoteVideoRef.current, stream, "remote")
+        if (attached) {
+          console.log("[v0] Remote stream attached successfully")
+          setRemoteVideoReady(true)
+          setVideoState("connected")
+          setConnectionStatus("Conectado!")
+        }
+
+        const retryDelays = [100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 4000, 5000]
+        retryDelays.forEach((delay, index) => {
+          setTimeout(() => {
+            if (remoteStreamRef.current && remoteVideoRef.current) {
+              console.log(`[v0] Retry ${index + 1} attaching remote stream at ${delay}ms`)
+
+              // Force tracks enabled again
+              remoteStreamRef.current.getTracks().forEach((track) => {
+                track.enabled = true
+              })
+
+              // Force visibility
+              remoteVideoRef.current.style.visibility = "visible"
+              remoteVideoRef.current.style.opacity = "1"
+              remoteVideoRef.current.style.display = "block"
+
+              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, `remote-retry-${index + 1}`)
+              setRemoteVideoReady(true)
+            }
+          }, delay)
+        })
       }
 
       // Connection state monitoring
@@ -440,6 +447,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           setVideoState("connected")
           setConnectionStatus("Conectado!")
 
+          // Re-attach both local and remote streams
+          if (localStreamRef.current && localVideoRef.current) {
+            console.log("[v0] Re-attaching local stream on connection")
+            localStreamRef.current.getTracks().forEach((track) => {
+              track.enabled = true
+            })
+            attachStreamToVideo(localVideoRef.current, localStreamRef.current, "local-on-connected")
+            setLocalVideoReady(true)
+          }
+
           if (remoteStreamRef.current && remoteVideoRef.current) {
             console.log("[v0] Re-attaching remote stream on connection established")
             remoteStreamRef.current.getTracks().forEach((track) => {
@@ -447,18 +464,23 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             })
             remoteVideoRef.current.style.visibility = "visible"
             remoteVideoRef.current.style.opacity = "1"
+            remoteVideoRef.current.style.display = "block"
             attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-on-connected")
             setRemoteVideoReady(true)
           }
 
-          if (localStreamRef.current && localVideoRef.current) {
-            console.log("[v0] Re-attaching local stream on connection established")
-            localStreamRef.current.getTracks().forEach((track) => {
-              track.enabled = true
-            })
-            attachStreamToVideo(localVideoRef.current, localStreamRef.current, "local-on-connected")
-            setLocalVideoReady(true)
-          }
+          const postConnectDelays = [500, 1000, 2000, 3000, 5000]
+          postConnectDelays.forEach((delay) => {
+            setTimeout(() => {
+              if (remoteStreamRef.current && remoteVideoRef.current && pc.connectionState === "connected") {
+                console.log(`[v0] Post-connect retry at ${delay}ms`)
+                remoteStreamRef.current.getTracks().forEach((t) => (t.enabled = true))
+                remoteVideoRef.current.style.visibility = "visible"
+                remoteVideoRef.current.style.opacity = "1"
+                attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, `remote-post-connect-${delay}`)
+              }
+            }, delay)
+          })
         } else if (pc.connectionState === "disconnected") {
           console.log("[v0] Connection disconnected, will retry...")
           setConnectionStatus("Reconectando...")
