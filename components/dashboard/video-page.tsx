@@ -266,6 +266,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       console.log("[v0] Room:", roomId)
       console.log("[v0] I am initiator:", isInitiator)
       console.log("[v0] Partner ID:", partnerId)
+      console.log("[v0] My ID:", userId)
 
       isInitiatorRef.current = isInitiator
       processedSignalingIds.current.clear()
@@ -302,6 +303,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       peerConnectionRef.current = pc
       const supabase = createClient()
+
+      await supabase.from("signaling").delete().eq("room_id", roomId)
+      await supabase.from("ice_candidates").delete().eq("room_id", roomId)
 
       // Add local tracks FIRST
       if (localStreamRef.current) {
@@ -402,23 +406,22 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
       }
 
-      // ICE candidate handling
       pc.onicecandidate = async (event) => {
         if (event.candidate) {
           try {
-            await supabase.from("video_signaling").insert({
+            await supabase.from("ice_candidates").insert({
               room_id: roomId,
-              sender_id: userId,
-              type: "ice-candidate",
-              payload: { candidate: event.candidate.toJSON() },
+              from_user_id: userId,
+              to_user_id: partnerId,
+              candidate: JSON.stringify(event.candidate.toJSON()),
             })
+            console.log("[v0] Sent ICE candidate")
           } catch (error) {
             console.error("[v0] Error sending ICE candidate:", error)
           }
         }
       }
 
-      // Start signaling polling
       const pollForSignaling = async () => {
         if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed") {
           if (signalingPollingRef.current) {
@@ -429,11 +432,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
 
         try {
+          // Poll for signaling messages (offer/answer)
           const { data: signals } = await supabase
-            .from("video_signaling")
+            .from("signaling")
             .select("*")
             .eq("room_id", roomId)
-            .eq("sender_id", partnerId)
+            .eq("from_user_id", partnerId)
+            .eq("to_user_id", userId)
             .order("created_at", { ascending: true })
 
           if (signals && signals.length > 0) {
@@ -444,12 +449,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               const pc = peerConnectionRef.current
               if (!pc || pc.connectionState === "closed") break
 
+              console.log("[v0] Processing signal type:", signal.type)
+
               if (signal.type === "offer" && !isInitiator) {
                 console.log("[v0] Received offer from partner")
-                await pc.setRemoteDescription(new RTCSessionDescription(signal.payload))
+                const offerDesc = JSON.parse(signal.sdp)
+                await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
                 hasRemoteDescriptionRef.current = true
 
                 // Process queued ICE candidates
+                console.log("[v0] Processing", iceCandidatesQueueRef.current.length, "queued ICE candidates")
                 for (const candidate of iceCandidatesQueueRef.current) {
                   await pc.addIceCandidate(candidate)
                 }
@@ -459,33 +468,60 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
 
-                await supabase.from("video_signaling").insert({
+                await supabase.from("signaling").insert({
                   room_id: roomId,
-                  sender_id: userId,
+                  from_user_id: userId,
+                  to_user_id: partnerId,
                   type: "answer",
-                  payload: answer,
+                  sdp: JSON.stringify(answer),
                 })
+                console.log("[v0] Answer sent")
               } else if (signal.type === "answer" && isInitiator) {
                 console.log("[v0] Received answer from partner")
-                await pc.setRemoteDescription(new RTCSessionDescription(signal.payload))
+                const answerDesc = JSON.parse(signal.sdp)
+                await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
                 hasRemoteDescriptionRef.current = true
 
                 // Process queued ICE candidates
+                console.log("[v0] Processing", iceCandidatesQueueRef.current.length, "queued ICE candidates")
                 for (const candidate of iceCandidatesQueueRef.current) {
                   await pc.addIceCandidate(candidate)
                 }
                 iceCandidatesQueueRef.current = []
-              } else if (signal.type === "ice-candidate") {
-                if (processedIceCandidateIds.current.has(signal.id)) continue
-                processedIceCandidateIds.current.add(signal.id)
+              }
+            }
+          }
 
-                const candidate = new RTCIceCandidate(signal.payload.candidate)
+          // Poll for ICE candidates
+          const { data: iceCandidates } = await supabase
+            .from("ice_candidates")
+            .select("*")
+            .eq("room_id", roomId)
+            .eq("from_user_id", partnerId)
+            .eq("to_user_id", userId)
+            .order("created_at", { ascending: true })
+
+          if (iceCandidates && iceCandidates.length > 0) {
+            for (const ice of iceCandidates) {
+              if (processedIceCandidateIds.current.has(ice.id)) continue
+              processedIceCandidateIds.current.add(ice.id)
+
+              const pc = peerConnectionRef.current
+              if (!pc || pc.connectionState === "closed") break
+
+              try {
+                const candidateObj = JSON.parse(ice.candidate)
+                const candidate = new RTCIceCandidate(candidateObj)
 
                 if (hasRemoteDescriptionRef.current) {
                   await pc.addIceCandidate(candidate)
+                  console.log("[v0] Added ICE candidate directly")
                 } else {
                   iceCandidatesQueueRef.current.push(candidate)
+                  console.log("[v0] Queued ICE candidate")
                 }
+              } catch (error) {
+                console.error("[v0] Error processing ICE candidate:", error)
               }
             }
           }
@@ -497,7 +533,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       signalingPollingRef.current = setInterval(pollForSignaling, 500)
       pollForSignaling()
 
-      // If initiator, create and send offer
       if (isInitiator) {
         try {
           console.log("[v0] Creating offer as initiator...")
@@ -507,13 +542,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           })
           await pc.setLocalDescription(offer)
 
-          await supabase.from("video_signaling").insert({
+          await supabase.from("signaling").insert({
             room_id: roomId,
-            sender_id: userId,
+            from_user_id: userId,
+            to_user_id: partnerId,
             type: "offer",
-            payload: offer,
+            sdp: JSON.stringify(offer),
           })
-          console.log("[v0] Offer sent")
+          console.log("[v0] Offer sent to database")
         } catch (error) {
           console.error("[v0] Error creating offer:", error)
         }
@@ -546,13 +582,25 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       currentRoomIdRef.current = result.roomId
 
+      if (result.matched && result.partnerId && result.partnerProfile) {
+        currentPartnerIdRef.current = result.partnerId
+        setCurrentPartner(result.partnerProfile as PartnerProfile)
+        setVideoState("connecting")
+        setConnectionStatus("Estabelecendo conexão...")
+        setIsLoading(false)
+
+        const isInitiator = userId < result.partnerId
+        await setupWebRTC(result.roomId!, isInitiator, result.partnerId)
+        return
+      }
+
       // Poll for room status
       pollingRef.current = setInterval(async () => {
         if (!currentRoomIdRef.current) return
 
         const status = await checkRoomStatus(currentRoomIdRef.current)
 
-        if (status.matched && status.partnerId && status.partnerProfile) {
+        if (status.status === "active" && status.partnerId && status.partnerProfile) {
           if (pollingRef.current) {
             clearInterval(pollingRef.current)
             pollingRef.current = null
