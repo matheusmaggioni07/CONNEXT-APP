@@ -33,7 +33,6 @@ import {
   Minimize2,
   ImageIcon,
   Clipboard,
-  Figma,
   Link,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -127,6 +126,50 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const [attachedImage, setAttachedImage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const loadChatHistory = useCallback(async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/builder/chat-history?projectId=${projectId}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.messages && data.messages.length > 0) {
+          // Convert database format to message format
+          const loadedMessages = data.messages.map((msg: any) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            code: msg.code,
+            timestamp: new Date(msg.created_at),
+          }))
+          setMessages(loadedMessages)
+        }
+      }
+    } catch (err) {
+      console.error("Error loading chat history:", err)
+    }
+  }, [])
+
+  const saveChatMessage = useCallback(
+    async (role: "user" | "assistant", content: string, code?: string) => {
+      if (!activeProject?.id) return
+
+      try {
+        await fetch("/api/builder/chat-history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: activeProject.id,
+            role,
+            content,
+            code,
+          }),
+        })
+      } catch (err) {
+        console.error("Error saving chat message:", err)
+      }
+    },
+    [activeProject?.id],
+  )
+
   const loadProjects = useCallback(async () => {
     setIsLoadingProjects(true)
     try {
@@ -145,6 +188,14 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   useEffect(() => {
     loadProjects()
   }, [loadProjects])
+
+  useEffect(() => {
+    if (activeProject?.id) {
+      loadChatHistory(activeProject.id)
+    } else {
+      setMessages([])
+    }
+  }, [activeProject?.id, loadChatHistory])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -390,8 +441,6 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       html = html.replace(/fillRule=/g, "fillRule=")
       html = html.replace(/clipRule=/g, "clipRule=")
       html = html.replace(/clipPath=/g, "clipPath=")
-
-      // Extract onClick handlers and convert to appropriate actions
 
       // Convert buttons with scrollTo to anchor links
       html = html.replace(
@@ -866,24 +915,6 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
         </div>
       </section>
       
-      <section className="py-24 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-gradient-to-r from-rose-900/40 via-black to-amber-900/40 rounded-3xl p-8 sm:p-12 text-center border border-white/10">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-emerald-500/20 flex items-center justify-center">
-              <svg className="w-8 h-8 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-            </div>
-            <h3 className="text-2xl sm:text-3xl font-light mb-4">Quer uma peça exclusiva?</h3>
-            <p className="text-gray-400 mb-8 max-w-lg mx-auto">
-              Entre em contato pelo WhatsApp e receba atendimento personalizado. Enviamos para todo o Brasil!
-            </p>
-            <a href="https://wa.me/5551999999999" target="_blank" className="inline-flex items-center gap-3 px-8 py-4 bg-emerald-600 rounded-full font-medium hover:bg-emerald-500 transition-colors">
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-              Falar no WhatsApp
-            </a>
-          </div>
-        </div>
-      </section>
-      
       <footer className="py-12 px-6 border-t border-white/10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="text-xl font-light tracking-widest bg-gradient-to-r from-rose-300 to-amber-300 bg-clip-text text-transparent">${nome.toUpperCase()}</span>
@@ -1321,6 +1352,10 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
         const data = await res.json()
         await loadProjects()
         setActiveProject(data.project)
+        // Save the initial message after creating a project
+        if (data.project) {
+          await saveChatMessage("assistant", `Projeto "${data.project.name}" criado com sucesso!`, code)
+        }
         return data.project
       }
     } catch (err) {
@@ -1363,130 +1398,181 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     if ((!input.trim() && !attachedImage) || isLoading) return
 
     if (userCredits <= 0 && profile?.plan !== "pro") {
-      setShowUpgradeModal(true)
+      setError("Créditos insuficientes. Faça upgrade para Pro ou aguarde amanhã.")
       return
     }
+
+    const currentInput = input
+    const currentImage = attachedImage
+
+    setInput("")
+    setAttachedImage(null)
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input,
+      content: currentInput,
       timestamp: new Date(),
     }
 
     setMessages((prev) => [...prev, userMessage])
-    const currentInput = input
-    const currentImage = attachedImage
-    setInput("")
-    setAttachedImage(null)
-    setIsLoading(true)
     setError(null)
+    setIsLoading(true)
 
-    // Show thinking steps
-    const thinkingSteps: ThoughtStep[] = [
-      { id: "1", type: "thinking", message: "Analisando sua solicitação...", status: "active", duration: 800 },
-      { id: "2", type: "scanning", message: "Processando requisitos...", status: "pending", duration: 600 },
-      {
-        id: "3",
-        type: "applying",
-        message: "Gerando código com Claude Sonnet 4...",
-        status: "pending",
-        duration: 1500,
-      },
-    ]
-    setThoughts(thinkingSteps)
+    // Save user message to chat history
+    await saveChatMessage("user", currentInput)
 
-    // Animate through steps
-    for (let i = 0; i < thinkingSteps.length; i++) {
-      await new Promise((r) => setTimeout(r, thinkingSteps[i].duration || 500))
-      setThoughts((prev) =>
-        prev.map((t, idx) => ({
-          ...t,
-          status: idx < i + 1 ? "done" : idx === i + 1 ? "active" : "pending",
-        })),
-      )
-    }
+    let lastError: Error | null = null
+    let retries = 0
+    const MAX_RETRIES = 3
+    const TIMEOUT_MS = 120000 // 2 minutos timeout
+    let fullResponse = ""
 
-    try {
-      const projectContext = activeProject?.builder_files?.map((f) => ({
-        name: f.name,
-        content: f.content,
-      }))
+    while (retries < MAX_RETRIES) {
+      try {
+        const projectContext = activeProject?.builder_files?.map((f) => ({
+          name: f.name,
+          content: f.content,
+        }))
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60s timeout
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
-      const res = await fetch("/api/builder/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: currentInput,
-          image_url: currentImage,
-          projectContext,
-          history: messages.slice(-4).map((m) => ({ role: m.role, content: m.content })),
-        }),
-        signal: controller.signal,
-      })
+        const res = await fetch("/api/builder/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.JSON.stringify({
+            prompt: currentInput,
+            image_url: currentImage,
+            projectContext,
+            history: messages.slice(-4).map((m) => ({ role: m.role, content: m.content })),
+          }),
+          signal: controller.signal,
+        })
 
-      clearTimeout(timeoutId)
+        clearTimeout(timeoutId)
 
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => "Erro desconhecido")
-        console.error("[v0] API Error:", res.status, errorText)
-        throw new Error(`Erro ${res.status}: ${errorText}`)
-      }
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => "Erro desconhecido")
+          lastError = new Error(`Erro ${res.status}: ${errorText}`)
+          retries++
 
-      const data = await res.json()
+          if (retries < MAX_RETRIES) {
+            setError(`Tentando novamente... (${retries}/${MAX_RETRIES})`)
+            await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
+            continue
+          } else {
+            throw lastError
+          }
+        }
 
-      if (data.code) {
-        setGeneratedCode(data.code)
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error("Failed to get response reader")
 
-        // Auto-save to project
-        if (activeProject) {
-          await updateProject(activeProject.id, data.code)
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = new TextDecoder().decode(value)
+          const lines = chunk.split("\n")
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.substring(6)
+              if (data === "[DONE]") break // End of stream
+
+              try {
+                const parsedData = JSON.parse(data)
+                const delta = parsedData.choices?.[0]?.delta?.content
+                if (delta) {
+                  fullResponse += delta
+                  // Update message content incrementally
+                  setMessages((prev) => {
+                    const updatedMessages = [...prev]
+                    const lastMessage = updatedMessages[updatedMessages.length - 1]
+                    if (lastMessage && lastMessage.role === "assistant") {
+                      lastMessage.content = fullResponse
+                    } else {
+                      // If no assistant message yet, create one
+                      updatedMessages.push({
+                        id: (Date.now() + 1).toString(),
+                        role: "assistant",
+                        content: fullResponse,
+                        timestamp: new Date(),
+                      })
+                    }
+                    return updatedMessages
+                  })
+                }
+              } catch (e) {
+                console.error("Error parsing chunk:", e, data)
+              }
+            }
+          }
+        }
+
+        // After the loop finishes, the fullResponse is complete
+        if (fullResponse) {
+          setGeneratedCode(fullResponse.match(/```tsx\n(.*)\n```/s)?.[1] || "") // Extract code block if present
+
+          // Auto-save to project
+          if (activeProject) {
+            await updateProject(activeProject.id, generatedCode || "")
+          } else {
+            // Create new project
+            const projectName = currentInput.substring(0, 50) || "Novo Projeto"
+            const newProject = await saveProject(projectName, generatedCode || "")
+            if (!newProject) throw new Error("Falha ao criar novo projeto.")
+          }
+
+          // Save assistant message to database
+          if (fullResponse) {
+            await saveChatMessage("assistant", fullResponse, generatedCode || "")
+          }
+
+          // Update credits
+          if (profile?.plan !== "pro") {
+            const newCredits = userCredits - 1
+            setUserCredits(newCredits)
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
+            }
+          }
+
+          if (window.innerWidth < 1024) {
+            setMobileView("preview")
+          }
+          return // Success - exit retry loop
         } else {
-          // Create new project
-          const projectName = currentInput.substring(0, 50) || "Novo Projeto"
-          await saveProject(projectName, data.code)
+          throw new Error("Resposta vazia da API")
         }
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err))
+        retries++
 
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: data.explanation || "Site gerado com sucesso!",
-          timestamp: new Date(),
-          code: data.code,
+        if (retries < MAX_RETRIES) {
+          if (lastError.name === "AbortError") {
+            setError(`Timeout... Tentando novamente (${retries}/${MAX_RETRIES})`)
+          } else {
+            setError(`Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})`)
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
         }
-        setMessages((prev) => [...prev, assistantMessage])
-
-        // Update credits
-        if (profile?.plan !== "pro") {
-          const newCredits = userCredits - 1
-          setUserCredits(newCredits)
-          localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
+      } finally {
+        setIsLoading(false)
+        setThoughts([]) // Clear thoughts after processing
+        if (retries >= MAX_RETRIES) {
+          if (lastError) {
+            if (lastError.name === "AbortError") {
+              setError("Tempo limite excedido mesmo após 3 tentativas. Tente um prompt mais simples.")
+            } else {
+              setError(lastError.message || "Erro ao gerar o site após 3 tentativas.")
+            }
+          } else {
+            setError("Erro ao gerar o site. Tente novamente.")
+          }
         }
-
-        if (window.innerWidth < 1024) {
-          setMobileView("preview")
-        }
-      } else {
-        throw new Error("Resposta inválida da API")
       }
-    } catch (err) {
-      console.error("[v0] Builder error:", err)
-
-      if (err instanceof Error) {
-        if (err.name === "AbortError") {
-          setError("Tempo limite excedido. Tente novamente.")
-        } else {
-          setError(err.message || "Erro ao gerar o site. Tente novamente.")
-        }
-      } else {
-        setError("Erro ao gerar o site. Tente novamente.")
-      }
-    } finally {
-      setIsLoading(false)
-      setThoughts([])
     }
   }
 
@@ -1871,16 +1957,6 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                           </div>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="gap-3 cursor-pointer"
-                          onClick={() => setInput(input + " [Importar do Figma - Em breve]")}
-                        >
-                          <Figma className="w-4 h-4 text-green-400" />
-                          <div>
-                            <p className="font-medium text-sm">Importar do Figma</p>
-                            <p className="text-xs text-muted-foreground">Em breve</p>
-                          </div>
-                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="gap-3 cursor-pointer"
                           onClick={() => {

@@ -53,7 +53,7 @@ INSTRUÇÕES CRÍTICAS:
         model: "anthropic/claude-sonnet-4-20250514",
         system: SYSTEM_PROMPT,
         prompt: enhancedPrompt,
-        maxTokens: 16000,
+        maxTokens: 20000, // Increased from 16000 to 20000
         temperature: 0.7,
       })
 
