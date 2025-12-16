@@ -154,15 +154,17 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     if (profile?.plan === "pro") {
       setUserCredits(999999)
     } else {
-      const savedCredits = localStorage.getItem(`builder_credits_${user.id}`)
-      if (savedCredits) {
-        setUserCredits(Number.parseInt(savedCredits))
+      if (typeof window !== "undefined") {
+        const savedCredits = localStorage.getItem(`builder_credits_${user.id}`)
+        if (savedCredits) {
+          setUserCredits(Number.parseInt(savedCredits))
+        }
       }
     }
   }, [profile, user.id])
 
   useEffect(() => {
-    if (profile?.plan !== "pro") {
+    if (profile?.plan !== "pro" && typeof window !== "undefined") {
       localStorage.setItem(`builder_credits_${user.id}`, userCredits.toString())
     }
   }, [userCredits, user.id, profile])
@@ -351,7 +353,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_.]*\}/g, "")
       html = html.replace(/\{\s*`[^`]*`\s*\}/g, "")
 
-      // Step 6: Clean up any remaining orphan braces
+      // Step 6: Clean up any remaining curly braces
       html = html.replace(/\{\s*\}/g, "")
       html = html.replace(/\{\s*\n\s*\}/g, "")
 

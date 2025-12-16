@@ -116,15 +116,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const attachStreamToVideo = useCallback(
     (videoElement: HTMLVideoElement | null, stream: MediaStream, label: string): boolean => {
       if (!videoElement) {
-        console.log(`[v0] ${label}: No video element`)
         return false
       }
       if (!stream) {
-        console.log(`[v0] ${label}: No stream`)
         return false
       }
-
-      console.log(`[v0] Attaching ${label} - tracks:`, stream.getTracks().length)
 
       // Enable all tracks
       stream.getTracks().forEach((track) => {
@@ -162,8 +158,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const cleanup = useCallback(async () => {
     if (isCleaningUpRef.current) return
     isCleaningUpRef.current = true
-
-    console.log("[v0] === CLEANUP STARTED ===")
 
     if (pollingRef.current) {
       clearInterval(pollingRef.current)
@@ -215,7 +209,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     setIsLiked(false)
 
     isCleaningUpRef.current = false
-    console.log("[v0] === CLEANUP COMPLETED ===")
   }, [])
 
   const getLocalStream = useCallback(async () => {
@@ -236,9 +229,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         },
       }
 
-      console.log("[v0] Requesting media...")
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      console.log("[v0] Got local stream with", stream.getTracks().length, "tracks")
 
       localStreamRef.current = stream
 
@@ -277,11 +268,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         hasRemoteDescriptionRef.current = false
         connectionAttemptRef.current = 0
 
-        console.log("[v0] ====== WEBRTC SETUP ======")
-        console.log("[v0] Room:", roomId)
-        console.log("[v0] I am initiator:", isInitiator)
-        console.log("[v0] Partner ID:", partnerId)
-
         isInitiatorRef.current = isInitiator
         currentRoomIdRef.current = roomId
         currentPartnerIdRef.current = partnerId
@@ -298,7 +284,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             const data = await response.json()
             if (data.iceServers && data.iceServers.length > 0) {
               iceServers = data.iceServers
-              console.log("[v0] Got", iceServers.length, "ICE servers")
             }
           }
         } catch (error) {
@@ -318,15 +303,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           await supabase.from("signaling").delete().eq("room_id", roomId)
           await supabase.from("ice_candidates").delete().eq("room_id", roomId)
         } catch (e) {
-          console.log("[v0] Could not clean old signaling")
+          // Silent cleanup - not critical
         }
 
         if (localStreamRef.current) {
           const tracks = localStreamRef.current.getTracks()
-          console.log("[v0] Adding", tracks.length, "local tracks")
           tracks.forEach((track) => {
             pc.addTrack(track, localStreamRef.current!)
-            console.log("[v0] Added track:", track.kind)
           })
         } else {
           console.error("[v0] ERROR: No local stream!")
@@ -334,7 +317,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
 
         pc.ontrack = (event) => {
-          console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind, "- streams:", event.streams.length)
           event.track.enabled = true
 
           // Use the stream provided by the event
@@ -348,8 +330,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           if (!remoteStreamRef.current.getTracks().find((t) => t.id === event.track.id)) {
             remoteStreamRef.current.addTrack(event.track)
           }
-
-          console.log("[v0] Remote stream now has", remoteStreamRef.current.getTracks().length, "tracks")
 
           // Attach to video element
           if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
@@ -365,21 +345,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
 
         pc.onconnectionstatechange = () => {
-          console.log("[v0] Connection state:", pc.connectionState)
-
           if (pc.connectionState === "connected" || pc.connectionState === "completed") {
-            console.log("[v0] ✓ CONNECTION ESTABLISHED")
             setVideoState("connected")
             setConnectionStatus("Conectado!")
           } else if (pc.connectionState === "disconnected") {
-            console.log("[v0] ⚠ Connection disconnected")
             setConnectionStatus("Reconectando...")
           } else if (pc.connectionState === "failed") {
-            console.log("[v0] ✗ Connection FAILED")
             setConnectionStatus("Conexão falhou")
             if (isInitiatorRef.current && connectionAttemptRef.current < maxConnectionAttempts) {
               connectionAttemptRef.current++
-              console.log("[v0] Attempting ICE restart", connectionAttemptRef.current, "/", maxConnectionAttempts)
               try {
                 pc.restartIce()
               } catch (e) {
@@ -390,9 +364,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
 
         pc.oniceconnectionstatechange = () => {
-          console.log("[v0] ICE connection state:", pc.iceConnectionState)
           if (pc.iceConnectionState === "failed") {
-            console.log("[v0] ✗ ICE FAILED - connection state:", pc.connectionState)
+            console.error("[v0] ICE connection failed")
           }
         }
 
@@ -405,12 +378,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 to_user_id: partnerId,
                 candidate: JSON.stringify(event.candidate.toJSON()),
               })
-              console.log("[v0] ✓ ICE candidate sent")
             } catch (error) {
               console.error("[v0] Error sending ICE candidate:", error)
             }
-          } else {
-            console.log("[v0] ICE gathering complete")
           }
         }
 
@@ -448,17 +418,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
                 try {
                   if (signal.type === "offer" && !isInitiator) {
-                    console.log("[v0] Processing OFFER from initiator")
                     const offerDesc = JSON.parse(signal.sdp)
 
                     await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
                     hasRemoteDescriptionRef.current = true
-                    console.log("[v0] ✓ Remote description set (offer)")
 
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
                         await pc.addIceCandidate(candidate)
-                        console.log("[v0] ✓ Added queued ICE candidate")
                       } catch (e) {
                         console.error("[v0] Error adding queued candidate:", e)
                       }
@@ -468,7 +435,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     // Create and send answer
                     const answer = await pc.createAnswer()
                     await pc.setLocalDescription(answer)
-                    console.log("[v0] Created answer")
 
                     await supabase.from("signaling").insert({
                       room_id: roomId,
@@ -477,18 +443,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                       type: "answer",
                       sdp: JSON.stringify(answer),
                     })
-                    console.log("[v0] ✓ Answer sent")
                   } else if (signal.type === "answer" && isInitiator) {
-                    console.log("[v0] Processing ANSWER from respondent")
                     const answerDesc = JSON.parse(signal.sdp)
                     await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
                     hasRemoteDescriptionRef.current = true
-                    console.log("[v0] ✓ Remote description set (answer)")
 
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
                         await pc.addIceCandidate(candidate)
-                        console.log("[v0] ✓ Added queued ICE candidate")
                       } catch (e) {
                         console.error("[v0] Error adding queued candidate:", e)
                       }
@@ -530,20 +492,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   if (hasRemoteDescriptionRef.current) {
                     try {
                       await pc.addIceCandidate(candidate)
-                      console.log("[v0] ✓ Added ICE candidate directly")
                     } catch (error) {
                       const err = error as Error
-                      if (err.message?.includes("not in correct state")) {
-                        console.log("[v0] ⚠ ICE candidate rejected (state issue) - queuing")
-                        iceCandidateBufferRef.current.push(candidate)
-                      } else if (err.message?.includes("duplicate")) {
-                        console.log("[v0] ⚠ Duplicate ICE candidate (ignored)")
-                      } else {
+                      if (!err.message?.includes("duplicate")) {
                         console.error("[v0] ICE add error:", err.message)
                       }
                     }
                   } else {
-                    console.log("[v0] ⏳ Buffering ICE candidate (waiting for remote description)")
                     iceCandidateBufferRef.current.push(candidate)
                   }
                 } catch (error) {
@@ -562,13 +517,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         // Create offer if initiator
         if (isInitiator) {
           try {
-            console.log("[v0] Creating offer as initiator...")
             const offer = await pc.createOffer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             })
             await pc.setLocalDescription(offer)
-            console.log("[v0] ✓ Local description set (offer)")
 
             // Send offer
             await supabase.from("signaling").insert({
@@ -578,7 +531,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               type: "offer",
               sdp: JSON.stringify(offer),
             })
-            console.log("[v0] ✓ Offer sent")
           } catch (error) {
             console.error("[v0] Error creating offer:", error)
           }

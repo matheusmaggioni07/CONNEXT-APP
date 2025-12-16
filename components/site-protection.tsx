@@ -10,8 +10,7 @@ export function SiteProtection() {
         window.location.hostname.includes("vercel.app") ||
         window.location.hostname.includes("v0.dev") ||
         window.location.hostname.includes("vusercontent.net") ||
-        window.location.hostname.includes("lite.vusercontent.net") ||
-        process.env.NODE_ENV === "development")
+        window.location.hostname.includes("lite.vusercontent.net"))
 
     if (isDevEnvironment) {
       return
