@@ -111,46 +111,77 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [videoState])
 
   const attachStreamToVideo = useCallback(
-    (videoElement: HTMLVideoElement | null, stream: MediaStream | null, label: string) => {
+    (videoElement: HTMLVideoElement | null, stream: MediaStream, label: string): boolean => {
       if (!videoElement || !stream) {
-        console.log(`[v0] Cannot attach ${label}: element=${!!videoElement}, stream=${!!stream}`)
+        console.log(`[v0] attachStreamToVideo(${label}): missing element or stream`)
         return false
       }
 
-      console.log(`[v0] Attaching ${label} stream with ${stream.getTracks().length} tracks`)
+      console.log(`[v0] attachStreamToVideo(${label}): attaching stream with ${stream.getTracks().length} tracks`)
 
-      // Enable all tracks
       stream.getTracks().forEach((track) => {
         track.enabled = true
-        console.log(`[v0] ${label} track: ${track.kind}, enabled: ${track.enabled}, readyState: ${track.readyState}`)
+        console.log(`[v0] ${label} track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`)
       })
 
-      videoElement.srcObject = stream
-      videoElement.muted = label === "local" // Only mute local video
+      if (videoElement.srcObject) {
+        videoElement.srcObject = null
+      }
 
-      const playVideo = async () => {
+      // Set srcObject
+      videoElement.srcObject = stream
+      videoElement.muted = label.includes("local")
+      videoElement.playsInline = true
+      videoElement.autoplay = true
+
+      videoElement.setAttribute("webkit-playsinline", "true")
+      videoElement.setAttribute("playsinline", "true")
+
+      videoElement.style.visibility = "visible"
+      videoElement.style.opacity = "1"
+
+      videoElement.onplaying = () => {
+        console.log(`[v0] ${label} video is now PLAYING!`)
+      }
+
+      // Play function with retries
+      const tryPlay = async (attempt = 1): Promise<boolean> => {
         try {
           await videoElement.play()
-          console.log(`[v0] ${label} video playing!`)
+          console.log(`[v0] ${label} video playing on attempt ${attempt}!`)
           return true
-        } catch (e: any) {
-          console.log(`[v0] ${label} play error:`, e.message)
+        } catch (err: unknown) {
+          const error = err as Error
+          console.log(`[v0] ${label} play attempt ${attempt} failed:`, error?.message)
+          if (attempt < 15) {
+            return new Promise((resolve) => {
+              setTimeout(async () => {
+                const result = await tryPlay(attempt + 1)
+                resolve(result)
+              }, 200 * attempt)
+            })
+          }
           return false
         }
       }
 
       // Try to play immediately
-      playVideo()
+      tryPlay(1)
 
-      // Also set up event handlers
+      // Also try on various events
       videoElement.onloadedmetadata = () => {
         console.log(`[v0] ${label} metadata loaded`)
-        playVideo()
+        tryPlay(1)
       }
 
       videoElement.oncanplay = () => {
         console.log(`[v0] ${label} can play`)
-        playVideo()
+        tryPlay(1)
+      }
+
+      videoElement.onloadeddata = () => {
+        console.log(`[v0] ${label} data loaded`)
+        tryPlay(1)
       }
 
       return true
@@ -195,6 +226,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
 
     if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => track.stop())
       remoteStreamRef.current = null
     }
 
@@ -324,61 +356,120 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       pc.ontrack = (event) => {
         console.log("[v0] *** RECEIVED REMOTE TRACK ***", event.track.kind)
+        console.log("[v0] Track readyState:", event.track.readyState)
+        console.log("[v0] Track enabled:", event.track.enabled)
+
+        event.track.enabled = true
+
+        event.track.onended = () => {
+          console.log(`[v0] Remote ${event.track.kind} track ended!`)
+        }
+
+        event.track.onmute = () => {
+          console.log(`[v0] Remote ${event.track.kind} track muted`)
+        }
+
+        event.track.onunmute = () => {
+          console.log(`[v0] Remote ${event.track.kind} track unmuted`)
+          event.track.enabled = true
+        }
 
         if (event.streams && event.streams[0]) {
           const stream = event.streams[0]
           remoteStreamRef.current = stream
 
+          console.log("[v0] Remote stream ID:", stream.id)
           console.log("[v0] Remote stream has", stream.getTracks().length, "tracks")
 
-          // Attach to video element
-          if (attachStreamToVideo(remoteVideoRef.current, stream, "remote")) {
+          stream.getTracks().forEach((track) => {
+            console.log(
+              `[v0] Remote ${track.kind} track: enabled=${track.enabled}, readyState=${track.readyState}, muted=${track.muted}`,
+            )
+            track.enabled = true
+          })
+
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.style.visibility = "visible"
+            remoteVideoRef.current.style.opacity = "1"
+          }
+
+          const attached = attachStreamToVideo(remoteVideoRef.current, stream, "remote")
+          if (attached) {
+            console.log("[v0] Remote stream attached successfully")
             setRemoteVideoReady(true)
             setVideoState("connected")
             setConnectionStatus("Conectado!")
           }
 
-          // Also try again after delays to ensure it works
-          setTimeout(() => {
-            if (remoteStreamRef.current && remoteVideoRef.current) {
-              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-retry1")
-              setRemoteVideoReady(true)
-            }
-          }, 500)
+          const retryDelays = [100, 300, 500, 1000, 1500, 2000, 3000, 5000]
+          retryDelays.forEach((delay, index) => {
+            setTimeout(() => {
+              if (remoteStreamRef.current && remoteVideoRef.current) {
+                console.log(`[v0] Retry ${index + 1} attaching remote stream at ${delay}ms`)
 
-          setTimeout(() => {
-            if (remoteStreamRef.current && remoteVideoRef.current) {
-              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-retry2")
-              setRemoteVideoReady(true)
-            }
-          }, 1500)
+                // Force tracks enabled again
+                remoteStreamRef.current.getTracks().forEach((track) => {
+                  track.enabled = true
+                })
+
+                attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, `remote-retry-${index + 1}`)
+                setRemoteVideoReady(true)
+              }
+            }, delay)
+          })
+        } else {
+          console.log("[v0] No streams array, creating new MediaStream from track")
+          const newStream = new MediaStream([event.track])
+          remoteStreamRef.current = remoteStreamRef.current || new MediaStream()
+          remoteStreamRef.current.addTrack(event.track)
+
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.style.visibility = "visible"
+            attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-new-stream")
+            setRemoteVideoReady(true)
+          }
         }
       }
 
       // Connection state monitoring
       pc.onconnectionstatechange = () => {
         console.log("[v0] Connection state:", pc.connectionState)
+
         if (pc.connectionState === "connected") {
           console.log("[v0] *** CONNECTION ESTABLISHED ***")
           setVideoState("connected")
           setConnectionStatus("Conectado!")
 
-          setTimeout(() => {
-            if (remoteStreamRef.current && remoteVideoRef.current) {
-              attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-onconnected")
-              setRemoteVideoReady(true)
-            }
-            if (localStreamRef.current && localVideoRef.current) {
-              attachStreamToVideo(localVideoRef.current, localStreamRef.current, "local-onconnected")
-              setLocalVideoReady(true)
-            }
-          }, 100)
-        } else if (pc.connectionState === "failed") {
-          console.log("[v0] Connection FAILED - attempting ICE restart")
-          pc.restartIce()
+          if (remoteStreamRef.current && remoteVideoRef.current) {
+            console.log("[v0] Re-attaching remote stream on connection established")
+            remoteStreamRef.current.getTracks().forEach((track) => {
+              track.enabled = true
+            })
+            remoteVideoRef.current.style.visibility = "visible"
+            remoteVideoRef.current.style.opacity = "1"
+            attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current, "remote-on-connected")
+            setRemoteVideoReady(true)
+          }
+
+          if (localStreamRef.current && localVideoRef.current) {
+            console.log("[v0] Re-attaching local stream on connection established")
+            localStreamRef.current.getTracks().forEach((track) => {
+              track.enabled = true
+            })
+            attachStreamToVideo(localVideoRef.current, localStreamRef.current, "local-on-connected")
+            setLocalVideoReady(true)
+          }
         } else if (pc.connectionState === "disconnected") {
-          console.log("[v0] Connection disconnected")
+          console.log("[v0] Connection disconnected, will retry...")
           setConnectionStatus("Reconectando...")
+        } else if (pc.connectionState === "failed") {
+          console.log("[v0] Connection failed")
+          setConnectionStatus("Conexão falhou")
+          // Try ICE restart
+          if (isInitiatorRef.current && peerConnectionRef.current) {
+            console.log("[v0] Attempting ICE restart...")
+            peerConnectionRef.current.restartIce()
+          }
         }
       }
 
@@ -851,8 +942,35 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       {/* Main Video Container - ALWAYS 50/50 split */}
       {videoState !== "permission_denied" && !limitReached && (
         <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
-          {/* Remote Video - 50% on mobile, 50% on desktop */}
-          <div className="relative flex h-1/2 lg:h-full lg:w-1/2 items-center justify-center overflow-hidden bg-card border-b lg:border-b-0 lg:border-r border-border">
+          {/* Remote Video */}
+          <div
+            className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden"
+            style={{ backgroundColor: "#0f172a" }}
+          >
+            {(videoState === "searching" || videoState === "connecting" || videoState === "connected") && (
+              <>
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  webkit-playsinline="true"
+                  className="absolute inset-0 h-full w-full object-cover"
+                  style={{
+                    backgroundColor: "#0f172a",
+                  }}
+                />
+
+                {!remoteVideoReady && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 pointer-events-none">
+                    <div className="text-center">
+                      <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+                      <p className="text-muted-foreground">Conectando vídeo...</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {videoState === "idle" && (
               <div className="flex flex-col items-center justify-center p-8 text-center">
                 <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20">
@@ -909,71 +1027,47 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               </div>
             )}
 
-            {(videoState === "connected" || (videoState === "connecting" && currentPartner)) && (
+            {videoState === "connected" && currentPartner && (
               <>
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className={`absolute inset-0 h-full w-full object-cover bg-black ${
-                    remoteVideoReady && videoState === "connected" ? "opacity-100" : "opacity-0"
-                  }`}
-                />
-
-                {!remoteVideoReady && videoState === "connected" && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-card">
-                    <div className="text-center">
-                      <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-                      <p className="text-muted-foreground">Carregando vídeo...</p>
-                    </div>
-                  </div>
-                )}
-
                 {/* Partner Info */}
-                {currentPartner && videoState === "connected" && (
-                  <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={currentPartner.avatar_url || undefined} />
-                      <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium text-white">{currentPartner.full_name}</p>
-                      {currentPartner.city && <p className="text-xs text-white/70">{currentPartner.city}</p>}
-                    </div>
+                <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={currentPartner.avatar_url || undefined} />
+                    <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-medium text-white">{currentPartner.full_name}</p>
+                    {currentPartner.city && <p className="text-xs text-white/70">{currentPartner.city}</p>}
                   </div>
-                )}
+                </div>
 
                 {/* Action buttons on remote video */}
-                {videoState === "connected" && (
-                  <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                    <Button
-                      onClick={handleLike}
-                      disabled={isLiked}
-                      size="icon"
-                      className={`h-12 w-12 lg:h-14 lg:w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
-                    >
-                      <Heart className={`h-6 w-6 lg:h-7 lg:w-7 ${isLiked ? "fill-white" : ""}`} />
-                    </Button>
-                    <Button
-                      onClick={skipToNext}
-                      size="icon"
-                      className="h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-blue-500 hover:bg-blue-600"
-                    >
-                      <SkipForward className="h-6 w-6 lg:h-7 lg:w-7" />
-                    </Button>
-                  </div>
-                )}
+                <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                  <Button
+                    onClick={handleLike}
+                    disabled={isLiked}
+                    size="icon"
+                    className={`h-12 w-12 lg:h-14 lg:w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
+                  >
+                    <Heart className={`h-6 w-6 lg:h-7 lg:w-7 ${isLiked ? "fill-white" : ""}`} />
+                  </Button>
+                  <Button
+                    onClick={skipToNext}
+                    size="icon"
+                    className="h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-blue-500 hover:bg-blue-600"
+                  >
+                    <SkipForward className="h-6 w-6 lg:h-7 lg:w-7" />
+                  </Button>
+                </div>
 
                 {/* End call button */}
-                {videoState === "connected" && (
-                  <Button
-                    onClick={endCall}
-                    size="icon"
-                    className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600"
-                  >
-                    <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
-                  </Button>
-                )}
+                <Button
+                  onClick={endCall}
+                  size="icon"
+                  className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600"
+                >
+                  <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
+                </Button>
               </>
             )}
 
@@ -997,19 +1091,23 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             )}
           </div>
 
-          {/* Local Video - TRUE 50% on mobile and desktop */}
+          {/* Local Video */}
           <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full overflow-hidden bg-card">
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
+              webkit-playsinline="true"
               muted
-              className={`absolute inset-0 h-full w-full object-cover ${localVideoReady ? "opacity-100" : "opacity-0"}`}
-              style={{ backgroundColor: "#1a1a2e" }}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ backgroundColor: "#1e293b" }}
             />
 
             {!localVideoReady && (
-              <div className="absolute inset-0 flex h-full items-center justify-center bg-card">
+              <div
+                className="absolute inset-0 flex h-full items-center justify-center pointer-events-none"
+                style={{ backgroundColor: "#1e293b" }}
+              >
                 <p className="text-muted-foreground">Câmera desativada</p>
               </div>
             )}

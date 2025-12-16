@@ -14,105 +14,49 @@ REGRAS OBRIGATÓRIAS:
 9. NÃO use imports externos
 10. NÃO inclua explicações, apenas o código
 
-ESTRUTURA DO CÓDIGO:
-\`\`\`jsx
-export default function Site() {
-  const [menuOpen, setMenuOpen] = React.useState(false)
-  const [formData, setFormData] = React.useState({ name: '', email: '', message: '' })
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    alert('Mensagem enviada com sucesso!')
-    setFormData({ name: '', email: '', message: '' })
-  }
-
-  const scrollToSection = (sectionId) => {
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' })
-    setMenuOpen(false)
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700">
-        {/* ... */}
-      </nav>
-
-      {/* Hero Section */}
-      <section id="hero" className="pt-20 min-h-screen flex items-center">
-        {/* ... */}
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-20 bg-gray-800/50">
-        {/* ... */}
-      </section>
-
-      {/* CTA Section */}
-      <section id="contato" className="py-20">
-        {/* ... */}
-      </section>
-
-      {/* Footer */}
-      <footer className="py-8 bg-gray-900 border-t border-gray-700">
-        {/* ... */}
-      </footer>
-    </div>
-  )
-}
-\`\`\`
-
-CORES POR TIPO DE SITE:
-- Esportes/Times de futebol: Use as cores do time (ex: Grêmio = azul #0066CC e preto)
-- Restaurante: Vermelho, dourado, preto
-- Tecnologia: Azul, roxo, gradientes modernos
-- Saúde: Verde, branco, tons suaves
-- Moda: Preto, branco, elegante
-- Natureza: Verde, marrom, terroso
-
-Retorne APENAS o código, sem markdown, sem explicações.`
+O código deve seguir esta estrutura:
+- Função principal: export default function Site()
+- Estados: const [menuOpen, setMenuOpen] = React.useState(false)
+- Menu mobile funcional
+- Navegação suave com scrollToSection
+- Seções: navbar, hero, features, about, contato, footer
+- Formulário de contato funcional
+- Design moderno com Tailwind CSS`
 
 export const FALLBACK_THEMES = {
   sports: {
-    primary: "#0066CC",
-    secondary: "#000000",
-    accent: "#FFFFFF",
-    gradient: "from-blue-600 to-blue-900",
+    primary: "#e63946",
+    secondary: "#1d3557",
+    accent: "#f1faee",
   },
   restaurant: {
-    primary: "#DC2626",
-    secondary: "#B45309",
-    accent: "#FEF3C7",
-    gradient: "from-red-600 to-amber-700",
+    primary: "#bc6c25",
+    secondary: "#283618",
+    accent: "#fefae0",
   },
   technology: {
-    primary: "#7C3AED",
-    secondary: "#2563EB",
-    accent: "#E0E7FF",
-    gradient: "from-purple-600 to-blue-600",
+    primary: "#7c3aed",
+    secondary: "#1e1b4b",
+    accent: "#c4b5fd",
   },
   health: {
     primary: "#059669",
-    secondary: "#10B981",
-    accent: "#D1FAE5",
-    gradient: "from-emerald-500 to-teal-600",
+    secondary: "#064e3b",
+    accent: "#d1fae5",
   },
-  fashion: {
-    primary: "#000000",
-    secondary: "#374151",
-    accent: "#F9FAFB",
-    gradient: "from-gray-900 to-gray-700",
+  education: {
+    primary: "#2563eb",
+    secondary: "#1e3a8a",
+    accent: "#dbeafe",
   },
-  nature: {
-    primary: "#15803D",
-    secondary: "#854D0E",
-    accent: "#FEF9C3",
-    gradient: "from-green-700 to-amber-700",
+  ecommerce: {
+    primary: "#db2777",
+    secondary: "#831843",
+    accent: "#fce7f3",
   },
   default: {
-    primary: "#6366F1",
-    secondary: "#8B5CF6",
-    accent: "#E0E7FF",
-    gradient: "from-indigo-600 to-purple-600",
+    primary: "#8b5cf6",
+    secondary: "#1e1b4b",
+    accent: "#c4b5fd",
   },
 }
