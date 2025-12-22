@@ -180,12 +180,12 @@ export function RegisterForm() {
 
   const nextStep = () => {
     if (step === 1) {
-      if (!formData.email || !formData.password || !formData.confirmPassword) {
-        setError("Preencha todos os campos")
+      if (!formData.email || !formData.password || !formData.confirmPassword || !formData.name) {
+        setError("Por favor, preencha todos os campos")
         return
       }
       if (formData.password !== formData.confirmPassword) {
-        setError("As senhas não conferem")
+        setError("As senhas não correspondem")
         return
       }
       if (formData.password.length < 8) {
@@ -241,51 +241,62 @@ export function RegisterForm() {
     setIsLoading(true)
     setError("")
 
+    if (step === 1) {
+      if (!formData.email || !formData.password || !formData.confirmPassword || !formData.name) {
+        setError("Por favor, preencha todos os campos")
+        setIsLoading(false)
+        return
+      }
+      if (formData.password !== formData.confirmPassword) {
+        setError("As senhas não correspondem")
+        setIsLoading(false)
+        return
+      }
+      if (formData.password.length < 8) {
+        setError("A senha deve ter no mínimo 8 caracteres")
+        setIsLoading(false)
+        return
+      }
+      setStep(2)
+      setIsLoading(false)
+      return
+    }
+
+    if (!formData.email.includes("@") || !formData.email.includes(".")) {
+      setError("Email inválido")
+      setIsLoading(false)
+      return
+    }
+
     try {
       const supabase = createClient()
 
-      // Determine the correct redirect URL - always use production domain in production
-      const getRedirectUrl = () => {
-        // Produção - domínio principal
-        const productionUrl = "https://www.connextapp.com.br"
+      // Upload avatar if provided
+      let avatarUrl = null
+      if (avatarFile) {
+        const fileExt = avatarFile.name.split(".").pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
 
-        // Verifica se está no domínio de produção (server ou client)
-        if (typeof window !== "undefined") {
-          if (window.location.hostname.includes("connextapp.com.br")) {
-            return `${productionUrl}/auth/callback`
-          }
+        const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, avatarFile, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(fileName)
+          avatarUrl = urlData.publicUrl
+        } else {
+          console.error("[v0] Avatar upload error:", uploadError)
         }
-
-        // Variável de ambiente para desenvolvimento/staging
-        if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
-          return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
-        }
-
-        // SITE_URL se disponível
-        if (process.env.NEXT_PUBLIC_SITE_URL) {
-          return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
-        }
-
-        // Em desenvolvimento local, usar a origin atual
-        if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-          return `${window.location.origin}/auth/callback`
-        }
-
-        // Fallback para produção
-        return `${productionUrl}/auth/callback`
       }
 
-      // 1. Create user account
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: getRedirectUrl(),
+          emailRedirectTo: "https://www.connextapp.com.br/auth/callback",
           data: {
             full_name: formData.name,
-            phone: formData.phone,
-            city: formData.city,
-            country: formData.country,
           },
         },
       })
@@ -306,69 +317,42 @@ export function RegisterForm() {
         return
       }
 
-      // 2. Upload avatar
-      let avatarUrl = null
-      if (avatarFile) {
-        const fileExt = avatarFile.name.split(".").pop()
-        const fileName = `${authData.user.id}-${Date.now()}.${fileExt}`
-
-        const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, avatarFile, {
-          cacheControl: "3600",
-          upsert: true,
-        })
-
-        if (!uploadError) {
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from("avatars").getPublicUrl(fileName)
-          avatarUrl = publicUrl
-        }
-      }
-
-      // 3. Wait a moment for trigger to create profile, then UPSERT to ensure it's saved
+      // Wait for auth trigger to create profile
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
-      const profileData = {
-        id: authData.user.id,
-        email: formData.email,
-        full_name: formData.name, // Use full_name (table column name)
-        phone: formData.phone,
-        company: formData.company || null,
-        position: formData.position || null,
-        situation: formData.situation,
-        industry: formData.industry,
-        city: formData.city,
-        country: formData.country,
-        bio: formData.bio || null,
-        interests: formData.interests,
-        looking_for: formData.lookingFor,
-        avatar_url: avatarUrl,
-        onboarding_completed: true,
-        terms_accepted: true,
-        terms_accepted_at: new Date().toISOString(),
-      }
-
-      const { error: profileError } = await supabase.from("profiles").upsert(profileData, {
-        onConflict: "id",
-      })
+      // Update profile with full data including avatar
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          phone: formData.phone,
+          company: formData.company || null,
+          position: formData.position || null,
+          industry: formData.industry,
+          city: formData.city,
+          country: formData.country,
+          bio: formData.bio || null,
+          interests: formData.interests,
+          looking_for: formData.lookingFor,
+          situation: formData.situation,
+          avatar_url: avatarUrl,
+          onboarding_completed: true,
+          terms_accepted: termsAccepted,
+          terms_accepted_at: new Date().toISOString(),
+        })
+        .eq("id", authData.user.id)
 
       if (profileError) {
-        console.error("Profile upsert error:", profileError)
-        // Try one more time with a longer wait
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-        const { error: retryError } = await supabase.from("profiles").upsert(profileData, {
-          onConflict: "id",
-        })
-        if (retryError) {
-          console.error("Profile retry error:", retryError)
-        }
+        console.error("[v0] Profile update error:", profileError)
       }
 
-      router.push("/dashboard")
-    } catch (err) {
-      console.error(err)
-      setError("Ocorreu um erro. Tente novamente.")
-    } finally {
+      setShowVerificationMessage(true)
+      setIsLoading(false)
+
+      // Redirect to email verification page
+      router.push(`/auth/verify-email?email=${encodeURIComponent(formData.email)}`)
+    } catch (error) {
+      console.error("[v0] Signup error:", error)
+      setError("Erro ao criar conta. Tente novamente.")
       setIsLoading(false)
     }
   }
@@ -430,7 +414,7 @@ export function RegisterForm() {
                     placeholder="Mínimo 8 caracteres"
                     value={formData.password}
                     onChange={(e) => updateField("password", e.target.value)}
-                    className="pl-10 pr-10 bg-card/50 border-border/50 text-foreground backdrop-blur-sm focus:border-primary"
+                    className="pl-10 pr-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
                     required
                   />
                   <button
@@ -455,7 +439,7 @@ export function RegisterForm() {
                     placeholder="Confirme sua senha"
                     value={formData.confirmPassword}
                     onChange={(e) => updateField("confirmPassword", e.target.value)}
-                    className="pl-10 pr-10 bg-card/50 border-border/50 text-foreground backdrop-blur-sm focus:border-primary"
+                    className="pl-10 pr-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
                     required
                   />
                   <button
@@ -465,6 +449,23 @@ export function RegisterForm() {
                   >
                     {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-foreground">
+                  Nome Completo *
+                </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    id="name"
+                    placeholder="Seu nome completo"
+                    value={formData.name}
+                    onChange={(e) => updateField("name", e.target.value)}
+                    className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                    required
+                  />
                 </div>
               </div>
 

@@ -36,6 +36,7 @@ export async function signUp(formData: {
   interests: string[]
   lookingFor: string[]
   bio?: string
+  avatarUrl?: string | null
 }) {
   const supabase = await createClient()
 
@@ -68,8 +69,7 @@ export async function signUp(formData: {
     return { error: "Erro ao criar usuário" }
   }
 
-  // The trigger creates a basic profile, we need to update it with the full data
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
   const { error: profileError } = await supabase
     .from("profiles")
@@ -83,6 +83,8 @@ export async function signUp(formData: {
       interests: formData.interests,
       looking_for: formData.lookingFor,
       bio: formData.bio || "",
+      avatar_url: formData.avatarUrl || null,
+      onboarding_completed: true,
       updated_at: new Date().toISOString(),
     })
     .eq("id", authData.user.id)
@@ -91,7 +93,6 @@ export async function signUp(formData: {
     console.error("[v0] Profile update error:", profileError)
   }
 
-  // O Supabase envia o email dele, mas enviamos o nosso também como backup bonito
   try {
     await sendConfirmationEmail(formData.email, formData.fullName, confirmationBaseUrl)
   } catch (emailError) {

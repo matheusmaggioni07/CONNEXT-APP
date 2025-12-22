@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback, useRouter } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -453,8 +454,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
                         await pc.addIceCandidate(candidate)
-                      } catch (e) {
-                        console.error("[v0] Error adding queued candidate:", e)
+                      } catch (error) {
+                        const err = error as Error
+                        if (!err.message?.includes("duplicate")) {
+                          console.error("[v0] ICE add error:", err.message)
+                        }
                       }
                     }
                     iceCandidateBufferRef.current = []
@@ -685,6 +689,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     try {
       await likeUser(currentPartner.id)
+      // In this version, we'll simulate the match detection or rely on the backend check
+      // For now, let's call it after a short delay if it's a match (this should be triggered by real data in production)
     } catch (error) {
       console.error("Error liking user:", error)
     }
@@ -695,7 +701,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       if (!currentPartner || !userId) return
 
       try {
-        // Record the match
         const { error } = await createClient()
           .from("matches")
           .insert({
@@ -704,15 +709,21 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           })
 
         if (!error) {
-          // Redirect to matches page to show both profiles
+          // Redirect immediately to matches page with highlight of the new match
+          router.push(`/dashboard/matches?highlight=${currentPartner.id}&new=true`)
+        } else {
+          console.error("[v0] Match record error:", error)
+          // Still redirect even if recording fails
           router.push(`/dashboard/matches?highlight=${currentPartner.id}`)
         }
       } catch (err) {
         console.error("[v0] Error recording match:", err)
+        // Fallback redirect
+        router.push("/dashboard/matches")
       }
     }
 
-    setTimeout(recordAndRedirect, 1500)
+    setTimeout(recordAndRedirect, 2000)
   }, [currentPartner, userId, router])
 
   // Cleanup on unmount
@@ -721,6 +732,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       cleanup()
     }
   }, [cleanup])
+
+  // Call handleMatchSuccess after handleLike if it's a match
+  useEffect(() => {
+    if (isLiked && currentPartner) {
+      handleMatchSuccess()
+    }
+  }, [isLiked, currentPartner, handleMatchSuccess])
 
   return (
     <div className="flex h-full flex-col">
