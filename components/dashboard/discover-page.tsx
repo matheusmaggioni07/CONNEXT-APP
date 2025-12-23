@@ -7,7 +7,6 @@ import {
   Heart,
   Undo2,
   MapPin,
-  Building2,
   Sparkles,
   MessageCircle,
   Crown,
@@ -16,9 +15,9 @@ import {
   ChevronDown,
   RefreshCw,
   Video,
-  Briefcase,
   User,
   ArrowLeft,
+  Rocket,
 } from "lucide-react"
 import { likeUser, checkLikeLimit } from "@/app/actions/likes"
 import { getProfilesToDiscover } from "@/app/actions/profile"
@@ -352,45 +351,17 @@ export function DiscoverPage() {
                         <MapPin className="w-3 h-3 text-primary" />
                         {currentProfile.city || "Brasil"}
                       </span>
-                      {currentProfile.industry && (
-                        <span className="flex items-center gap-1">
-                          <Building2 className="w-3 h-3 text-primary" />
-                          {currentProfile.industry}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-2 mb-3">
-                  {currentProfile.interests && currentProfile.interests.length > 0 && (
+                  {currentProfile.journey_stage && (
                     <div className="flex flex-col gap-1">
-                      <p className="text-[10px] text-white/50 uppercase tracking-wider font-bold">Interesses</p>
-                      <div className="flex flex-wrap gap-1">
-                        {currentProfile.interests.slice(0, 4).map((interest) => (
-                          <span
-                            key={interest}
-                            className="px-2 py-0.5 bg-primary/40 text-white border border-primary/30 rounded-full text-[10px]"
-                          >
-                            {interest}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {currentProfile.looking_for && currentProfile.looking_for.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      <p className="text-[10px] text-white/50 uppercase tracking-wider font-bold">Procura</p>
-                      <div className="flex flex-wrap gap-1">
-                        {currentProfile.looking_for.slice(0, 4).map((item) => (
-                          <span
-                            key={item}
-                            className="px-2 py-0.5 bg-green-500/40 text-white border border-green-500/30 rounded-full text-[10px]"
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
+                      <p className="text-[10px] text-white/50 uppercase tracking-wider font-bold">Momento da Jornada</p>
+                      <span className="px-2 py-1 bg-amber-500/30 text-white border border-amber-500/20 rounded-lg text-[10px] font-medium backdrop-blur-md">
+                        {currentProfile.journey_stage}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -406,6 +377,15 @@ export function DiscoverPage() {
 
                 {showDetails && (
                   <div className="space-y-3 mb-3 bg-black/50 rounded-xl p-4 backdrop-blur-sm max-h-[40vh] overflow-y-auto">
+                    {currentProfile.journey_stage && (
+                      <div>
+                        <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
+                          <Rocket className="w-3 h-3" />
+                          Momento da Jornada:
+                        </p>
+                        <p className="text-white/90 text-sm font-medium">{currentProfile.journey_stage}</p>
+                      </div>
+                    )}
                     {/* Bio */}
                     {currentProfile.bio && (
                       <div>
@@ -414,62 +394,6 @@ export function DiscoverPage() {
                           Sobre:
                         </p>
                         <p className="text-white/90 text-sm leading-relaxed">{currentProfile.bio}</p>
-                      </div>
-                    )}
-
-                    {/* Industry/Sector */}
-                    {currentProfile.industry && (
-                      <div>
-                        <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
-                          <Building2 className="w-3 h-3" />
-                          Setor/Indústria:
-                        </p>
-                        <span className="px-3 py-1 bg-blue-500/30 text-white rounded-full text-sm inline-block">
-                          {currentProfile.industry}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Position/Role */}
-                    {currentProfile.position && (
-                      <div>
-                        <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
-                          <Briefcase className="w-3 h-3" />
-                          Cargo:
-                        </p>
-                        <span className="text-white/90 text-sm">{currentProfile.position}</span>
-                        {currentProfile.company && (
-                          <span className="text-white/70 text-sm"> em {currentProfile.company}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Seniority */}
-                    {currentProfile.seniority && (
-                      <div>
-                        <p className="text-white/60 text-xs mb-1">Senioridade:</p>
-                        <span className="text-white/90 text-sm">{currentProfile.seniority}</span>
-                      </div>
-                    )}
-
-                    {/* Location */}
-                    {(currentProfile.city || currentProfile.country) && (
-                      <div>
-                        <p className="text-white/60 text-xs mb-1 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          Localização:
-                        </p>
-                        <span className="text-white/90 text-sm">
-                          {[currentProfile.city, currentProfile.country].filter(Boolean).join(", ")}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Situation */}
-                    {currentProfile.situation && (
-                      <div>
-                        <p className="text-white/60 text-xs mb-1">Situação:</p>
-                        <span className="text-white/90 text-sm">{currentProfile.situation}</span>
                       </div>
                     )}
                   </div>

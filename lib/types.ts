@@ -5,8 +5,10 @@ export interface Profile {
   phone: string | null
   company: string | null
   position: string | null
+  situation: string | null // Added situation field for professional status
   seniority: string | null
   industry: string | null
+  journey_stage?: string | null
   city: string | null
   country: string
   bio: string | null
@@ -66,6 +68,7 @@ export interface User {
   company: string
   position: string
   industry: string
+  journey_stage?: string
   interests: string[]
   bio: string
   avatar: string
@@ -90,6 +93,7 @@ export function profileToUser(profile: Profile, isOnline = false): User {
     company: profile.company || "",
     position: profile.position || "",
     industry: profile.industry || "",
+    journey_stage: profile.journey_stage || "",
     interests: profile.interests || [],
     bio: profile.bio || "",
     avatar: profile.avatar_url || "/placeholder.svg?height=200&width=200",

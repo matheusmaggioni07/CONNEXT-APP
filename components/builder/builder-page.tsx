@@ -153,16 +153,18 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       if (!activeProject?.id) return
 
       try {
-        await fetch("/api/builder/chat-history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: activeProject.id,
-            role,
-            content,
-            code,
-          }),
-        })
+        if (typeof window !== "undefined" && window.JSON) {
+          await fetch("/api/builder/chat-history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: window.JSON.stringify({
+              projectId: activeProject.id,
+              role,
+              content,
+              code,
+            }),
+          })
+        }
       } catch (err) {
         console.error("Error saving chat message:", err)
       }
@@ -202,23 +204,31 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   }, [messages])
 
   useEffect(() => {
-    if (profile?.plan === "pro") {
-      setUserCredits(999999)
+    const isAdmin =
+      user.email?.toLowerCase() === "matheus.maggioni07@gmail.com" ||
+      user.email?.toLowerCase() === "matheus.maggioni@edu.pucrs.br"
+
+    if (profile?.plan === "pro" || isAdmin) {
+      setUserCredits(-1) // -1 represents unlimited
     } else {
       if (typeof window !== "undefined") {
         const savedCredits = localStorage.getItem(`builder_credits_${user.id}`)
         if (savedCredits) {
           setUserCredits(Number.parseInt(savedCredits))
+        } else {
+          // Set default credits if none found
+          setUserCredits(20)
         }
       }
     }
   }, [profile, user.id])
 
   useEffect(() => {
-    if (profile?.plan !== "pro" && typeof window !== "undefined") {
+    // Save credits only if not unlimited
+    if (userCredits !== -1 && typeof window !== "undefined") {
       localStorage.setItem(`builder_credits_${user.id}`, userCredits.toString())
     }
-  }, [userCredits, user.id, profile])
+  }, [userCredits, user.id])
 
   useEffect(() => {
     if (generatedCode && window.innerWidth < 1024) {
@@ -1397,8 +1407,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const handleSendMessage = async () => {
     if ((!input.trim() && !attachedImage) || isLoading) return
 
-    if (userCredits <= 0 && profile?.plan !== "pro") {
+    // Handle unlimited credits display
+    const creditsNeeded = 1 // Assuming each generation costs 1 credit
+    if (userCredits !== -1 && userCredits < creditsNeeded && profile?.plan !== "pro") {
       setError("Créditos insuficientes. Faça upgrade para Pro ou aguarde amanhã.")
+      setShowUpgradeModal(true) // Show upgrade modal
       return
     }
 
@@ -1418,6 +1431,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     setMessages((prev) => [...prev, userMessage])
     setError(null)
     setIsLoading(true)
+    setThoughts([{ id: "initial", type: "thinking", message: "Pensando em como criar seu site...", status: "active" }])
 
     // Save user message to chat history
     await saveChatMessage("user", currentInput)
@@ -1430,21 +1444,17 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
     while (retries < MAX_RETRIES) {
       try {
-        const projectContext = activeProject?.builder_files?.map((f) => ({
-          name: f.name,
-          content: f.content,
-        }))
-
+        const projectContext = activeProject?.builder_files || []
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
         const res = await fetch("/api/builder/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.JSON.stringify({
+          body: JSON.stringify({
             prompt: currentInput,
             image_url: currentImage,
-            projectContext,
+            projectContext, // Use the correctly scoped projectContext
             history: messages.slice(-4).map((m) => ({ role: m.role, content: m.content })),
           }),
           signal: controller.signal,
@@ -1459,6 +1469,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
           if (retries < MAX_RETRIES) {
             setError(`Tentando novamente... (${retries}/${MAX_RETRIES})`)
+            updateThought(
+              "initial",
+              "thinking",
+              `Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})...`,
+            )
             await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
             continue
           } else {
@@ -1468,6 +1483,9 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
         const reader = res.body?.getReader()
         if (!reader) throw new Error("Failed to get response reader")
+
+        let thoughtId: string | null = null
+        let thoughtStarted = false
 
         while (true) {
           const { done, value } = await reader.read()
@@ -1482,8 +1500,29 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
               if (data === "[DONE]") break // End of stream
 
               try {
-                const parsedData = JSON.parse(data)
+                const parsedData = JSON.JSON.parse(data) // Use JSON.parse for better error handling
                 const delta = parsedData.choices?.[0]?.delta?.content
+                const toolCalls = parsedData.choices?.[0]?.delta?.tool_calls
+
+                if (toolCalls) {
+                  // Handle tool calls for thoughts, etc.
+                  for (const call of toolCalls) {
+                    if (call.type === "function" && call.function.name === "add_thought") {
+                      const args = JSON.parse(call.function.arguments)
+                      if (!thoughtStarted) {
+                        thoughtId = addThought(args.type, args.message)
+                        thoughtStarted = true
+                      } else {
+                        // Update existing thought if needed, or add another
+                        updateThought(thoughtId!, args.type, args.message)
+                      }
+                    } else if (call.type === "function" && call.function.name === "update_thought") {
+                      const args = JSON.parse(call.function.arguments)
+                      updateThought(args.id, args.status, args.duration)
+                    }
+                  }
+                }
+
                 if (delta) {
                   fullResponse += delta
                   // Update message content incrementally
@@ -1513,14 +1552,20 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
         // After the loop finishes, the fullResponse is complete
         if (fullResponse) {
-          setGeneratedCode(fullResponse.match(/```tsx\n(.*)\n```/s)?.[1] || "") // Extract code block if present
+          // Extract code block using regex, ensuring it handles various code block styles
+          const codeBlockMatch = fullResponse.match(/```(?:tsx|jsx|javascript|html|css)\n([\s\S]*?)\n```/s)
+          setGeneratedCode(codeBlockMatch ? codeBlockMatch[1] : "")
 
           // Auto-save to project
           if (activeProject) {
             await updateProject(activeProject.id, generatedCode || "")
           } else {
             // Create new project
-            const projectName = currentInput.substring(0, 50) || "Novo Projeto"
+            const projectName =
+              currentInput
+                .substring(0, 50)
+                .replace(/[^a-zA-Z0-9 ]/g, "")
+                .trim() || "Novo Projeto"
             const newProject = await saveProject(projectName, generatedCode || "")
             if (!newProject) throw new Error("Falha ao criar novo projeto.")
           }
@@ -1531,8 +1576,9 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           }
 
           // Update credits
-          if (profile?.plan !== "pro") {
-            const newCredits = userCredits - 1
+          if (userCredits !== -1) {
+            // Only deduct if not unlimited
+            const newCredits = userCredits - creditsNeeded
             setUserCredits(newCredits)
             if (typeof window !== "undefined") {
               localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
@@ -1552,9 +1598,19 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
         if (retries < MAX_RETRIES) {
           if (lastError.name === "AbortError") {
-            setError(`Timeout... Tentando novamente (${retries}/${MAX_RETRIES})`)
+            setError(`Tempo limite excedido... Tentando novamente (${retries}/${MAX_RETRIES})`)
+            updateThought(
+              "initial",
+              "thinking",
+              `Tempo limite excedido. Tentando novamente (${retries}/${MAX_RETRIES})...`,
+            )
           } else {
             setError(`Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})`)
+            updateThought(
+              "initial",
+              "thinking",
+              `Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})...`,
+            )
           }
           await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
         }
@@ -1564,7 +1620,9 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
         if (retries >= MAX_RETRIES) {
           if (lastError) {
             if (lastError.name === "AbortError") {
-              setError("Tempo limite excedido mesmo após 3 tentativas. Tente um prompt mais simples.")
+              setError(
+                "Tempo limite excedido mesmo após 3 tentativas. Tente um prompt mais simples ou verifique sua conexão.",
+              )
             } else {
               setError(lastError.message || "Erro ao gerar o site após 3 tentativas.")
             }
@@ -1616,6 +1674,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const handleRenameProject = async (projectId: string, newName: string) => {
+    setIsSaving(true) // Set saving state
     try {
       const res = await fetch(`/api/builder/projects/${projectId}`, {
         method: "PUT",
@@ -1631,8 +1690,10 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       }
     } catch (err) {
       console.error("Error renaming project:", err)
+    } finally {
+      setEditingProjectId(null)
+      setIsSaving(false) // Reset saving state
     }
-    setEditingProjectId(null)
   }
 
   const handleNewProject = () => {
@@ -1646,12 +1707,14 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const handleCopyCode = () => {
+    if (!generatedCode) return
     navigator.clipboard.writeText(generatedCode)
     setCopiedCode(true)
     setTimeout(() => setCopiedCode(false), 2000)
   }
 
   const handleDownloadCode = () => {
+    if (!generatedCode) return
     const blob = new Blob([generatedCode], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -1707,6 +1770,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       }
     } catch (err) {
       console.error("Failed to read clipboard")
+      setError("Não foi possível ler a área de transferência. Verifique as permissões.")
     }
   }
 
@@ -1727,7 +1791,8 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/10 rounded-full text-xs">
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-purple-300">{profile?.plan === "pro" ? "∞" : userCredits} créditos</span>
+            {/* Display unlimited credits with -1 */}
+            <span className="text-purple-300">{userCredits === -1 ? "∞" : userCredits} créditos</span>
           </div>
         </div>
 
@@ -1788,7 +1853,13 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           </Button>
 
           {/* Share */}
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowShareModal(true)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setShowShareModal(true)}
+            disabled={!activeProject?.id}
+          >
             <Share2 className="w-4 h-4" />
           </Button>
 
@@ -1906,23 +1977,23 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
+                  <form onSubmit={handleSubmit} className="flex gap-2">
                     <Input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSubmit(e)}
                       disabled={isLoading}
                       placeholder="Descreva o que deseja criar..."
                       className="flex-1 bg-muted/50 border-purple-500/30 focus:border-purple-500 transition-colors"
                     />
                     <Button
-                      onClick={handleSendMessage}
+                      type="submit" // Ensure it's a submit button
                       disabled={isLoading || (!input.trim() && !attachedImage)}
                       className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                     >
                       {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </Button>
-                  </div>
+                  </form>
 
                   {/* Bottom options */}
                   <div className="flex items-center gap-3 mt-3">
@@ -2182,39 +2253,40 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       )}
 
       {/* Share Modal */}
-      {showShareModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-2xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold">Compartilhar</h3>
-              <Button variant="ghost" size="icon" onClick={() => setShowShareModal(false)}>
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
-            <div className="space-y-4">
-              <p className="text-muted-foreground text-sm">Compartilhe o código do seu site:</p>
-              <div className="flex gap-2">
-                <Input
-                  value={`${typeof window !== "undefined" ? window.location.origin : ""}/shared/${activeProject?.id || "preview"}`}
-                  readOnly
-                  className="flex-1"
-                />
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      `${typeof window !== "undefined" ? window.location.origin : ""}/shared/${activeProject?.id || "preview"}`,
-                    )
-                    setShareLinkCopied(true)
-                    setTimeout(() => setShareLinkCopied(false), 2000)
-                  }}
-                >
-                  {shareLinkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+      {showShareModal &&
+        activeProject?.id && ( // Only show if an active project exists
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-card rounded-2xl p-6 max-w-md w-full">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold">Compartilhar</h3>
+                <Button variant="ghost" size="icon" onClick={() => setShowShareModal(false)}>
+                  <X className="w-5 h-5" />
                 </Button>
+              </div>
+              <div className="space-y-4">
+                <p className="text-muted-foreground text-sm">Compartilhe o link para visualização do seu projeto:</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/shared/${activeProject.id}`}
+                    readOnly
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `${typeof window !== "undefined" ? window.location.origin : ""}/shared/${activeProject.id}`,
+                      )
+                      setShareLinkCopied(true)
+                      setTimeout(() => setShareLinkCopied(false), 2000)
+                    }}
+                  >
+                    {shareLinkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Publish Modal */}
       {showPublishModal && (

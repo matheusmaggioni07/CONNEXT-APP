@@ -7,74 +7,17 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { completeOnboarding } from "@/app/actions/profile"
-import {
-  User,
-  Building2,
-  Briefcase,
-  MapPin,
-  Phone,
-  Target,
-  Sparkles,
-  ChevronRight,
-  ChevronLeft,
-  Check,
-} from "lucide-react"
+import { User, Building2, Briefcase, MapPin, Phone, Rocket, ChevronRight, ChevronLeft, Check } from "lucide-react"
 
-const INDUSTRIES = [
-  "Tecnologia",
-  "Finanças",
-  "Saúde",
-  "Educação",
-  "Marketing",
-  "Varejo",
-  "Indústria",
-  "Serviços",
-  "Consultoria",
-  "Startups",
-  "E-commerce",
-  "Imobiliário",
-]
+const PROFESSIONAL_SITUATIONS = ["Trabalhando em empresa", "Empreendedor", "Estudante", "Investidor", "Autônomo"]
 
-const SENIORITIES = [
-  "Estagiário",
-  "Junior",
-  "Pleno",
-  "Senior",
-  "Especialista",
-  "Coordenador",
-  "Gerente",
-  "Diretor",
-  "VP",
-  "C-Level",
-  "Fundador/CEO",
-]
-
-const INTERESTS = [
-  "Empreendedorismo",
-  "Investimentos",
-  "Inovação",
-  "Liderança",
-  "Vendas",
-  "Marketing Digital",
-  "Produto",
-  "Engenharia",
-  "Design",
-  "Gestão de Pessoas",
-  "Finanças",
-  "Estratégia",
-]
-
-const LOOKING_FOR = [
-  "Networking",
-  "Mentoria",
-  "Parcerias",
-  "Investimento",
-  "Clientes",
-  "Fornecedores",
-  "Co-fundador",
-  "Talentos",
-  "Conhecimento",
-  "Oportunidades",
+const JOURNEY_STAGES = [
+  "Ainda estou buscando uma ideia ou propósito",
+  "Já tenho uma ideia, mas não sei como tirar do papel",
+  "Estou desenvolvendo um MVP ou projeto inicial",
+  "Já tenho um site ou startup em funcionamento",
+  "Já tenho uma empresa estruturada",
+  "Trabalho em uma empresa e quero criar algo novo",
 ]
 
 export function OnboardingForm() {
@@ -85,14 +28,12 @@ export function OnboardingForm() {
 
   const [formData, setFormData] = useState({
     phone: "",
+    situation: "",
     company: "",
     position: "",
-    seniority: "",
-    industry: "",
+    journey_stage: "",
     city: "",
     country: "Brasil",
-    interests: [] as string[],
-    lookingFor: [] as string[],
     bio: "",
   })
 
@@ -108,24 +49,6 @@ export function OnboardingForm() {
     if (step > 1) {
       setStep(step - 1)
     }
-  }
-
-  const toggleInterest = (interest: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      interests: prev.interests.includes(interest)
-        ? prev.interests.filter((i) => i !== interest)
-        : [...prev.interests, interest],
-    }))
-  }
-
-  const toggleLookingFor = (item: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      lookingFor: prev.lookingFor.includes(item)
-        ? prev.lookingFor.filter((i) => i !== item)
-        : [...prev.lookingFor, item],
-    }))
   }
 
   const handleSubmit = async () => {
@@ -146,13 +69,17 @@ export function OnboardingForm() {
   const canProceed = () => {
     switch (step) {
       case 1:
-        return formData.phone && formData.company && formData.position
+        return formData.phone && formData.situation
       case 2:
-        return formData.industry && formData.city
+        if (formData.situation === "Trabalhando em empresa") {
+          return formData.company && formData.position
+        }
+        // Para os outros (Empreendedor, Estudante, Investidor, Autônomo), pode prosseguir
+        return true
       case 3:
-        return formData.interests.length > 0
+        return formData.journey_stage
       case 4:
-        return formData.lookingFor.length > 0
+        return formData.city
       default:
         return true
     }
@@ -164,7 +91,7 @@ export function OnboardingForm() {
       <div className="text-center mb-8">
         <ConnextLogo className="mx-auto mb-6" />
         <h1 className="text-3xl font-bold text-foreground mb-2">Complete seu Perfil</h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Passo {step} de {totalSteps}
         </p>
       </div>
@@ -181,7 +108,7 @@ export function OnboardingForm() {
 
       {/* Form Card */}
       <div className="bg-card border border-border rounded-2xl p-8">
-        {/* Step 1: Professional Info */}
+        {/* Step 1: Phone & Professional Situation */}
         {step === 1 && (
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6">
@@ -189,8 +116,8 @@ export function OnboardingForm() {
                 <Briefcase className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Informações Profissionais</h2>
-                <p className="text-sm text-muted-foreground">Conte-nos sobre sua carreira</p>
+                <h2 className="text-xl font-semibold text-foreground">Informações de Contato</h2>
+                <p className="text-sm text-muted-foreground">Como podemos entrar em contato?</p>
               </div>
             </div>
 
@@ -198,7 +125,7 @@ export function OnboardingForm() {
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   <Phone className="w-4 h-4 inline mr-2" />
-                  WhatsApp
+                  WhatsApp *
                 </label>
                 <Input
                   type="tel"
@@ -210,46 +137,23 @@ export function OnboardingForm() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  <Building2 className="w-4 h-4 inline mr-2" />
-                  Empresa
-                </label>
-                <Input
-                  placeholder="Nome da sua empresa"
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                  className="bg-secondary border-border"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  <User className="w-4 h-4 inline mr-2" />
-                  Cargo
-                </label>
-                <Input
-                  placeholder="Seu cargo atual"
-                  value={formData.position}
-                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                  className="bg-secondary border-border"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Senioridade</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {SENIORITIES.map((seniority) => (
+                <label className="block text-sm font-medium text-foreground mb-2">Situação Profissional *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {PROFESSIONAL_SITUATIONS.map((situation) => (
                     <button
-                      key={seniority}
+                      key={situation}
                       type="button"
-                      onClick={() => setFormData({ ...formData, seniority })}
-                      className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                        formData.seniority === seniority
-                          ? "gradient-bg text-primary-foreground"
-                          : "bg-secondary text-foreground hover:bg-secondary/80"
+                      onClick={() => setFormData({ ...formData, situation })}
+                      className={`px-4 py-3 rounded-xl text-sm transition-all border ${
+                        formData.situation === situation
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : "border-border bg-secondary text-foreground hover:border-primary/50"
                       }`}
                     >
-                      {seniority}
+                      <div className="flex items-center justify-between">
+                        {situation}
+                        {formData.situation === situation && <Check className="w-4 h-4" />}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -258,169 +162,181 @@ export function OnboardingForm() {
           </div>
         )}
 
-        {/* Step 2: Location & Industry */}
+        {/* Step 2: Company & Position (condicional baseado na situação) */}
         {step === 2 && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
+                <Building2 className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Detalhes Profissionais</h2>
+                <p className="text-sm text-muted-foreground">
+                  {formData.situation === "Trabalhando em empresa"
+                    ? "Conte-nos sobre sua empresa e cargo"
+                    : formData.situation === "Empreendedor"
+                      ? "Conte-nos sobre seu negócio (opcional)"
+                      : "Prossiga para o próximo passo"}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {(formData.situation === "Trabalhando em empresa" || formData.situation === "Empreendedor") && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      <Building2 className="w-4 h-4 inline mr-2" />
+                      {formData.situation === "Trabalhando em empresa" ? "Empresa *" : "Nome da Empresa (opcional)"}
+                    </label>
+                    <Input
+                      placeholder="Nome da empresa"
+                      value={formData.company}
+                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      <User className="w-4 h-4 inline mr-2" />
+                      {formData.situation === "Trabalhando em empresa" ? "Cargo *" : "Cargo/Função (opcional)"}
+                    </label>
+                    <Input
+                      placeholder={
+                        formData.situation === "Trabalhando em empresa" ? "Seu cargo" : "Seu cargo ou função"
+                      }
+                      value={formData.position}
+                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                </>
+              )}
+
+              {formData.situation !== "Trabalhando em empresa" && formData.situation !== "Empreendedor" && (
+                <div className="bg-secondary/50 border border-border rounded-xl p-6 text-center">
+                  <p className="text-muted-foreground">
+                    Como <strong className="text-foreground">{formData.situation.toLowerCase()}</strong>, você pode
+                    prosseguir para o próximo passo.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Journey Stage */}
+        {step === 3 && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
+                <Rocket className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Sua Jornada</h2>
+                <p className="text-sm text-muted-foreground">Em que momento da sua jornada você está?</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {JOURNEY_STAGES.map((stage) => (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, journey_stage: stage })}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all border ${
+                    formData.journey_stage === stage
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : "border-border bg-secondary text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    {stage}
+                    {formData.journey_stage === stage && <Check className="w-4 h-4" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Location & Bio */}
+        {step === 4 && (
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
                 <MapPin className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Localização e Indústria</h2>
-                <p className="text-sm text-muted-foreground">Onde você está e qual seu setor</p>
+                <h2 className="text-xl font-semibold text-foreground">Localização e Bio</h2>
+                <p className="text-sm text-muted-foreground">Onde você está e o que busca no networking?</p>
               </div>
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Cidade</label>
-                <Input
-                  placeholder="São Paulo"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  className="bg-secondary border-border"
-                />
-              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    <MapPin className="w-4 h-4 inline mr-2" />
+                    Cidade *
+                  </label>
+                  <Input
+                    placeholder="São Paulo"
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    className="bg-secondary border-border"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">País</label>
-                <Input
-                  placeholder="Brasil"
-                  value={formData.country}
-                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                  className="bg-secondary border-border"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Indústria</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {INDUSTRIES.map((industry) => (
-                    <button
-                      key={industry}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, industry })}
-                      className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                        formData.industry === industry
-                          ? "gradient-bg text-primary-foreground"
-                          : "bg-secondary text-foreground hover:bg-secondary/80"
-                      }`}
-                    >
-                      {industry}
-                    </button>
-                  ))}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">País</label>
+                  <Input
+                    placeholder="Brasil"
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    className="bg-secondary border-border"
+                  />
                 </div>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Step 3: Interests */}
-        {step === 3 && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-primary-foreground" />
-              </div>
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Seus Interesses</h2>
-                <p className="text-sm text-muted-foreground">Selecione pelo menos 1 interesse</p>
+                <label className="block text-sm font-medium text-foreground mb-2">Bio (opcional)</label>
+                <Textarea
+                  placeholder="Quem quer fazer networking tem interesse em crescimento profissional (novas vagas, parcerias, mentorias), aprendizado (troca de ideias, tendências, habilidades), soluções (encontrar clientes, parceiros, resolver desafios), relacionamentos (aprender com erros, dividir seu trabalho), apoio mútuo e inspiração, focando em conexões de valor, reciprocidade e colaboração mútua."
+                  value={formData.bio}
+                  onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                  className="bg-secondary border-border min-h-[120px]"
+                />
               </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {INTERESTS.map((interest) => (
-                <button
-                  key={interest}
-                  type="button"
-                  onClick={() => toggleInterest(interest)}
-                  className={`px-4 py-2 rounded-full text-sm transition-colors ${
-                    formData.interests.includes(interest)
-                      ? "gradient-bg text-primary-foreground"
-                      : "bg-secondary text-foreground hover:bg-secondary/80"
-                  }`}
-                >
-                  {formData.interests.includes(interest) && <Check className="w-4 h-4 inline mr-1" />}
-                  {interest}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Looking For */}
-        {step === 4 && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
-                <Target className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">O que você busca?</h2>
-                <p className="text-sm text-muted-foreground">Selecione seus objetivos de networking</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-6">
-              {LOOKING_FOR.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => toggleLookingFor(item)}
-                  className={`px-4 py-2 rounded-full text-sm transition-colors ${
-                    formData.lookingFor.includes(item)
-                      ? "gradient-bg text-primary-foreground"
-                      : "bg-secondary text-foreground hover:bg-secondary/80"
-                  }`}
-                >
-                  {formData.lookingFor.includes(item) && <Check className="w-4 h-4 inline mr-1" />}
-                  {item}
-                </button>
-              ))}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Bio (opcional)</label>
-              <Textarea
-                placeholder="Conte um pouco sobre você e seus objetivos..."
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                className="bg-secondary border-border min-h-[100px]"
-              />
             </div>
           </div>
         )}
 
         {error && (
-          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <p className="text-destructive text-sm">{error}</p>
+          <div className="mt-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm border border-destructive/20">
+            {error}
           </div>
         )}
 
-        {/* Navigation */}
-        <div className="flex justify-between mt-8">
-          {step > 1 ? (
-            <Button variant="outline" onClick={handleBack} className="border-border bg-transparent">
+        {/* Navigation Buttons */}
+        <div className="flex gap-3 mt-8">
+          {step > 1 && (
+            <Button onClick={handleBack} variant="outline" className="flex-1 bg-transparent" disabled={isLoading}>
               <ChevronLeft className="w-4 h-4 mr-2" />
               Voltar
             </Button>
-          ) : (
-            <div />
           )}
 
           {step < totalSteps ? (
-            <Button onClick={handleNext} disabled={!canProceed()} className="gradient-bg text-primary-foreground">
+            <Button onClick={handleNext} className="flex-1 gradient-bg" disabled={!canProceed() || isLoading}>
               Próximo
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
-            <Button
-              onClick={handleSubmit}
-              disabled={!canProceed() || isLoading}
-              className="gradient-bg text-primary-foreground"
-            >
-              {isLoading ? "Salvando..." : "Começar a Conectar"}
-              <Sparkles className="w-4 h-4 ml-2" />
+            <Button onClick={handleSubmit} className="flex-1 gradient-bg" disabled={!canProceed() || isLoading}>
+              {isLoading ? "Salvando..." : "Finalizar"}
+              <Check className="w-4 h-4 ml-2" />
             </Button>
           )}
         </div>

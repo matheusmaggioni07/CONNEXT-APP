@@ -26,7 +26,11 @@ export async function isOnboardingComplete() {
   const profile = await getMyProfile()
   if (!profile) return false
 
-  return !!(profile.onboarding_completed || (profile.phone && profile.company && profile.position && profile.industry))
+  // Agora só precisa de: phone, situation, journey_stage, city
+  return !!(
+    profile.onboarding_completed ||
+    (profile.phone && profile.situation && profile.journey_stage && profile.city)
+  )
 }
 
 export async function updateProfile(data: Partial<Profile>) {
@@ -49,6 +53,7 @@ export async function updateProfile(data: Partial<Profile>) {
   if (data.position !== undefined) dbData.position = data.position
   if (data.seniority !== undefined) dbData.seniority = data.seniority
   if (data.industry !== undefined) dbData.industry = data.industry
+  if (data.journey_stage !== undefined) dbData.journey_stage = data.journey_stage
   if (data.city !== undefined) dbData.city = data.city
   if (data.country !== undefined) dbData.country = data.country
   if (data.bio !== undefined) dbData.bio = data.bio
@@ -69,14 +74,12 @@ export async function updateProfile(data: Partial<Profile>) {
 
 export async function completeOnboarding(data: {
   phone: string
-  company: string
-  position: string
-  seniority?: string
-  industry: string
+  situation: string
+  company?: string
+  position?: string
+  journey_stage: string
   city: string
   country: string
-  interests: string[]
-  lookingFor: string[]
   bio?: string
 }) {
   const supabase = await createClient()
@@ -92,15 +95,17 @@ export async function completeOnboarding(data: {
     .from("profiles")
     .update({
       phone: data.phone,
-      company: data.company,
-      position: data.position,
-      seniority: data.seniority,
-      industry: data.industry,
+      situation: data.situation,
+      company: data.company || null,
+      position: data.position || null,
+      journey_stage: data.journey_stage,
       city: data.city,
       country: data.country,
-      interests: data.interests,
-      looking_for: data.lookingFor,
-      bio: data.bio,
+      bio: data.bio || null,
+      interests: [], // Array vazio pois removemos interesses
+      looking_for: [], // Array vazio pois removemos "o que estou buscando"
+      industry: null, // Null pois removemos indústria
+      seniority: null, // Null pois removemos senioridade
       onboarding_completed: true,
       updated_at: new Date().toISOString(),
     })

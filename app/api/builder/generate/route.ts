@@ -46,6 +46,12 @@ INSTRUÇÕES CRÍTICAS:
 
     console.log("[v0] Calling Claude API...")
 
+    const { data: profile } = await supabase.from("profiles").select("plan").eq("id", user?.id).single()
+
+    const isUserAdmin = user?.email
+      ? ["matheus.maggioni@edu.pucrs.br", "matheus.maggioni07@gmail.com"].includes(user.email.toLowerCase())
+      : false
+
     let code = ""
 
     try {
@@ -97,20 +103,30 @@ INSTRUÇÕES CRÍTICAS:
 
     console.log("[v0] Final code length:", code?.length)
 
-    return Response.json({
-      code,
-      explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
-      remainingRequests: user ? -1 : 20,
-    })
+    return new Response(
+      JSON.stringify({
+        code,
+        explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
+        remainingRequests: isUserAdmin ? -1 : user ? -1 : 20,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      },
+    )
   } catch (error) {
     console.error("[v0] Builder Error:", error)
 
     const fallbackCode = generateFallbackCode(prompt || "site profissional")
 
-    return Response.json({
-      code: fallbackCode,
-      explanation: `Site gerado com sucesso!`,
-      remainingRequests: 20,
-    })
+    return new Response(
+      JSON.stringify({
+        code: fallbackCode,
+        explanation: `Site gerado com sucesso!`,
+        remainingRequests: -1,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      },
+    )
   }
 }

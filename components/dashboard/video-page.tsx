@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
-  Video,
+  VideoIcon,
   VideoOff,
   Mic,
   MicOff,
@@ -16,8 +17,8 @@ import {
   AlertCircle,
   Loader2,
   Clock,
-  Sparkles,
   SwitchCamera,
+  Search,
 } from "lucide-react"
 import { joinVideoQueue, leaveVideoQueue, checkRoomStatus, getRemainingCalls } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/likes"
@@ -741,252 +742,178 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [isLiked, currentPartner, handleMatchSuccess])
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Videochamada</h1>
-            <p className="text-sm text-muted-foreground">Conecte-se instantaneamente com empreendedores</p>
-          </div>
-          {remainingCalls !== null && !limitReached && (
-            <div className="flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-primary">{remainingCalls} chamadas restantes</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Permission Denied State */}
-      {videoState === "permission_denied" && (
-        <div className="flex flex-1 items-center justify-center p-8">
-          <div className="text-center">
-            <div className="mb-6 flex h-24 w-24 mx-auto items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-12 w-12 text-destructive" />
-            </div>
-            <h2 className="mb-2 text-2xl font-bold text-foreground">Acesso Negado</h2>
-            <p className="mb-6 max-w-md text-muted-foreground">{permissionError}</p>
-            <Button onClick={() => setVideoState("idle")} variant="outline">
-              Tentar Novamente
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Limit Reached State */}
-      {limitReached && videoState === "idle" && (
-        <div className="flex flex-1 items-center justify-center p-8">
-          <div className="text-center">
-            <div className="mb-6 flex h-24 w-24 mx-auto items-center justify-center rounded-full bg-yellow-500/10">
-              <Clock className="h-12 w-12 text-yellow-500" />
-            </div>
-            <h2 className="mb-2 text-2xl font-bold text-foreground">Limite Diário Atingido</h2>
-            <p className="mb-2 text-muted-foreground">Você atingiu o limite de 15 videochamadas por dia.</p>
-            <p className="mb-6 text-sm text-muted-foreground">Próximo reset em: {timeUntilReset}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Main Video Container */}
-      {videoState !== "permission_denied" && !limitReached && (
-        <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
-          {/* Remote Video - Left/Top */}
-          <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full bg-slate-900">
+    <div className="flex h-full flex-col bg-background p-4 md:p-6">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 p-1 h-full relative">
+        {/* Remote Video / Status */}
+        <div className="relative flex-1 overflow-hidden rounded-3xl bg-secondary border border-border">
+          {videoState === "connected" || videoState === "matched" ? (
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className="absolute inset-0 h-full w-full object-contain z-0"
+              className={`h-full w-full object-cover transition-opacity duration-700 ${remoteVideoReady ? "opacity-100" : "opacity-0"}`}
             />
-
-            {/* Idle state overlay */}
-            {videoState === "idle" && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
-                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20">
-                  <Video className="h-12 w-12 text-primary" />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center">
+              {videoState === "searching" ? (
+                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary"></div>
                 </div>
-                <h2 className="mb-2 text-2xl font-bold text-foreground">Pronto para conectar?</h2>
-                <p className="mb-6 max-w-sm text-muted-foreground">
-                  Inicie uma videochamada e conheça empreendedores em tempo real
-                </p>
-                <Button
-                  onClick={startSearching}
-                  disabled={isLoading}
-                  size="lg"
-                  className="bg-gradient-to-r from-primary to-pink-500 px-8"
-                >
-                  {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />}
-                  Iniciar Videochamada
-                </Button>
-              </div>
-            )}
-
-            {/* Searching state overlay */}
-            {videoState === "searching" && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
-                <div className="relative mb-6">
-                  <div className="h-24 w-24 animate-spin rounded-full border-4 border-primary/20 border-t-primary"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-pink-500"></div>
+              ) : videoState === "idle" ? (
+                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                  <div className="h-12 w-12 flex items-center justify-center rounded-full bg-primary">
+                    <VideoIcon className="h-6 w-6 text-primary-foreground" />
                   </div>
                 </div>
-                <h2 className="mb-2 text-2xl font-bold text-foreground">Buscando empreendedor...</h2>
+              ) : (
+                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-destructive/10">
+                  <AlertCircle className="h-12 w-12 text-destructive" />
+                </div>
+              )}
+
+              <h2 className="mb-2 text-2xl font-bold text-foreground">
+                {videoState === "searching"
+                  ? "Buscando empreendedor..."
+                  : videoState === "idle"
+                    ? "Pronto para conectar?"
+                    : "Acesso Negado"}
+              </h2>
+
+              {videoState === "searching" ? (
                 <p className="mb-4 flex items-center gap-2 text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   Tempo de espera: {formatWaitTime(waitTime)}
                 </p>
+              ) : videoState === "idle" ? (
+                <p className="mb-6 max-w-md text-muted-foreground">
+                  Clique no botão abaixo para começar a encontrar outros empreendedores em tempo real.
+                </p>
+              ) : (
+                <p className="mb-6 max-w-md text-muted-foreground">{permissionError}</p>
+              )}
+
+              {videoState === "searching" ? (
                 <Button onClick={endCall} variant="outline">
                   Cancelar
                 </Button>
-              </div>
-            )}
+              ) : videoState === "idle" ? (
+                <Button onClick={startSearching} className="gradient-bg text-primary-foreground gap-2">
+                  <Search className="h-4 w-4" />
+                  Começar Chamada
+                </Button>
+              ) : (
+                <Button onClick={() => setVideoState("idle")} variant="outline">
+                  Tentar Novamente
+                </Button>
+              )}
+            </div>
+          )}
 
-            {/* Connecting state overlay */}
-            {videoState === "connecting" && currentPartner && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
-                <Avatar className="mb-4 h-24 w-24 ring-4 ring-primary/20">
-                  <AvatarImage src={currentPartner.avatar_url || undefined} alt={currentPartner.full_name} />
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-pink-500 text-2xl text-white">
-                    {currentPartner.full_name?.charAt(0) || "U"}
-                  </AvatarFallback>
+          {/* Partner Info Overlay */}
+          {currentPartner && (videoState === "connected" || videoState === "matched") && (
+            <div className="absolute top-4 left-4 z-20">
+              <div className="flex items-center gap-3 bg-black/40 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10">
+                <Avatar className="h-10 w-10 border-2 border-primary/50">
+                  <AvatarImage src={currentPartner.avatar_url || "/placeholder.svg"} />
+                  <AvatarFallback>{currentPartner.full_name[0]}</AvatarFallback>
                 </Avatar>
-                <div className="mb-4 flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <span className="text-lg font-medium text-foreground">Conectando...</span>
+                <div>
+                  <div className="font-bold text-white text-sm leading-tight">{currentPartner.full_name}</div>
+                  <div className="text-[10px] text-zinc-300">{currentPartner.city || "Brasil"}</div>
                 </div>
-                <p className="text-muted-foreground">{connectionStatus}</p>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Local Video (Self) */}
+        <div className="relative flex-1 overflow-hidden rounded-3xl bg-secondary border border-border">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className={cn(
+              "h-full w-full object-cover transition-all duration-500",
+              facingModeRef.current === "user" && "mirror-mode",
+              isVideoOff && "opacity-0",
             )}
+          />
 
-            {/* Connected state - partner info and controls */}
-            {videoState === "connected" && currentPartner && (
-              <>
-                {/* Loading indicator moved to non-blocking position with pointer-events-none */}
-                {!remoteVideoReady && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center">
-                      <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-                      <p className="text-muted-foreground">Carregando vídeo...</p>
-                    </div>
-                  </div>
-                )}
+          {isVideoOff && (
+            <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
+              <Avatar className="h-24 w-24 border-4 border-zinc-700">
+                <AvatarImage src={userProfile.avatar_url || "/placeholder.svg"} />
+                <AvatarFallback className="text-3xl text-zinc-400 bg-zinc-900">
+                  {userProfile.full_name[0]}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          )}
 
-                {/* Partner Info */}
-                <div className="absolute left-4 top-4 flex items-center gap-3 rounded-lg bg-black/50 p-2 backdrop-blur-sm z-20">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={currentPartner.avatar_url || undefined} />
-                    <AvatarFallback>{currentPartner.full_name?.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-white">{currentPartner.full_name}</p>
-                    {currentPartner.city && <p className="text-xs text-white/70">{currentPartner.city}</p>}
-                  </div>
-                </div>
-
-                {/* Action buttons */}
-                <div className="absolute bottom-4 right-4 flex items-center gap-2 z-20">
-                  <Button
-                    onClick={handleLike}
-                    disabled={isLiked}
-                    size="icon"
-                    className={`h-12 w-12 lg:h-14 lg:w-14 rounded-full ${isLiked ? "bg-pink-500" : "bg-pink-500/80 hover:bg-pink-500"}`}
-                  >
-                    <Heart className={`h-6 w-6 lg:h-7 lg:w-7 ${isLiked ? "fill-white" : ""}`} />
-                  </Button>
-                  <Button
-                    onClick={skipToNext}
-                    size="icon"
-                    className="h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-blue-500 hover:bg-blue-600"
-                  >
-                    <SkipForward className="h-6 w-6 lg:h-7 lg:w-7" />
-                  </Button>
-                </div>
-
-                {/* End call button */}
-                <Button
-                  onClick={endCall}
-                  size="icon"
-                  className="absolute left-4 bottom-4 h-10 w-10 lg:h-12 lg:w-12 rounded-full bg-red-500 hover:bg-red-600 z-20"
-                >
-                  <PhoneOff className="h-5 w-5 lg:h-6 lg:w-6" />
-                </Button>
-              </>
-            )}
-
-            {/* Ended state */}
-            {videoState === "ended" && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-8 text-center z-10">
-                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-                  <PhoneOff className="h-12 w-12 text-muted-foreground" />
-                </div>
-                <h2 className="mb-2 text-2xl font-bold text-foreground">Chamada Encerrada</h2>
-                <p className="mb-6 text-muted-foreground">Obrigado por usar o Connext!</p>
-                <Button
-                  onClick={() => {
-                    setVideoState("idle")
-                    startSearching()
-                  }}
-                  className="bg-gradient-to-r from-primary to-pink-500"
-                >
-                  Nova Videochamada
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Local Video - Right/Bottom */}
-          <div className="relative h-1/2 lg:h-full lg:w-1/2 w-full bg-slate-800">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-
-            {!localVideoReady && (
-              <div className="absolute inset-0 flex h-full items-center justify-center bg-slate-800">
-                <p className="text-muted-foreground">Câmera desativada</p>
-              </div>
-            )}
-
-            {/* Flip camera button */}
-            {localVideoReady && (
-              <Button
-                onClick={flipCamera}
-                size="icon"
-                variant="secondary"
-                className="absolute right-4 top-4 h-10 w-10 rounded-full bg-black/50 hover:bg-black/70"
-              >
-                <SwitchCamera className="h-5 w-5 text-white" />
-              </Button>
-            )}
-
-            {/* Local video controls */}
-            {localVideoReady && (
-              <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">
-                <Button
-                  onClick={toggleMute}
-                  size="icon"
-                  variant={isMuted ? "destructive" : "secondary"}
-                  className="h-12 w-12 rounded-full"
-                >
-                  {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-                </Button>
-                <Button
-                  onClick={toggleVideo}
-                  size="icon"
-                  variant={isVideoOff ? "destructive" : "secondary"}
-                  className="h-12 w-12 rounded-full"
-                >
-                  {isVideoOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
-                </Button>
-              </div>
-            )}
+          {/* Local Controls Overlay */}
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4">
+            <Button
+              size="icon"
+              variant={isMuted ? "destructive" : "secondary"}
+              className="h-12 w-12 rounded-full shadow-lg"
+              onClick={() => setIsMuted(!isMuted)}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
+            <Button
+              size="icon"
+              variant={isVideoOff ? "destructive" : "secondary"}
+              className="h-12 w-12 rounded-full shadow-lg"
+              onClick={() => setIsVideoOff(!isVideoOff)}
+            >
+              {isVideoOff ? <VideoOff className="h-5 w-5" /> : <VideoIcon className="h-5 w-5" />}
+            </Button>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="h-12 w-12 rounded-full bg-blue-600 hover:bg-blue-700 transition-all hover:scale-110 shadow-lg md:hidden"
+              onClick={flipCamera}
+            >
+              <SwitchCamera className="h-5 w-5" />
+            </Button>
           </div>
         </div>
-      )}
+
+        {/* Floating Controls for Call Actions */}
+        {videoState === "connected" && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-6 px-8 py-4 bg-black/20 backdrop-blur-xl rounded-full border border-white/10 shadow-2xl">
+            <Button
+              size="icon"
+              variant="destructive"
+              className="h-14 w-14 rounded-full hover:scale-110 transition-transform shadow-xl"
+              onClick={endCall}
+            >
+              <PhoneOff className="h-6 w-6" />
+            </Button>
+
+            <Button
+              size="icon"
+              className={cn(
+                "h-14 w-14 rounded-full transition-all duration-300 hover:scale-110 shadow-xl",
+                isLiked ? "bg-pink-500 hover:bg-pink-600" : "bg-zinc-800 hover:bg-zinc-700",
+              )}
+              onClick={handleLike}
+            >
+              <Heart className={cn("h-6 w-6", isLiked && "fill-current animate-pulse")} />
+            </Button>
+
+            <Button
+              size="icon"
+              className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 transition-all hover:scale-110 shadow-xl"
+              onClick={skipToNext}
+              disabled={isLoading}
+            >
+              {isLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <SkipForward className="h-6 w-6" />}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

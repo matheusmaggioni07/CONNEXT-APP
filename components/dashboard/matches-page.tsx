@@ -2,20 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  MessageCircle,
-  MapPin,
-  Clock,
-  Heart,
-  AlertCircle,
-  RefreshCw,
-  Building2,
-  Target,
-  ArrowLeft,
-  Sparkles,
-  Briefcase,
-  User,
-} from "lucide-react"
+import { MessageCircle, MapPin, Clock, Heart, AlertCircle, RefreshCw, ArrowLeft, User, Rocket } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/lib/auth-context"
 import { getOnlineUserIds } from "@/app/actions/presence"
@@ -151,14 +138,14 @@ export function MatchesPage() {
     const name = profile.full_name || "User"
     const initials = getInitials(name)
     const colors = [
-      { bg: "6366f1", fg: "ffffff" }, // Indigo
-      { bg: "8b5cf6", fg: "ffffff" }, // Violet
-      { bg: "ec4899", fg: "ffffff" }, // Pink
-      { bg: "f43f5e", fg: "ffffff" }, // Rose
-      { bg: "f97316", fg: "ffffff" }, // Orange
-      { bg: "eab308", fg: "000000" }, // Yellow
-      { bg: "22c55e", fg: "ffffff" }, // Green
-      { bg: "06b6d4", fg: "ffffff" }, // Cyan
+      { bg: "6366f1", fg: "ffffff" },
+      { bg: "8b5cf6", fg: "ffffff" },
+      { bg: "ec4899", fg: "ffffff" },
+      { bg: "f43f5e", fg: "ffffff" },
+      { bg: "f97316", fg: "ffffff" },
+      { bg: "eab308", fg: "000000" },
+      { bg: "22c55e", fg: "ffffff" },
+      { bg: "06b6d4", fg: "ffffff" },
     ]
 
     const colorIndex = profile.id ? profile.id.charCodeAt(0) % colors.length : 0
@@ -286,55 +273,15 @@ export function MatchesPage() {
                     </div>
                   </div>
 
-                  {profile.industry && (
-                    <div className="flex items-center gap-1 mt-3 text-xs text-muted-foreground">
-                      <Building2 className="w-3 h-3" />
-                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">{profile.industry}</span>
-                    </div>
-                  )}
-
-                  {profile.interests && profile.interests.length > 0 && (
+                  {profile.journey_stage && (
                     <div className="mt-3">
                       <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        Interesses:
+                        <Rocket className="w-3 h-3" />
+                        Momento da Jornada:
                       </p>
-                      <div className="flex flex-wrap gap-1">
-                        {profile.interests.slice(0, isExpanded ? undefined : 3).map((interest) => (
-                          <span
-                            key={interest}
-                            className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full text-xs"
-                          >
-                            {interest}
-                          </span>
-                        ))}
-                        {!isExpanded && profile.interests.length > 3 && (
-                          <span className="px-2 py-0.5 text-muted-foreground text-xs">
-                            +{profile.interests.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {profile.looking_for && profile.looking_for.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
-                        <Target className="w-3 h-3" />
-                        Procura:
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {profile.looking_for.slice(0, isExpanded ? undefined : 2).map((item) => (
-                          <span key={item} className="px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full text-xs">
-                            {item}
-                          </span>
-                        ))}
-                        {!isExpanded && profile.looking_for.length > 2 && (
-                          <span className="px-2 py-0.5 text-muted-foreground text-xs">
-                            +{profile.looking_for.length - 2}
-                          </span>
-                        )}
-                      </div>
+                      <span className="px-2 py-1 bg-amber-500/20 text-amber-500 rounded-lg text-xs inline-block">
+                        {profile.journey_stage}
+                      </span>
                     </div>
                   )}
 
@@ -347,13 +294,6 @@ export function MatchesPage() {
                             Bio:
                           </p>
                           <p className="text-sm text-foreground">{profile.bio}</p>
-                        </div>
-                      )}
-                      {profile.seniority && (
-                        <div className="flex items-center gap-1 text-xs">
-                          <Briefcase className="w-3 h-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">Senioridade:</span>
-                          <span className="text-foreground">{profile.seniority}</span>
                         </div>
                       )}
                       {profile.country && (
