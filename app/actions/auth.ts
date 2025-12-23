@@ -30,11 +30,10 @@ export async function signUp(formData: {
   phone: string
   company: string
   position: string
-  industry: string
+  situation: string // Adicionado campo de situação profissional
+  journeyStage: string // Adicionado campo de etapa da jornada
   city: string
   country: string
-  interests: string[]
-  lookingFor: string[]
   bio?: string
   avatarUrl?: string | null
 }) {
@@ -75,13 +74,12 @@ export async function signUp(formData: {
     .from("profiles")
     .update({
       phone: formData.phone,
-      company: formData.company,
-      position: formData.position,
-      industry: formData.industry,
+      company: formData.company || null,
+      position: formData.position || null,
+      situation: formData.situation,
+      journey_stage: formData.journeyStage,
       city: formData.city,
       country: formData.country,
-      interests: formData.interests,
-      looking_for: formData.lookingFor,
       bio: formData.bio || "",
       avatar_url: formData.avatarUrl || null,
       onboarding_completed: true,

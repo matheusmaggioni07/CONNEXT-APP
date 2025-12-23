@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -22,97 +21,25 @@ import {
   ArrowRight,
   ArrowLeft,
   Loader2,
-  Camera,
-  X,
   Eye,
   EyeOff,
 } from "lucide-react"
-
-const industries = [
-  "Tecnologia",
-  "Finanças",
-  "Saúde",
-  "Marketing",
-  "Consultoria",
-  "E-commerce",
-  "Educação",
-  "Jurídico",
-  "Imobiliário",
-  "Varejo",
-  "Alimentação",
-  "Moda",
-  "Entretenimento",
-  "Esportes",
-  "Turismo",
-  "Agronegócio",
-  "Indústria",
-  "Logística",
-  "Construção Civil",
-  "Energia",
-  "Meio Ambiente",
-  "Arte e Cultura",
-  "Comunicação",
-  "ONGs e Social",
-  "Outro",
-]
-
-const interests = [
-  "IA & Machine Learning",
-  "Startups",
-  "Investimentos",
-  "SaaS",
-  "Growth Hacking",
-  "Venture Capital",
-  "M&A",
-  "Transformação Digital",
-  "Fintech",
-  "HealthTech",
-  "EdTech",
-  "E-commerce",
-  "Marketing Digital",
-  "Vendas B2B",
-  "Liderança",
-  "Empreendedorismo",
-  "Desenvolvimento Pessoal",
-  "Networking",
-  "Carreira",
-  "Freelancing",
-  "Criação de Conteúdo",
-  "Design",
-  "Programação",
-  "Gestão de Projetos",
-  "Finanças Pessoais",
-  "Sustentabilidade",
-  "Inovação Social",
-  "Mentoria",
-  "Negócios Internacionais",
-  "Franquias",
-]
-
-const lookingForOptions = [
-  "Investidores",
-  "Co-fundadores",
-  "Parcerias",
-  "Clientes",
-  "Mentores",
-  "Talentos",
-  "Networking",
-  "Fornecedores",
-  "Oportunidades de Trabalho",
-  "Freelances",
-  "Conhecimento",
-  "Amizades Profissionais",
-]
 
 const situationOptions = [
   "Trabalhando em empresa",
   "Empreendedor(a)",
   "Freelancer/Autônomo",
   "Estudante",
-  "Em transição de carreira",
-  "Buscando oportunidades",
-  "Aposentado(a) ativo",
   "Investidor(a)",
+]
+
+const journeyStageOptions = [
+  "Validando minha ideia",
+  "Construindo meu MVP",
+  "Já tenho tração",
+  "Buscando investimento",
+  "Escalando meu negócio",
+  "Quero investir em negócios",
 ]
 
 export function RegisterForm() {
@@ -125,57 +52,22 @@ export function RegisterForm() {
     phone: "",
     company: "",
     position: "",
-    industry: "",
-    interests: [] as string[],
+    situation: "", // Nova situação profissional simplificada
+    journeyStage: "", // Novo campo de etapa da jornada
     bio: "",
     city: "",
     country: "Brasil",
-    lookingFor: [] as string[],
-    situation: "", // New field for professional situation
   })
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [showPassword, setShowPassword] = useState(false) // Password visibility toggle
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false) // Confirm password visibility toggle
-  const [termsAccepted, setTermsAccepted] = useState(false) // Added terms acceptance state
-  const [showVerificationMessage, setShowVerificationMessage] = useState(false) // Added verification message state
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const router = useRouter()
 
-  const totalSteps = 7 // Added step for terms (now 7 steps total)
+  const totalSteps = 4
 
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const toggleArrayItem = (field: "interests" | "lookingFor", value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: prev[field].includes(value) ? prev[field].filter((i) => i !== value) : [...prev[field], value],
-    }))
-  }
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError("A imagem deve ter no máximo 5MB")
-        return
-      }
-      setAvatarFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-      setError("")
-    }
-  }
-
-  const removeAvatar = () => {
-    setAvatarFile(null)
-    setAvatarPreview(null)
   }
 
   const nextStep = () => {
@@ -194,36 +86,24 @@ export function RegisterForm() {
       }
     }
     if (step === 2) {
-      if (!formData.name || !formData.phone || !formData.city) {
+      if (!formData.name || !formData.phone || !formData.situation) {
         setError("Preencha os campos obrigatórios")
         return
       }
-      if (!formData.situation) {
-        setError("Selecione sua situação profissional")
+      if (formData.situation === "Trabalhando em empresa" && (!formData.company || !formData.position)) {
+        setError("Para quem trabalha em empresa, informe o cargo e a empresa")
         return
       }
     }
     if (step === 3) {
-      if (!formData.industry) {
-        setError("Selecione uma área de interesse/atuação")
+      if (!formData.journeyStage) {
+        setError("Selecione em que momento da sua jornada você está")
         return
       }
     }
     if (step === 4) {
-      if (formData.lookingFor.length === 0) {
-        setError("Selecione pelo menos um objetivo")
-        return
-      }
-    }
-    if (step === 5) {
-      if (!avatarFile) {
-        setError("Adicione uma foto de perfil")
-        return
-      }
-    }
-    if (step === 6) {
-      if (!termsAccepted) {
-        setError("Você precisa aceitar os termos de uso para continuar")
+      if (!formData.city) {
+        setError("Informe sua cidade")
         return
       }
     }
@@ -271,25 +151,6 @@ export function RegisterForm() {
     try {
       const supabase = createClient()
 
-      // Upload avatar if provided
-      let avatarUrl = null
-      if (avatarFile) {
-        const fileExt = avatarFile.name.split(".").pop()
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-
-        const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, avatarFile, {
-          cacheControl: "3600",
-          upsert: false,
-        })
-
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(fileName)
-          avatarUrl = urlData.publicUrl
-        } else {
-          console.error("[v0] Avatar upload error:", uploadError)
-        }
-      }
-
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -317,27 +178,20 @@ export function RegisterForm() {
         return
       }
 
-      // Wait for auth trigger to create profile
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
-      // Update profile with full data including avatar
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
           phone: formData.phone,
           company: formData.company || null,
           position: formData.position || null,
-          industry: formData.industry,
+          situation: formData.situation,
+          journey_stage: formData.journeyStage,
           city: formData.city,
           country: formData.country,
           bio: formData.bio || null,
-          interests: formData.interests,
-          looking_for: formData.lookingFor,
-          situation: formData.situation,
-          avatar_url: avatarUrl,
           onboarding_completed: true,
-          terms_accepted: termsAccepted,
-          terms_accepted_at: new Date().toISOString(),
         })
         .eq("id", authData.user.id)
 
@@ -345,10 +199,7 @@ export function RegisterForm() {
         console.error("[v0] Profile update error:", profileError)
       }
 
-      setShowVerificationMessage(true)
       setIsLoading(false)
-
-      // Redirect to email verification page
       router.push(`/auth/verify-email?email=${encodeURIComponent(formData.email)}`)
     } catch (error) {
       console.error("[v0] Signup error:", error)
@@ -359,7 +210,6 @@ export function RegisterForm() {
 
   return (
     <div className="w-full max-w-md mx-auto">
-      {/* Header */}
       <div className="text-center mb-6">
         <ConnextLogo className="mx-auto mb-4" />
       </div>
@@ -519,32 +369,15 @@ export function RegisterForm() {
           </>
         )}
 
-        {/* Step 2: Personal Info */}
+        {/* Step 2: Situação Profissional e Contato */}
         {step === 2 && (
           <>
             <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Informações pessoais</h1>
-              <p className="text-muted-foreground text-sm mt-1">Conte-nos mais sobre você.</p>
+              <h1 className="text-2xl font-bold text-foreground">Situação Profissional</h1>
+              <p className="text-muted-foreground text-sm mt-1">Selecione sua situação atual.</p>
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-foreground">
-                  Nome Completo *
-                </Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="name"
-                    placeholder="Seu nome completo"
-                    value={formData.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                    className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                    required
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
                 <Label htmlFor="phone" className="text-foreground">
                   WhatsApp *
@@ -564,6 +397,123 @@ export function RegisterForm() {
                 <p className="text-xs text-muted-foreground">Usado para conexões após match</p>
               </div>
 
+              <div className="space-y-3">
+                <Label className="text-foreground">Situação Profissional *</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {situationOptions.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => updateField("situation", option)}
+                      className={`p-4 rounded-xl border-2 transition-all text-left ${
+                        formData.situation === option
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border/50 bg-card/30 text-muted-foreground hover:border-primary/50 hover:bg-card/50"
+                      }`}
+                    >
+                      <span className="font-medium text-sm">{option}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {formData.situation === "Trabalhando em empresa" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="position" className="text-foreground">
+                      Cargo *
+                    </Label>
+                    <div className="relative">
+                      <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        id="position"
+                        placeholder="Ex: Desenvolvedor Full Stack"
+                        value={formData.position}
+                        onChange={(e) => updateField("position", e.target.value)}
+                        className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="company" className="text-foreground">
+                      Empresa *
+                    </Label>
+                    <div className="relative">
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        id="company"
+                        placeholder="Nome da empresa"
+                        value={formData.company}
+                        onChange={(e) => updateField("company", e.target.value)}
+                        className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {formData.situation === "Empreendedor(a)" && (
+                <div className="space-y-2">
+                  <Label htmlFor="company" className="text-foreground">
+                    Nome da Empresa (opcional)
+                  </Label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="company"
+                      placeholder="Nome da sua empresa"
+                      value={formData.company}
+                      onChange={(e) => updateField("company", e.target.value)}
+                      className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Step 3: Etapa da Jornada */}
+        {step === 3 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">O que você está buscando?</h1>
+              <p className="text-muted-foreground text-sm mt-1">Selecione em que momento da sua jornada você está.</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3">
+                {journeyStageOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => updateField("journeyStage", option)}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${
+                      formData.journeyStage === option
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border/50 bg-card/30 text-muted-foreground hover:border-primary/50 hover:bg-card/50"
+                    }`}
+                  >
+                    <span className="font-medium">{option}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Step 4: Localização e Bio */}
+        {step === 4 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">Finalize seu perfil</h1>
+              <p className="text-muted-foreground text-sm mt-1">Última etapa para começar a conectar.</p>
+            </div>
+
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="city" className="text-foreground">
                   Cidade *
@@ -582,395 +532,73 @@ export function RegisterForm() {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-foreground">Situação Profissional *</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {situationOptions.map((situation) => (
-                    <button
-                      key={situation}
-                      type="button"
-                      onClick={() => updateField("situation", situation)}
-                      className={`px-3 py-2 rounded-lg border text-sm transition-all ${
-                        formData.situation === situation
-                          ? "gradient-bg text-primary-foreground border-transparent"
-                          : "bg-card/50 text-foreground border-border/50 hover:border-primary/50 backdrop-blur-sm"
-                      }`}
-                    >
-                      {situation}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {(formData.situation === "Trabalhando em empresa" || formData.situation === "Empreendedor(a)") && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="company" className="text-foreground">
-                      Empresa (opcional)
-                    </Label>
-                    <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="company"
-                        placeholder="Nome da empresa"
-                        value={formData.company}
-                        onChange={(e) => updateField("company", e.target.value)}
-                        className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="position" className="text-foreground">
-                      Cargo (opcional)
-                    </Label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="position"
-                        placeholder="Seu cargo"
-                        value={formData.position}
-                        onChange={(e) => updateField("position", e.target.value)}
-                        className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* Step 3: Industry & Interests */}
-        {step === 3 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Área de Interesse</h1>
-              <p className="text-muted-foreground text-sm mt-1">Selecione sua área principal.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-foreground">Área de atuação/interesse *</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-2">
-                  {industries.map((ind) => (
-                    <button
-                      key={ind}
-                      type="button"
-                      onClick={() => updateField("industry", ind)}
-                      className={`px-3 py-2 rounded-lg border text-sm transition-all ${
-                        formData.industry === ind
-                          ? "gradient-bg text-primary-foreground border-transparent glow-orange"
-                          : "bg-card/50 text-foreground border-border/50 hover:border-primary/50 backdrop-blur-sm"
-                      }`}
-                    >
-                      {ind}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-foreground">Interesses (selecione até 5)</Label>
-                <div className="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto pr-2">
-                  {interests.map((interest) => (
-                    <button
-                      key={interest}
-                      type="button"
-                      onClick={() => {
-                        if (formData.interests.length < 5 || formData.interests.includes(interest)) {
-                          toggleArrayItem("interests", interest)
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-full border text-sm transition-all ${
-                        formData.interests.includes(interest)
-                          ? "gradient-bg text-primary-foreground border-transparent"
-                          : "bg-card/50 text-foreground border-border/50 hover:border-primary/50 backdrop-blur-sm"
-                      }`}
-                    >
-                      {interest}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Step 4: Looking For */}
-        {step === 4 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">O que você busca?</h1>
-              <p className="text-muted-foreground text-sm mt-1">Selecione seus objetivos.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-foreground">Estou buscando (selecione pelo menos 1) *</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {lookingForOptions.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => toggleArrayItem("lookingFor", item)}
-                      className={`px-3 py-2 rounded-lg border text-sm transition-all ${
-                        formData.lookingFor.includes(item)
-                          ? "gradient-bg text-primary-foreground border-transparent"
-                          : "bg-card/50 text-foreground border-border/50 hover:border-primary/50 backdrop-blur-sm"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="bio" className="text-foreground">
                   Bio (opcional)
                 </Label>
                 <Textarea
                   id="bio"
-                  placeholder="Conte um pouco sobre você e o que busca..."
+                  placeholder="Conte um pouco sobre você e o que busca no Connext. Networking é sobre conexões genuínas - seja autêntico!"
                   value={formData.bio}
                   onChange={(e) => updateField("bio", e.target.value)}
-                  className="bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary min-h-[100px]"
-                  maxLength={300}
+                  className="min-h-[120px] bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary resize-none"
                 />
-                <p className="text-xs text-muted-foreground text-right">{formData.bio.length}/300</p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Step 5: Photo */}
-        {step === 5 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Sua foto</h1>
-              <p className="text-muted-foreground text-sm mt-1">Adicione uma foto profissional.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex flex-col items-center gap-4">
-                {avatarPreview ? (
-                  <div className="relative">
-                    <img
-                      src={avatarPreview || "/placeholder.svg"}
-                      alt="Preview"
-                      className="w-40 h-40 rounded-full object-cover border-4 border-primary/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeAvatar}
-                      className="absolute -top-2 -right-2 w-8 h-8 bg-destructive rounded-full flex items-center justify-center text-white hover:bg-destructive/80 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="w-40 h-40 rounded-full border-2 border-dashed border-border/50 flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 transition-colors bg-card/30 backdrop-blur-sm">
-                    <Camera className="w-10 h-10 text-muted-foreground mb-2" />
-                    <span className="text-sm text-muted-foreground">Adicionar foto</span>
-                    <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-                  </label>
-                )}
-                <p className="text-xs text-muted-foreground text-center">
-                  Use uma foto profissional onde seu rosto esteja visível. <br />
-                  Máximo 5MB.
+                <p className="text-xs text-muted-foreground">
+                  Dica: Conte sobre seus objetivos, projetos e o que te motiva!
                 </p>
               </div>
             </div>
           </>
         )}
 
-        {step === 6 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Termos de Uso</h1>
-              <p className="text-muted-foreground text-sm mt-1">Leia e aceite os termos para continuar.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-card/50 border border-border rounded-xl p-4 max-h-64 overflow-y-auto text-sm text-muted-foreground">
-                <h3 className="font-semibold text-foreground mb-2">Termos de Uso do Connext</h3>
-                <p className="mb-3">
-                  Bem-vindo ao Connext! Ao usar nossa plataforma, você concorda com os seguintes termos:
-                </p>
-
-                <h4 className="font-medium text-foreground mt-4 mb-2">1. Idade Mínima</h4>
-                <p className="mb-3">
-                  <strong className="text-primary">Você deve ter pelo menos 18 anos de idade</strong> para usar o
-                  Connext. Ao criar uma conta, você confirma que possui idade igual ou superior a 18 anos.
-                </p>
-
-                <h4 className="font-medium text-foreground mt-4 mb-2">2. Uso Adequado</h4>
-                <p className="mb-3">O Connext é uma plataforma profissional de networking. Você concorda em:</p>
-                <ul className="list-disc pl-5 space-y-1 mb-3">
-                  <li>Usar a plataforma apenas para fins profissionais legítimos</li>
-                  <li>Fornecer informações verdadeiras sobre sua identidade e carreira</li>
-                  <li>Tratar outros usuários com respeito e profissionalismo</li>
-                  <li>Não enviar conteúdo impróprio, ofensivo ou ilegal</li>
-                </ul>
-
-                <h4 className="font-medium text-foreground mt-4 mb-2">3. Videochamadas</h4>
-                <p className="mb-3">
-                  Durante as videochamadas, você concorda em manter um comportamento profissional. Qualquer
-                  comportamento inadequado resultará em banimento da plataforma.
-                </p>
-
-                <h4 className="font-medium text-foreground mt-4 mb-2">4. Privacidade</h4>
-                <p className="mb-3">
-                  Suas informações pessoais são protegidas conforme nossa Política de Privacidade. Não compartilhamos
-                  seus dados com terceiros sem seu consentimento.
-                </p>
-
-                <h4 className="font-medium text-foreground mt-4 mb-2">5. Responsabilidade</h4>
-                <p>
-                  Você é responsável por todas as ações realizadas em sua conta. O Connext não se responsabiliza por
-                  interações entre usuários fora da plataforma.
-                </p>
-              </div>
-
-              <div className="flex items-start gap-3 p-4 bg-card/30 rounded-xl border border-border">
-                <Checkbox
-                  id="terms"
-                  checked={termsAccepted}
-                  onCheckedChange={(checked) => setTermsAccepted(checked as boolean)}
-                  className="mt-1"
-                />
-                <label htmlFor="terms" className="text-sm text-foreground cursor-pointer">
-                  Li e aceito os <span className="text-primary font-medium">Termos de Uso</span> e confirmo que tenho{" "}
-                  <span className="text-primary font-medium">18 anos ou mais</span>.
-                </label>
-              </div>
-            </div>
-          </>
-        )}
-
-        {step === 7 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Tudo pronto!</h1>
-              <p className="text-muted-foreground text-sm mt-1">Revise suas informações.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 p-4 bg-card/50 rounded-xl border border-border/50">
-                {avatarPreview && (
-                  <img
-                    src={avatarPreview || "/placeholder.svg"}
-                    alt="Seu avatar"
-                    className="w-16 h-16 rounded-full object-cover"
-                  />
-                )}
-                <div>
-                  <h3 className="font-semibold text-foreground">{formData.name}</h3>
-                  <p className="text-sm text-muted-foreground">{formData.situation}</p>
-                  {formData.company && <p className="text-sm text-muted-foreground">{formData.company}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-3 bg-card/30 rounded-lg">
-                  <p className="text-muted-foreground">Cidade</p>
-                  <p className="text-foreground font-medium">{formData.city}</p>
-                </div>
-                <div className="p-3 bg-card/30 rounded-lg">
-                  <p className="text-muted-foreground">Área</p>
-                  <p className="text-foreground font-medium">{formData.industry}</p>
-                </div>
-              </div>
-
-              {formData.interests.length > 0 && (
-                <div className="p-3 bg-card/30 rounded-lg">
-                  <p className="text-muted-foreground text-sm mb-2">Interesses</p>
-                  <div className="flex flex-wrap gap-1">
-                    {formData.interests.map((i) => (
-                      <span key={i} className="text-xs px-2 py-1 bg-primary/20 text-primary rounded-full">
-                        {i}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 bg-card/30 rounded-lg">
-                <p className="text-muted-foreground text-sm mb-2">Buscando</p>
-                <div className="flex flex-wrap gap-1">
-                  {formData.lookingFor.map((i) => (
-                    <span key={i} className="text-xs px-2 py-1 bg-secondary text-foreground rounded-full">
-                      {i}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Error */}
         {error && (
-          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <p className="text-destructive text-sm">{error}</p>
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+            {error}
           </div>
         )}
 
-        {/* Verification Message */}
-        {showVerificationMessage && (
-          <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
-            <p className="text-success text-sm">Um email de verificação foi enviado para seu endereço.</p>
-          </div>
-        )}
-
-        {/* Navigation Buttons */}
         <div className="flex gap-3">
           {step > 1 && (
             <Button
               type="button"
               variant="outline"
               onClick={prevStep}
+              disabled={isLoading}
               className="flex-1 bg-card/50 border-border/50 backdrop-blur-sm"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Voltar
             </Button>
           )}
-
           {step < totalSteps ? (
-            <Button type="button" onClick={nextStep} className="flex-1 gradient-bg text-primary-foreground">
-              Continuar
+            <Button
+              type="button"
+              onClick={nextStep}
+              disabled={isLoading}
+              className="flex-1 gradient-bg text-white hover:opacity-90"
+            >
+              Próximo
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="flex-1 gradient-bg text-primary-foreground glow-orange"
-            >
+            <Button type="submit" disabled={isLoading} className="flex-1 gradient-bg text-white hover:opacity-90">
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Criando conta...
                 </>
               ) : (
-                <>
-                  Criar Conta
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </>
+                "Criar conta"
               )}
             </Button>
           )}
         </div>
 
-        {step === 1 && (
-          <p className="text-center text-sm text-muted-foreground">
-            Já tem uma conta?{" "}
-            <Link href="/login" className="text-primary hover:underline">
-              Faça login
-            </Link>
-          </p>
-        )}
+        <p className="text-center text-sm text-muted-foreground">
+          Já tem uma conta?{" "}
+          <Link href="/login" className="text-primary hover:underline font-medium">
+            Faça login
+          </Link>
+        </p>
       </form>
     </div>
   )
