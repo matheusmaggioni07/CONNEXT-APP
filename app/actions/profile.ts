@@ -60,6 +60,7 @@ export async function updateProfile(data: Partial<Profile>) {
   if (data.interests !== undefined) dbData.interests = data.interests
   if (data.lookingFor !== undefined) dbData.looking_for = data.lookingFor
   if (data.avatarUrl !== undefined) dbData.avatar_url = data.avatarUrl
+  if (data.objectives !== undefined) dbData.objectives = data.objectives // Added objectives field for new onboarding flow ETAPA 4
 
   const { error } = await supabase.from("profiles").update(dbData).eq("id", user.id)
 
@@ -77,6 +78,7 @@ export async function completeOnboarding(data: {
   situation: string
   company?: string
   position?: string
+  objectives?: string[] // Added objectives field for new onboarding flow ETAPA 4
   journey_stage: string
   city: string
   country: string
@@ -98,14 +100,15 @@ export async function completeOnboarding(data: {
       situation: data.situation,
       company: data.company || null,
       position: data.position || null,
+      objectives: data.objectives || [], // Persist objectives array
       journey_stage: data.journey_stage,
       city: data.city,
       country: data.country,
       bio: data.bio || null,
-      interests: [], // Array vazio pois removemos interesses
-      looking_for: [], // Array vazio pois removemos "o que estou buscando"
-      industry: null, // Null pois removemos indústria
-      seniority: null, // Null pois removemos senioridade
+      interests: [], // Empty array - removed old interests
+      looking_for: [], // Empty array - removed old looking_for
+      industry: null, // Null - removed old industry
+      seniority: null, // Null - removed old seniority
       onboarding_completed: true,
       updated_at: new Date().toISOString(),
     })

@@ -31,7 +31,8 @@ export async function signUp(formData: {
   company: string
   position: string
   situation: string // Adicionado campo de situação profissional
-  journeyStage: string // Adicionado campo de etapa da jornada
+  objectives?: string[] // Added objectives field for new onboarding flow ETAPA 4
+  journeyStage: string
   city: string
   country: string
   bio?: string
@@ -77,6 +78,7 @@ export async function signUp(formData: {
       company: formData.company || null,
       position: formData.position || null,
       situation: formData.situation,
+      objectives: formData.objectives || [], // Persist objectives array
       journey_stage: formData.journeyStage,
       city: formData.city,
       country: formData.country,

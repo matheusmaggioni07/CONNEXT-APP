@@ -7,9 +7,28 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { completeOnboarding } from "@/app/actions/profile"
-import { User, Building2, Briefcase, MapPin, Phone, Rocket, ChevronRight, ChevronLeft, Check } from "lucide-react"
+import {
+  User,
+  Building2,
+  Briefcase,
+  MapPin,
+  Phone,
+  Rocket,
+  Target,
+  ChevronRight,
+  ChevronLeft,
+  Check,
+} from "lucide-react"
 
 const PROFESSIONAL_SITUATIONS = ["Trabalhando em empresa", "Empreendedor", "Estudante", "Investidor", "Autônomo"]
+
+const OBJECTIVES = [
+  "Buscar crescimento profissional",
+  "Trocar conhecimentos e insights",
+  "Divulgar meu trabalho e projetos",
+  "Encontrar investidores e soluções",
+  "Construir conexões de valor",
+]
 
 const JOURNEY_STAGES = [
   "Ainda estou buscando uma ideia ou propósito",
@@ -31,6 +50,7 @@ export function OnboardingForm() {
     situation: "",
     company: "",
     position: "",
+    objectives: [] as string[],
     journey_stage: "",
     city: "",
     country: "Brasil",
@@ -66,6 +86,22 @@ export function OnboardingForm() {
     router.push("/dashboard")
   }
 
+  const toggleObjective = (objective: string) => {
+    if (formData.objectives.includes(objective)) {
+      setFormData({
+        ...formData,
+        objectives: formData.objectives.filter((o) => o !== objective),
+      })
+    } else {
+      if (formData.objectives.length < 2) {
+        setFormData({
+          ...formData,
+          objectives: [...formData.objectives, objective],
+        })
+      }
+    }
+  }
+
   const canProceed = () => {
     switch (step) {
       case 1:
@@ -74,10 +110,9 @@ export function OnboardingForm() {
         if (formData.situation === "Trabalhando em empresa") {
           return formData.company && formData.position
         }
-        // Para os outros (Empreendedor, Estudante, Investidor, Autônomo), pode prosseguir
         return true
       case 3:
-        return formData.journey_stage
+        return formData.objectives.length > 0 && formData.journey_stage
       case 4:
         return formData.city
       default:
@@ -162,7 +197,7 @@ export function OnboardingForm() {
           </div>
         )}
 
-        {/* Step 2: Company & Position (condicional baseado na situação) */}
+        {/* Step 2: Company & Position (conditional) */}
         {step === 2 && (
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6">
@@ -226,37 +261,72 @@ export function OnboardingForm() {
           </div>
         )}
 
-        {/* Step 3: Journey Stage */}
+        {/* Step 3: Objectives & Journey Stage (NEW - ETAPA 4) */}
         {step === 3 && (
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
-                <Rocket className="w-6 h-6 text-primary-foreground" />
+                <Target className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Sua Jornada</h2>
-                <p className="text-sm text-muted-foreground">Em que momento da sua jornada você está?</p>
+                <h2 className="text-xl font-semibold text-foreground">
+                  Selecione o seu principal objetivo na plataforma
+                </h2>
+                <p className="text-sm text-muted-foreground">Você pode selecionar até duas opções</p>
               </div>
             </div>
 
-            <div className="space-y-2">
-              {JOURNEY_STAGES.map((stage) => (
+            <div className="space-y-2 mb-6">
+              {OBJECTIVES.map((objective) => (
                 <button
-                  key={stage}
+                  key={objective}
                   type="button"
-                  onClick={() => setFormData({ ...formData, journey_stage: stage })}
+                  onClick={() => toggleObjective(objective)}
                   className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all border ${
-                    formData.journey_stage === stage
+                    formData.objectives.includes(objective)
                       ? "border-primary bg-primary/10 text-primary font-medium"
                       : "border-border bg-secondary text-muted-foreground hover:border-primary/50"
                   }`}
+                  disabled={!formData.objectives.includes(objective) && formData.objectives.length >= 2}
                 >
                   <div className="flex items-center justify-between">
-                    {stage}
-                    {formData.journey_stage === stage && <Check className="w-4 h-4" />}
+                    <span>{objective}</span>
+                    {formData.objectives.includes(objective) && <Check className="w-4 h-4" />}
                   </div>
                 </button>
               ))}
+            </div>
+
+            <div className="border-t border-border pt-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center">
+                  <Rocket className="w-6 h-6 text-primary-foreground" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Em que momento você se encontra?</h2>
+                  <p className="text-sm text-muted-foreground">Selecione sua etapa atual</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {JOURNEY_STAGES.map((stage) => (
+                  <button
+                    key={stage}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, journey_stage: stage })}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all border ${
+                      formData.journey_stage === stage
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "border-border bg-secondary text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      {stage}
+                      {formData.journey_stage === stage && <Check className="w-4 h-4" />}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -303,7 +373,7 @@ export function OnboardingForm() {
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Bio (opcional)</label>
                 <Textarea
-                  placeholder="Quem quer fazer networking tem interesse em crescimento profissional (novas vagas, parcerias, mentorias), aprendizado (troca de ideias, tendências, habilidades), soluções (encontrar clientes, parceiros, resolver desafios), relacionamentos (aprender com erros, dividir seu trabalho), apoio mútuo e inspiração, focando em conexões de valor, reciprocidade e colaboração mútua."
+                  placeholder="Conte um pouco sobre você e o que busca..."
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                   className="bg-secondary border-border min-h-[120px]"

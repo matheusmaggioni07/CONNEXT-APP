@@ -9,6 +9,7 @@ export interface Profile {
   seniority: string | null
   industry: string | null
   journey_stage?: string | null
+  objectives?: string[] // Added objectives field for new onboarding flow (ETAPA 4)
   city: string | null
   country: string
   bio: string | null
@@ -94,6 +95,7 @@ export function profileToUser(profile: Profile, isOnline = false): User {
     position: profile.position || "",
     industry: profile.industry || "",
     journey_stage: profile.journey_stage || "",
+    objectives: profile.objectives || [],
     interests: profile.interests || [],
     bio: profile.bio || "",
     avatar: profile.avatar_url || "/placeholder.svg?height=200&width=200",
