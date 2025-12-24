@@ -19,6 +19,10 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    const isUserAdmin = user?.email
+      ? ["matheus.maggioni@edu.pucrs.br", "matheus.maggioni07@gmail.com"].includes(user.email.toLowerCase())
+      : false
+
     const projectFiles =
       projectContext?.map((f: { name: string; content: string }) => `// ${f.name}\n${f.content}`).join("\n\n") || ""
     const historyContext =
@@ -46,12 +50,6 @@ INSTRUÇÕES CRÍTICAS:
 
     console.log("[v0] Calling Claude API...")
 
-    const { data: profile } = await supabase.from("profiles").select("plan").eq("id", user?.id).single()
-
-    const isUserAdmin = user?.email
-      ? ["matheus.maggioni@edu.pucrs.br", "matheus.maggioni07@gmail.com"].includes(user.email.toLowerCase())
-      : false
-
     let code = ""
 
     try {
@@ -59,7 +57,7 @@ INSTRUÇÕES CRÍTICAS:
         model: "anthropic/claude-sonnet-4-20250514",
         system: SYSTEM_PROMPT,
         prompt: enhancedPrompt,
-        maxTokens: 20000, // Increased from 16000 to 20000
+        maxTokens: 20000,
         temperature: 0.7,
       })
 
@@ -96,8 +94,8 @@ INSTRUÇÕES CRÍTICAS:
           code = generateFallbackCode(prompt)
         }
       }
-    } catch (aiError) {
-      console.error("[v0] AI Error, using fallback:", aiError)
+    } catch (aiError: any) {
+      console.error("[v0] AI Error, using fallback:", aiError?.message || aiError)
       code = generateFallbackCode(prompt)
     }
 
@@ -107,7 +105,7 @@ INSTRUÇÕES CRÍTICAS:
       JSON.stringify({
         code,
         explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
-        remainingRequests: isUserAdmin ? -1 : user ? -1 : 20,
+        remainingRequests: -1, // Ilimitado para todos durante desenvolvimento
       }),
       {
         headers: { "Content-Type": "application/json" },

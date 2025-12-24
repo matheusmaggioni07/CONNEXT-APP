@@ -46,14 +46,15 @@ export async function signUp(formData: {
     return { error: "Por favor, use seu email profissional (corporativo). Emails pessoais não são aceitos." }
   }
 
-  const confirmationBaseUrl = "https://www.connextapp.com.br/auth/callback"
+  const confirmationBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.connextapp.com.br"
+  const redirectUrl = `${confirmationBaseUrl}/auth/callback`
 
   // Sign up user with metadata
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: formData.email,
     password: formData.password,
     options: {
-      emailRedirectTo: confirmationBaseUrl,
+      emailRedirectTo: redirectUrl,
       data: {
         full_name: formData.fullName,
       },
@@ -78,7 +79,7 @@ export async function signUp(formData: {
       company: formData.company || null,
       position: formData.position || null,
       situation: formData.situation,
-      objectives: formData.objectives || [], // Persist objectives array
+      objectives: formData.objectives || [],
       journey_stage: formData.journeyStage,
       city: formData.city,
       country: formData.country,
@@ -94,7 +95,7 @@ export async function signUp(formData: {
   }
 
   try {
-    await sendConfirmationEmail(formData.email, formData.fullName, confirmationBaseUrl)
+    await sendConfirmationEmail(formData.email, formData.fullName, redirectUrl)
   } catch (emailError) {
     console.log("[v0] Custom email failed, Supabase email will be used:", emailError)
   }

@@ -247,16 +247,22 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       console.error("[v0] getUserMedia error:", err.name, err.message)
 
       if (err.name === "NotAllowedError") {
-        setPermissionError("Você precisa permitir o acesso à câmera e microfone para usar a videochamada.")
+        setPermissionError(
+          "Você precisa permitir o acesso à câmera e microfone. Clique no ícone de cadeado na barra de endereço e permita o acesso.",
+        )
         setVideoState("permission_denied")
       } else if (err.name === "NotFoundError") {
-        setPermissionError("Nenhuma câmera ou microfone encontrado no dispositivo.")
+        setPermissionError(
+          "Nenhuma câmera ou microfone encontrado. Verifique se seu dispositivo possui esses recursos.",
+        )
         setVideoState("permission_denied")
       } else if (err.name === "NotReadableError") {
-        setPermissionError("Câmera ou microfone já está sendo usado por outro aplicativo.")
+        setPermissionError(
+          "Câmera ou microfone já está sendo usado por outro aplicativo. Feche outros apps e tente novamente.",
+        )
         setVideoState("permission_denied")
       } else {
-        setPermissionError("Erro ao acessar câmera/microfone: " + err.message)
+        setPermissionError("Erro ao acessar câmera/microfone. Verifique suas configurações de privacidade.")
         setVideoState("permission_denied")
       }
       return null
@@ -740,6 +746,65 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       handleMatchSuccess()
     }
   }, [isLiked, currentPartner, handleMatchSuccess])
+
+  if (videoState === "permission_denied") {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+          <div className="w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center mb-6">
+            <AlertCircle className="w-12 h-12 text-destructive" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-4">Acesso Negado</h1>
+          <p className="text-muted-foreground mb-6 max-w-md">{permissionError}</p>
+
+          <div className="bg-card border border-border rounded-xl p-6 mb-6 text-left max-w-md">
+            <h3 className="font-semibold text-foreground mb-3">Como permitir acesso:</h3>
+            <ol className="space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-semibold">1.</span>
+                <span>
+                  Clique no ícone de <strong className="text-foreground">cadeado</strong> ao lado da URL no navegador
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-semibold">2.</span>
+                <span>
+                  Selecione <strong className="text-foreground">"Configurações do site"</strong>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-semibold">3.</span>
+                <span>
+                  Permita acesso à <strong className="text-foreground">Câmera</strong> e{" "}
+                  <strong className="text-foreground">Microfone</strong>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-semibold">4.</span>
+                <span>Recarregue a página ou clique em "Tentar Novamente"</span>
+              </li>
+            </ol>
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              onClick={async () => {
+                setPermissionError(null)
+                setVideoState("idle")
+                await getLocalStream()
+              }}
+              className="gradient-bg"
+            >
+              Tentar Novamente
+            </Button>
+            <Button onClick={() => router.push("/dashboard")} variant="outline">
+              Voltar ao Dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col bg-background p-4 md:p-6">

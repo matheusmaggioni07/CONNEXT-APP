@@ -151,11 +151,16 @@ export function RegisterForm() {
     try {
       const supabase = createClient()
 
+      const redirectUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : "https://www.connextapp.com.br/auth/callback"
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: "https://www.connextapp.com.br/auth/callback",
+          emailRedirectTo: redirectUrl,
           data: {
             full_name: formData.name,
           },

@@ -126,6 +126,9 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const [attachedImage, setAttachedImage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Temporary state to indicate generation process
+  const [isGenerating, setIsGenerating] = useState(false)
+
   const loadChatHistory = useCallback(async (projectId: string) => {
     try {
       const res = await fetch(`/api/builder/chat-history?projectId=${projectId}`)
@@ -204,22 +207,15 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   }, [messages])
 
   useEffect(() => {
-    const isAdmin =
-      user.email?.toLowerCase() === "matheus.maggioni07@gmail.com" ||
+    const isUserAdmin =
+      user.email?.toLowerCase() === "matheus.maggioni@gmail.com" ||
       user.email?.toLowerCase() === "matheus.maggioni@edu.pucrs.br"
 
-    if (profile?.plan === "pro" || isAdmin) {
-      setUserCredits(-1) // -1 represents unlimited
+    if (profile?.plan === "pro" || isUserAdmin) {
+      setUserCredits(-1) // -1 representa créditos ilimitados
     } else {
-      if (typeof window !== "undefined") {
-        const savedCredits = localStorage.getItem(`builder_credits_${user.id}`)
-        if (savedCredits) {
-          setUserCredits(Number.parseInt(savedCredits))
-        } else {
-          // Set default credits if none found
-          setUserCredits(20)
-        }
-      }
+      // Todos os usuários têm créditos ilimitados durante desenvolvimento
+      setUserCredits(-1)
     }
   }, [profile, user.id])
 
@@ -1405,15 +1401,8 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   }
 
   const handleSendMessage = async () => {
-    if ((!input.trim() && !attachedImage) || isLoading) return
-
-    // Handle unlimited credits display
-    const creditsNeeded = 1 // Assuming each generation costs 1 credit
-    if (userCredits !== -1 && userCredits < creditsNeeded && profile?.plan !== "pro") {
-      setError("Créditos insuficientes. Faça upgrade para Pro ou aguarde amanhã.")
-      setShowUpgradeModal(true) // Show upgrade modal
-      return
-    }
+    if (!input.trim() && !attachedImage) return
+    if (isGenerating) return
 
     const currentInput = input
     const currentImage = attachedImage
@@ -1421,20 +1410,20 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     setInput("")
     setAttachedImage(null)
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
+    const newMessage: Message = {
+      id: Date.now().toString(), // Added ID for consistency
       role: "user",
-      content: currentInput,
-      timestamp: new Date(),
+      content: currentImage ? `${currentInput}\n\nImagem anexada para referência.` : currentInput,
+      timestamp: new Date(), // Use Date object for consistency
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    setMessages((prev) => [...prev, newMessage])
+    setIsGenerating(true)
     setError(null)
-    setIsLoading(true)
     setThoughts([{ id: "initial", type: "thinking", message: "Pensando em como criar seu site...", status: "active" }])
 
     // Save user message to chat history
-    await saveChatMessage("user", currentInput)
+    await saveChatMessage("user", newMessage.content)
 
     let lastError: Error | null = null
     let retries = 0
@@ -1500,7 +1489,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
               if (data === "[DONE]") break // End of stream
 
               try {
-                const parsedData = JSON.JSON.parse(data) // Use JSON.parse for better error handling
+                const parsedData = JSON.parse(data) // Use JSON.parse for better error handling
                 const delta = parsedData.choices?.[0]?.delta?.content
                 const toolCalls = parsedData.choices?.[0]?.delta?.tool_calls
 
@@ -1575,15 +1564,15 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
             await saveChatMessage("assistant", fullResponse, generatedCode || "")
           }
 
-          // Update credits
-          if (userCredits !== -1) {
-            // Only deduct if not unlimited
-            const newCredits = userCredits - creditsNeeded
-            setUserCredits(newCredits)
-            if (typeof window !== "undefined") {
-              localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
-            }
-          }
+          // Update credits (This section is now bypassed due to the change)
+          // if (userCredits !== -1) {
+          //   // Only deduct if not unlimited
+          //   const newCredits = userCredits - creditsNeeded
+          //   setUserCredits(newCredits)
+          //   if (typeof window !== "undefined") {
+          //     localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
+          //   }
+          // }
 
           if (window.innerWidth < 1024) {
             setMobileView("preview")
@@ -1615,7 +1604,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
         }
       } finally {
-        setIsLoading(false)
+        setIsGenerating(false) // Set isGenerating to false
         setThoughts([]) // Clear thoughts after processing
         if (retries >= MAX_RETRIES) {
           if (lastError) {
@@ -1982,16 +1971,16 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSubmit(e)}
-                      disabled={isLoading}
+                      disabled={isGenerating} // Use isGenerating here
                       placeholder="Descreva o que deseja criar..."
                       className="flex-1 bg-muted/50 border-purple-500/30 focus:border-purple-500 transition-colors"
                     />
                     <Button
                       type="submit" // Ensure it's a submit button
-                      disabled={isLoading || (!input.trim() && !attachedImage)}
+                      disabled={isGenerating || (!input.trim() && !attachedImage)} // Use isGenerating here
                       className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                     >
-                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </Button>
                   </form>
 
