@@ -230,7 +230,7 @@ export function DiscoverPage() {
   const avatarUrl = getAvatarUrl(currentProfile)
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background/80 flex flex-col p-4">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background/80 flex flex-col p-2 md:p-4">
       {/* Header - Desktop only */}
       <div className="hidden md:flex items-center justify-between p-4 md:p-6">
         <div className="flex items-center gap-4">
@@ -259,7 +259,7 @@ export function DiscoverPage() {
       </div>
 
       {/* Mobile Header with back button */}
-      <div className="flex md:hidden items-center justify-between p-4">
+      <div className="flex md:hidden items-center justify-between p-2 md:p-4">
         <Button
           variant="ghost"
           size="icon"
@@ -278,7 +278,7 @@ export function DiscoverPage() {
 
       {/* Like Limit - Only show when low */}
       {!likeStatus.isPro && likeStatus.remaining <= 2 && (
-        <div className="mx-4 md:mx-6 mb-2 bg-secondary/50 border border-border rounded-xl p-3 flex items-center justify-between">
+        <div className="mx-2 md:mx-6 mb-2 bg-secondary/50 border border-border rounded-xl p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Heart className="w-4 h-4 text-primary" />
             <span className="text-xs text-foreground">
@@ -294,14 +294,11 @@ export function DiscoverPage() {
         </div>
       )}
 
-      {/* Profile Card */}
-      <div className="flex-1 flex items-center justify-center">
+      {/* Profile Card - RESPONSIVE */}
+      <div className="flex-1 flex items-center justify-center py-2 md:py-4">
         {profiles.length > 0 ? (
-          <div className="w-full max-w-2xl">
-            <div
-              className="relative rounded-3xl overflow-hidden shadow-2xl bg-gradient-to-b from-slate-900/40 to-slate-900/20 border border-border/50 backdrop-blur-sm"
-              style={{ aspectRatio: "9/16" }}
-            >
+          <div className="w-full max-w-sm md:max-w-2xl px-2 md:px-0">
+            <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-gradient-to-b from-slate-900/40 to-slate-900/20 border border-border/50 backdrop-blur-sm aspect-[3/4] md:aspect-[9/16]">
               {/* Full Photo or Initials */}
               <div className="absolute inset-0">
                 {avatarUrl && !imageError ? (
@@ -314,7 +311,9 @@ export function DiscoverPage() {
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-500 to-rose-500 flex items-center justify-center">
-                    <span className="text-8xl font-bold text-white/90">{getInitials(currentProfile.full_name)}</span>
+                    <span className="text-6xl md:text-8xl font-bold text-white/90">
+                      {getInitials(currentProfile.full_name)}
+                    </span>
                   </div>
                 )}
                 {/* Gradient overlay */}
@@ -337,12 +336,12 @@ export function DiscoverPage() {
               </div>
 
               {/* Info Overlay */}
-              <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+              <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 z-10">
                 {/* Basic Info - Always visible */}
                 <div className="mb-2">
-                  <h2 className="text-2xl md:text-3xl font-bold text-white">{currentProfile.full_name}</h2>
+                  <h2 className="text-xl md:text-3xl font-bold text-white">{currentProfile.full_name}</h2>
                   <div className="flex flex-col gap-0.5">
-                    <p className="text-white/90 text-sm md:text-base font-medium">
+                    <p className="text-white/90 text-xs md:text-base font-medium">
                       {currentProfile.position || currentProfile.situation || "Empreendedor"}{" "}
                       {currentProfile.company ? `@ ${currentProfile.company}` : ""}
                     </p>
@@ -362,6 +361,19 @@ export function DiscoverPage() {
                       <span className="px-2 py-1 bg-amber-500/30 text-white border border-amber-500/20 rounded-lg text-[10px] font-medium backdrop-blur-md">
                         {currentProfile.journey_stage}
                       </span>
+                    </div>
+                  )}
+
+                  {currentProfile.objectives && currentProfile.objectives.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {currentProfile.objectives.slice(0, 2).map((obj, index) => (
+                        <span
+                          key={index}
+                          className="px-2 py-0.5 bg-pink-500/30 text-white border border-pink-500/20 rounded-lg text-[9px] font-medium backdrop-blur-md"
+                        >
+                          {obj}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -400,11 +412,11 @@ export function DiscoverPage() {
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex items-center justify-center gap-4">
+                <div className="flex items-center justify-center gap-2 md:gap-4">
                   <Button
                     size="lg"
                     variant="outline"
-                    className={`w-14 h-14 rounded-full border-2 transition-all duration-200 ${
+                    className={`w-12 h-12 md:w-14 md:h-14 rounded-full border-2 transition-all duration-200 ${
                       skippedHistory.length > 0
                         ? "border-amber-500 text-amber-500 hover:bg-amber-500 hover:text-white bg-white/10 backdrop-blur-sm"
                         : "border-gray-500 text-gray-500 bg-white/5 cursor-not-allowed opacity-50"
@@ -413,22 +425,22 @@ export function DiscoverPage() {
                     disabled={skippedHistory.length === 0}
                     title="Voltar ao perfil anterior"
                   >
-                    <Undo2 className="w-6 h-6" />
+                    <Undo2 className="w-5 h-5 md:w-6 md:h-6" />
                   </Button>
 
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-14 h-14 rounded-full border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white bg-white/10 backdrop-blur-sm"
+                    className="w-12 h-12 md:w-14 md:h-14 rounded-full border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white bg-white/10 backdrop-blur-sm"
                     onClick={handleSkip}
                     disabled={isLiking}
                   >
-                    <X className="w-7 h-7" />
+                    <X className="w-6 h-6 md:w-7 md:h-7" />
                   </Button>
 
                   <Button
                     size="lg"
-                    className={`w-16 h-16 rounded-full transition-all duration-200 ${
+                    className={`w-14 h-14 md:w-16 md:h-16 rounded-full transition-all duration-200 ${
                       likeStatus.canLike && !isLiking
                         ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:scale-110 active:scale-95 shadow-lg shadow-pink-500/30"
                         : "bg-gray-500 text-gray-300 cursor-not-allowed"
@@ -436,7 +448,11 @@ export function DiscoverPage() {
                     onClick={handleLike}
                     disabled={!likeStatus.canLike || isLiking}
                   >
-                    {isLiking ? <Loader2 className="w-8 h-8 animate-spin" /> : <Heart className="w-8 h-8" />}
+                    {isLiking ? (
+                      <Loader2 className="w-7 h-7 md:w-8 md:h-8 animate-spin" />
+                    ) : (
+                      <Heart className="w-7 h-7 md:w-8 md:h-8" />
+                    )}
                   </Button>
 
                   {/* Video call button */}
@@ -444,10 +460,10 @@ export function DiscoverPage() {
                     <Button
                       size="lg"
                       variant="outline"
-                      className="w-14 h-14 rounded-full border-2 border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white bg-white/10 backdrop-blur-sm"
+                      className="w-12 h-12 md:w-14 md:h-14 rounded-full border-2 border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white bg-white/10 backdrop-blur-sm"
                       title="Videochamada"
                     >
-                      <Video className="w-6 h-6" />
+                      <Video className="w-5 h-5 md:w-6 md:h-6" />
                     </Button>
                   </Link>
                 </div>

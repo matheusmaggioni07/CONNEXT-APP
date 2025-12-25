@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { User, MapPin, Phone, Mail, Edit2, Save, X, Camera, Crown, Loader2 } from "lucide-react"
+import { User, MapPin, Phone, Mail, Edit2, Save, X, Camera, Crown, Loader2, AlertCircle } from "lucide-react"
 import { getProfile } from "@/app/actions/auth"
 import { updateProfile } from "@/app/actions/profile"
 import type { Profile } from "@/lib/types"
@@ -19,6 +19,7 @@ export function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [photoError, setPhotoError] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     full_name: "",
@@ -68,40 +69,40 @@ export function ProfilePage() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validate file type
+    setPhotoError("")
+
     if (!file.type.startsWith("image/")) {
-      alert("Por favor, selecione uma imagem válida.")
+      setPhotoError("Por favor, selecione uma imagem válida (JPG, PNG, GIF, etc).")
       return
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert("A imagem deve ter no máximo 5MB.")
+      setPhotoError("A imagem deve ter no máximo 5MB.")
       return
     }
 
     setIsUploadingPhoto(true)
 
     try {
-      const formData = new FormData()
-      formData.append("file", file)
+      const formDataUpload = new FormData()
+      formDataUpload.append("file", file)
 
       const response = await fetch("/api/upload-avatar", {
         method: "POST",
-        body: formData,
+        body: formDataUpload,
       })
 
       const result = await response.json()
 
       if (result.success && result.url) {
         setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
-        alert("Foto atualizada com sucesso!")
+        setPhotoError("")
       } else {
-        alert(result.error || "Erro ao fazer upload da foto")
+        setPhotoError(result.error || "Erro ao fazer upload da foto")
       }
     } catch (error) {
       console.error("Error uploading photo:", error)
-      alert("Erro ao fazer upload da foto")
+      setPhotoError("Erro ao fazer upload da foto. Tente novamente.")
     } finally {
       setIsUploadingPhoto(false)
     }
@@ -171,7 +172,7 @@ export function ProfilePage() {
           <div className="flex flex-col md:flex-row items-start gap-6">
             {/* Avatar */}
             <div className="relative group">
-              <div className="w-32 h-32 rounded-full overflow-hidden bg-muted">
+              <div className="w-32 h-32 rounded-full overflow-hidden bg-muted border-4 border-muted">
                 {profile.avatar_url ? (
                   <img
                     src={profile.avatar_url || "/placeholder.svg"}
@@ -179,8 +180,8 @@ export function ProfilePage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <User className="w-16 h-16 text-muted-foreground" />
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-pink-500">
+                    <User className="w-16 h-16 text-white/50" />
                   </div>
                 )}
               </div>
@@ -191,6 +192,11 @@ export function ProfilePage() {
               >
                 {isUploadingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
               </button>
+              {!profile.avatar_url && (
+                <div className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-red-500">
+                  <span className="text-xs font-bold text-white">!</span>
+                </div>
+              )}
             </div>
 
             {/* Basic Info */}
@@ -220,6 +226,13 @@ export function ProfilePage() {
                   </span>
                 )}
               </div>
+
+              {photoError && (
+                <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  <span className="text-sm text-red-500">{photoError}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

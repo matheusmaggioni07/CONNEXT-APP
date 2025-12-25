@@ -39,7 +39,9 @@ export async function middleware(request: NextRequest) {
 
   if (
     user &&
+    user.email_confirmed_at &&
     (request.nextUrl.pathname.startsWith("/login") ||
+      request.nextUrl.pathname.startsWith("/register") ||
       request.nextUrl.pathname.startsWith("/signup") ||
       request.nextUrl.pathname === "/")
   ) {

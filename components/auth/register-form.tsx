@@ -151,10 +151,8 @@ export function RegisterForm() {
     try {
       const supabase = createClient()
 
-      const redirectUrl =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
-          : "https://www.connextapp.com.br/auth/callback"
+      // This ensures email confirmation links work in production
+      const redirectUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://www.connextapp.com.br"}/auth/callback`
 
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
