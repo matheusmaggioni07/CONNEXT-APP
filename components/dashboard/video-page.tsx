@@ -96,6 +96,104 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null)
 
+  const cleanup = useCallback(async () => {
+    if (isCleaningUpRef.current) return
+    isCleaningUpRef.current = true
+
+    try {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+
+      if (signalingPollingRef.current) {
+        clearInterval(signalingPollingRef.current)
+        signalingPollingRef.current = null
+      }
+
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.ontrack = null
+        peerConnectionRef.current.onicecandidate = null
+        peerConnectionRef.current.onconnectionstatechange = null
+        peerConnectionRef.current.oniceconnectionstatechange = null
+        peerConnectionRef.current.close()
+        peerConnectionRef.current = null
+      }
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null
+      }
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+
+      if (currentRoomIdRef.current) {
+        try {
+          await leaveVideoQueue(currentRoomIdRef.current, userId)
+        } catch (leaveError) {
+          console.log("[v0] Leave error (non-critical):", leaveError instanceof Error ? leaveError.message : leaveError)
+        }
+        currentRoomIdRef.current = null
+      }
+
+      currentPartnerIdRef.current = null
+      processedSignalingIds.current.clear()
+      processedIceCandidateIds.current.clear()
+      hasRemoteDescriptionRef.current = false
+      iceCandidateBufferRef.current = []
+      connectionAttemptRef.current = 0
+
+      if (realtimeChannelRef.current) {
+        const supabase = await createBrowserClient()
+        await supabase.removeChannel(realtimeChannelRef.current!)
+        realtimeChannelRef.current = null
+      }
+    } finally {
+      isCleaningUpRef.current = false
+    }
+  }, [userId])
+
+  const handleConnectionStateChange = useCallback(async () => {
+    if (!peerConnectionRef.current) return
+
+    const state = peerConnectionRef.current.connectionState
+
+    console.log("[v0] Connection state changed:", state)
+
+    if (state === "connected") {
+      console.log("[v0] CALL CONNECTED! ✅")
+      setVideoState("connected")
+      setConnectionStatus("Conectado")
+    } else if (state === "failed") {
+      console.log("[v0] Connection failed, attempting restart...")
+      if (connectionAttemptRef.current < maxConnectionAttempts) {
+        connectionAttemptRef.current++
+        setConnectionStatus(`Tentando reconectar... (${connectionAttemptRef.current}/${maxConnectionAttempts})`)
+
+        // Wait before retrying
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+
+        if (peerConnectionRef.current && currentRoomIdRef.current) {
+          await setupWebRTC(currentRoomIdRef.current, isInitiatorRef.current)
+        }
+      } else {
+        setVideoState("error")
+        setConnectionStatus("Falha na conexão após múltiplas tentativas")
+      }
+    } else if (state === "disconnected" || state === "closed") {
+      console.log("[v0] Peer connection closed:", state)
+      setVideoState("idle")
+      setCurrentPartner(null)
+      await cleanup()
+    }
+  }, [cleanup])
+
   // Check remaining calls on mount
   useEffect(() => {
     const checkCalls = async () => {
@@ -200,71 +298,20 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  const cleanup = useCallback(async () => {
-    if (isCleaningUpRef.current) return
-    isCleaningUpRef.current = true
-
-    try {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
-
-      if (signalingPollingRef.current) {
-        clearInterval(signalingPollingRef.current)
-        signalingPollingRef.current = null
-      }
-
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.ontrack = null
-        peerConnectionRef.current.onicecandidate = null
-        peerConnectionRef.current.onconnectionstatechange = null
-        peerConnectionRef.current.oniceconnectionstatechange = null
-        peerConnectionRef.current.close()
-        peerConnectionRef.current = null
-      }
-
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => track.stop())
-        localStreamRef.current = null
-      }
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null
-      }
-
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null
-      }
-
-      if (currentRoomIdRef.current) {
-        try {
-          await leaveVideoQueue(currentRoomIdRef.current, userId)
-        } catch (leaveError) {
-          console.log("[v0] Leave error (non-critical):", leaveError instanceof Error ? leaveError.message : leaveError)
-        }
-        currentRoomIdRef.current = null
-      }
-
-      currentPartnerIdRef.current = null
-      processedSignalingIds.current.clear()
-      processedIceCandidateIds.current.clear()
-      hasRemoteDescriptionRef.current = false
-      iceCandidateBufferRef.current = []
-      connectionAttemptRef.current = 0
-
-      if (realtimeChannelRef.current) {
-        const supabase = await createBrowserClient()
-        await supabase.removeChannel(realtimeChannelRef.current!)
-        realtimeChannelRef.current = null
-      }
-    } finally {
-      isCleaningUpRef.current = false
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup()
     }
-  }, [userId])
+  }, [cleanup])
 
   const setupWebRTC = useCallback(
     async (roomId: string, isInitiator: boolean) => {
+      if (peerConnectionRef.current && peerConnectionRef.current.connectionState !== "closed") {
+        console.log("[v0] setupWebRTC already active, skipping...")
+        return
+      }
+
       console.log("[v0] setupWebRTC starting:", { roomId, isInitiator })
 
       try {
@@ -298,19 +345,21 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           iceCandidatePoolSize: 10,
         })
 
+        peerConnectionRef.current = pc
+
         pc.oniceconnectionstatechange = () => {
           console.log("[v0] ICE connection state:", pc.iceConnectionState)
         }
 
         pc.onconnectionstatechange = () => {
           console.log("[v0] Connection state:", pc.connectionState)
+          handleConnectionStateChange()
         }
 
         pc.onsignalingstatechange = () => {
           console.log("[v0] Signaling state:", pc.signalingState)
         }
 
-        // ... rest of setupWebRTC ...
         if (!localStream || localStream.getTracks().length === 0) {
           console.error("[v0] ERROR: No valid local stream!")
           setVideoState("error")
@@ -511,43 +560,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         setConnectionStatus("Erro ao conectar")
       }
     },
-    [userId],
+    [userId, handleConnectionStateChange],
   )
-
-  const handleConnectionStateChange = useCallback(async () => {
-    if (!peerConnectionRef.current) return
-
-    const state = peerConnectionRef.current.connectionState
-
-    console.log("[v0] Connection state changed:", state)
-
-    if (state === "connected") {
-      console.log("[v0] CALL CONNECTED! ✅")
-      setVideoState("connected")
-      setConnectionStatus("Conectado")
-    } else if (state === "failed") {
-      console.log("[v0] Connection failed, attempting restart...")
-      if (connectionAttemptRef.current < maxConnectionAttempts) {
-        connectionAttemptRef.current++
-        setConnectionStatus(`Tentando reconectar... (${connectionAttemptRef.current}/${maxConnectionAttempts})`)
-
-        // Wait before retrying
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-
-        if (peerConnectionRef.current && currentRoomIdRef.current) {
-          await setupWebRTC(currentRoomIdRef.current, isInitiatorRef.current)
-        }
-      } else {
-        setVideoState("error")
-        setConnectionStatus("Falha na conexão após múltiplas tentativas")
-      }
-    } else if (state === "disconnected" || state === "closed") {
-      console.log("[v0] Peer connection closed:", state)
-      setVideoState("idle")
-      setCurrentPartner(null)
-      await cleanup()
-    }
-  }, [cleanup])
 
   const subscribeToQueueUpdates = useCallback(async () => {
     if (!currentRoomIdRef.current) return
@@ -614,7 +628,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     } catch (error) {
       console.error("[v0] Error subscribing to queue updates:", error)
     }
-  }, [userId])
+  }, [userId, setupWebRTC])
 
   const startSearching = useCallback(async () => {
     if (limitReached) return
@@ -741,7 +755,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [subscribeToQueueUpdates, userId, limitReached])
+  }, [subscribeToQueueUpdates, userId, limitReached, attachStreamToVideo, setupWebRTC])
 
   const endCall = useCallback(async () => {
     await cleanup()
@@ -854,13 +868,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     setTimeout(recordAndRedirect, 2000)
   }, [currentPartner, userId, router])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup()
-    }
-  }, [cleanup])
 
   // Call handleMatchSuccess after handleLike if it's a match
   useEffect(() => {

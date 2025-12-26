@@ -102,7 +102,7 @@ export async function proxy(request: NextRequest) {
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https: http:",
     "connect-src 'self' https: http: wss: ws: blob:",
-    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://vercel.live https:",
     "media-src 'self' blob: https: http:",
     "worker-src 'self' blob:",
   ].join("; ")
