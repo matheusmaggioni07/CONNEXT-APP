@@ -129,6 +129,10 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   // Temporary state to indicate generation process
   const [isGenerating, setIsGenerating] = useState(false)
 
+  useEffect(() => {
+    loadProjects()
+  }, [])
+
   const loadChatHistory = useCallback(async (projectId: string) => {
     try {
       const res = await fetch(`/api/builder/chat-history?projectId=${projectId}`)
@@ -1372,6 +1376,36 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     return null
   }
 
+  const handleRenameProject = async (projectId: string, newName: string) => {
+    if (!newName.trim()) return
+    try {
+      await fetch(`/api/builder/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      })
+      await loadProjects() // Reload projects to reflect the update
+      setEditingProjectId(null)
+    } catch (err) {
+      console.error("Error renaming project:", err)
+    }
+  }
+
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      await fetch(`/api/builder/projects/${projectId}`, { method: "DELETE" })
+      setProjects((prev) => prev.filter((p) => p.id !== projectId))
+      if (activeProject?.id === projectId) {
+        setActiveProject(null)
+        setGeneratedCode("")
+        setPreviewHtml("")
+        setMessages([])
+      }
+    } catch (err) {
+      console.error("Delete project error:", err)
+    }
+  }
+
   const updateProject = async (projectId: string, code: string) => {
     setIsSaving(true)
     try {
@@ -1623,65 +1657,77 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     }
   }
 
-  const handleLoadProject = (project: Project) => {
-    setActiveProject(project)
-    setActiveTab("chat")
-
-    const mainFile = project.builder_files?.find((f) => f.name === "Site.tsx" || f.path === "/Site.tsx")
-    if (mainFile) {
-      setGeneratedCode(mainFile.content)
-    }
-
-    setMessages([
-      {
-        id: "loaded",
-        role: "assistant",
-        content: `Projeto "${project.name}" carregado! Você pode continuar editando ou fazer modificações.`,
-        timestamp: new Date(),
-      },
-    ])
-  }
-
-  const handleDeleteProject = async (projectId: string) => {
+  const createProject = async (name: string, code: string) => {
     try {
-      const res = await fetch(`/api/builder/projects/${projectId}`, {
-        method: "DELETE",
+      const res = await fetch("/api/builder/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: `Criado em ${new Date().toLocaleDateString("pt-BR")}`,
+          files: [{ name: "Site.tsx", path: "/Site.tsx", content: code, language: "tsx" }],
+        }),
       })
 
       if (res.ok) {
-        setProjects((prev) => prev.filter((p) => p.id !== projectId))
-        if (activeProject?.id === projectId) {
-          setActiveProject(null)
-          setGeneratedCode("")
-          setPreviewHtml("")
-          setMessages([])
-        }
+        const data = await res.json()
+        await loadProjects()
+        return data.project
       }
     } catch (err) {
-      console.error("Error deleting project:", err)
+      console.error("Create project error:", err)
     }
+    return null
   }
 
-  const handleRenameProject = async (projectId: string, newName: string) => {
-    setIsSaving(true) // Set saving state
+  const updateProjectInList = async (projectId: string, code: string) => {
+    setIsSaving(true)
     try {
       const res = await fetch(`/api/builder/projects/${projectId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName }),
+        body: JSON.stringify({
+          files: [{ name: "Site.tsx", path: "/Site.tsx", content: code, language: "tsx" }],
+        }),
       })
 
       if (res.ok) {
-        setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name: newName } : p)))
-        if (activeProject?.id === projectId) {
-          setActiveProject((prev) => (prev ? { ...prev, name: newName } : null))
-        }
+        await loadProjects()
       }
     } catch (err) {
-      console.error("Error renaming project:", err)
+      console.error("Error updating project:", err)
     } finally {
-      setEditingProjectId(null)
-      setIsSaving(false) // Reset saving state
+      setIsSaving(false)
+    }
+  }
+
+  const deleteProject = async (projectId: string) => {
+    try {
+      await fetch(`/api/builder/projects/${projectId}`, { method: "DELETE" })
+      setProjects((prev) => prev.filter((p) => p.id !== projectId))
+      if (activeProject?.id === projectId) {
+        setActiveProject(null)
+        setGeneratedCode("")
+        setPreviewHtml("")
+        setMessages([])
+      }
+    } catch (err) {
+      console.error("Delete error:", err)
+    }
+  }
+
+  const loadProject = (project: Project) => {
+    setActiveProject(project)
+    setActiveTab("chat")
+    const mainFile = project.builder_files?.find((f) => f.name === "Site.tsx" || f.path === "/Site.tsx")
+    if (mainFile) {
+      setGeneratedCode(mainFile.content)
+    } else {
+      setGeneratedCode("") // Clear if no main file found
+    }
+    // Load chat history specific to this project
+    if (project.id) {
+      loadChatHistory(project.id)
     }
   }
 
@@ -1689,10 +1735,10 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     setActiveProject(null)
     setGeneratedCode("")
     setPreviewHtml("")
-    setMessages([])
-    setInput("") // Clear input on new project
-    setAttachedImage(null) // Clear attachment on new project
-    setActiveTab("chat")
+    setMessages([]) // Clear messages for a new project
+    setInput("") // Clear input
+    setAttachedImage(null) // Clear attachment
+    setActiveTab("chat") // Default to chat tab
   }
 
   const handleCopyCode = () => {
@@ -2021,7 +2067,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                           className="gap-3 cursor-pointer"
                           onClick={() => {
                             const url = prompt("Digite a URL do site para copiar:")
-                            if (url) setInput(`Crie um site similar a: ${url}`)
+                            if (url) setInput(url)
                           }}
                         >
                           <Link className="w-4 h-4 text-orange-400" />
@@ -2082,7 +2128,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                           "group flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/50 cursor-pointer transition-all",
                           activeProject?.id === project.id && "bg-purple-500/10 border-purple-500/30",
                         )}
-                        onClick={() => handleLoadProject(project)}
+                        onClick={() => loadProject(project)}
                       >
                         <div className="flex-1 min-w-0">
                           {editingProjectId === project.id ? (
