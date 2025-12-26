@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient as createBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { VideoIcon, VideoOff, Mic, MicOff, PhoneOff, Heart, Loader2, Repeat2, SkipForward } from "lucide-react"
-import { joinVideoQueue, checkRoomStatus, leaveVideoQueue } from "@/app/actions/video"
+import { joinVideoQueue, leaveVideoQueue } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/user"
 
 interface VideoPageProps {
@@ -52,11 +52,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const processedSignalsRef = useRef<Set<string>>(new Set())
   const processedCandidatesRef = useRef<Set<string>>(new Set())
+  const unsubscribeRef = useRef<(() => void) | null>(null)
 
   const cleanup = useCallback(() => {
     console.log("[v0] Cleaning up resources")
     intervalsRef.current.forEach(clearInterval)
     intervalsRef.current = []
+
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current()
+      unsubscribeRef.current = null
+    }
 
     if (peerRef.current) {
       peerRef.current.close()
@@ -80,11 +86,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: isFrontCamera ? "user" : "environment" },
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
-      console.log("[v0] Got local stream")
+      console.log("[v0] ✅ Got local stream")
       return stream
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Câmera ou microfone negados"
-      console.error("[v0] getUserMedia error:", errorMsg)
+      console.error("[v0] ❌ getUserMedia error:", errorMsg)
       setErrorMsg(`Erro de câmera: ${errorMsg}`)
       setState("error")
       return null
@@ -142,7 +148,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         // Handle remote tracks
         pc.ontrack = (event) => {
-          console.log("[v0] Remote track received:", event.track.kind)
+          console.log("[v0] 📹 Remote track received:", event.track.kind)
           if (event.streams?.[0]) {
             remoteStreamRef.current = event.streams[0]
             if (remoteVideoRef.current) {
@@ -157,6 +163,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         pc.onconnectionstatechange = () => {
           console.log("[v0] Connection state:", pc.connectionState)
           if (pc.connectionState === "connected" || pc.connectionState === "completed") {
+            console.log("[v0] ✅ CONNECTED!")
             setState("connected")
           } else if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
             setErrorMsg("Conexão perdida")
@@ -180,7 +187,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
 
         if (isInitiator) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
+          console.log("[v0] 🎯 Creating offer as initiator")
           try {
             const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
             await pc.setLocalDescription(offer)
@@ -218,6 +225,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
                 try {
                   if (sig.type === "offer" && !pc.remoteDescription) {
+                    console.log("[v0] 📩 Received offer")
                     const offer = JSON.parse(sig.sdp)
                     await pc.setRemoteDescription(new RTCSessionDescription(offer))
                     const answer = await pc.createAnswer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
@@ -230,6 +238,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                       sdp: JSON.stringify(answer),
                     })
                   } else if (sig.type === "answer" && !pc.remoteDescription) {
+                    console.log("[v0] 📩 Received answer")
                     const answer = JSON.parse(sig.sdp)
                     await pc.setRemoteDescription(new RTCSessionDescription(answer))
                   }
@@ -263,7 +272,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           } catch (err) {
             console.error("[v0] Polling error:", err)
           }
-        }, 250)
+        }, 100) // Reduced from 250ms to 100ms for faster response
 
         intervalsRef.current.push(signalingInterval)
       } catch (err) {
@@ -335,37 +344,90 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       roomIdRef.current = result.roomId
 
-      if (result.matched) {
+      if (result.matched && result.partnerId) {
         setPartner(result.partnerProfile)
-        await setupWebRTC(result.roomId, true, result.partnerId || "")
+        await setupWebRTC(result.roomId, true, result.partnerId)
         return
       }
 
-      // Poll for match with simpler interval
-      let waitCounter = 0
-      const matchInterval = setInterval(async () => {
-        waitCounter++
-        setWaitTime(waitCounter)
+      console.log("[v0] 📡 Subscribing to room:", result.roomId)
+      const subscription = supabase
+        .channel(`room:${result.roomId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "video_rooms",
+            filter: `id=eq.${result.roomId}`,
+          },
+          (payload) => {
+            console.log("[v0] 🔔 Room update received:", payload.new)
+            const room = payload.new
+
+            // Check if partner joined
+            if (room.status === "active" && room.user2_id && room.user2_id !== userId) {
+              const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
+              console.log("[v0] ✅ Partner found via Realtime:", partnerId)
+
+              setPartner({
+                id: partnerId,
+                full_name: "Conectando...",
+                avatar_url: "",
+              })
+
+              setupWebRTC(result.roomId, false, partnerId)
+
+              if (unsubscribeRef.current) {
+                unsubscribeRef.current()
+              }
+            }
+          },
+        )
+        .subscribe()
+
+      unsubscribeRef.current = () => subscription.unsubscribe()
+
+      // Fallback: if Realtime doesn't work, poll every 500ms as backup
+      let pollCounter = 0
+      const pollInterval = setInterval(async () => {
+        pollCounter++
+        setWaitTime(pollCounter)
+
+        // Stop polling after 2 minutes
+        if (pollCounter > 120) {
+          clearInterval(pollInterval)
+          return
+        }
 
         try {
-          const status = await checkRoomStatus(result.roomId)
-          if (status.status === "active" && status.partnerId && status.partnerId !== userId) {
-            clearInterval(matchInterval)
-            setPartner(status.partnerProfile)
-            await setupWebRTC(result.roomId, false, status.partnerId)
+          const { data: room } = await supabase.from("video_rooms").select("*").eq("id", result.roomId).single()
+
+          if (room && room.status === "active" && room.user2_id && room.user2_id !== userId) {
+            const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
+            console.log("[v0] ✅ Partner found via polling:", partnerId)
+            clearInterval(pollInterval)
+
+            setPartner({
+              id: partnerId,
+              full_name: "Conectando...",
+              avatar_url: "",
+            })
+
+            await setupWebRTC(result.roomId, false, partnerId)
           }
         } catch (err) {
-          console.error("[v0] Status check error:", err)
+          console.error("[v0] Poll error:", err)
         }
-      }, 300)
+      }, 500)
 
-      intervalsRef.current.push(matchInterval)
+      intervalsRef.current.push(pollInterval)
     } catch (err) {
       console.error("[v0] Start call error:", err)
       setErrorMsg("Erro ao iniciar chamada")
       setState("error")
     }
-  }, [userId, setupWebRTC])
+  }, [userId, setupWebRTC, supabase])
 
   useEffect(() => {
     return () => cleanup()
