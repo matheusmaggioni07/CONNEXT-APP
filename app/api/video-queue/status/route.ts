@@ -17,82 +17,81 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Missing parameters" }, { status: 400 })
     }
 
-    const { data: roomEntries, error: queueError } = await supabase
+    const { data: userEntry, error: userError } = await supabase
       .from("video_queue")
       .select("*")
       .eq("room_id", roomId)
-      .order("created_at", { ascending: true })
+      .eq("user_id", userId)
+      .single()
 
-    if (queueError || !roomEntries || roomEntries.length === 0) {
-      console.log("[v0] Room not found for roomId:", roomId)
+    if (userError || !userEntry) {
+      console.log("[v0] User entry not found")
       return NextResponse.json({
         status: "not_found",
+        matched: false,
         partnerId: null,
         partnerProfile: null,
       })
     }
 
-    const userEntry = roomEntries.find((entry) => entry.user_id === userId)
-
-    if (!userEntry) {
-      console.log("[v0] User entry not found in room:", roomId, userId)
-      return NextResponse.json({
-        status: "not_found",
-        partnerId: null,
-        partnerProfile: null,
-      })
-    }
-
-    if (userEntry.status === "active" && userEntry.matched_user_id) {
-      const partnerId = userEntry.matched_user_id
-
-      const { data: partnerProfile, error: profileError } = await supabase
+    if (userEntry.matched_user_id) {
+      const { data: partnerProfile } = await supabase
         .from("profiles")
         .select("id, full_name, avatar_url, city")
-        .eq("id", partnerId)
+        .eq("id", userEntry.matched_user_id)
         .single()
 
-      if (profileError) {
-        console.error("[v0] Error fetching partner profile:", profileError)
-      }
-
-      console.log("[v0] User matched with:", partnerId)
+      console.log("[v0] Returning matched partner:", userEntry.matched_user_id)
       return NextResponse.json({
         status: "active",
-        partnerId,
+        matched: true,
+        partnerId: userEntry.matched_user_id,
         partnerProfile: partnerProfile || null,
       })
     }
 
-    const activeEntries = roomEntries.filter((entry) => entry.status === "active")
-    if (activeEntries.length >= 2) {
-      const partner = activeEntries.find((entry) => entry.user_id !== userId)
+    const { data: roomEntries, error: roomError } = await supabase
+      .from("video_queue")
+      .select("user_id, status")
+      .eq("room_id", roomId)
 
+    if (roomError || !roomEntries) {
+      console.log("[v0] Error fetching room entries")
+      return NextResponse.json({
+        status: "error",
+        matched: false,
+        partnerId: null,
+        partnerProfile: null,
+      })
+    }
+
+    const activeCount = roomEntries.length
+    console.log("[v0] Room status - active users:", activeCount)
+
+    if (activeCount >= 2) {
+      // Find the other user
+      const partner = roomEntries.find((entry) => entry.user_id !== userId)
       if (partner) {
-        const partnerId = partner.user_id
-        const { data: partnerProfile, error: profileError } = await supabase
+        const { data: partnerProfile } = await supabase
           .from("profiles")
           .select("id, full_name, avatar_url, city")
-          .eq("id", partnerId)
+          .eq("id", partner.user_id)
           .single()
 
-        if (profileError) {
-          console.error("[v0] Error fetching partner profile:", profileError)
-        }
-
-        console.log("[v0] Match found - multiple active entries:", partnerId)
+        console.log("[v0] Match detected - returning partner:", partner.user_id)
         return NextResponse.json({
           status: "active",
-          partnerId,
+          matched: true,
+          partnerId: partner.user_id,
           partnerProfile: partnerProfile || null,
         })
       }
     }
 
     // Still waiting
-    console.log("[v0] Still waiting in room:", roomId)
     return NextResponse.json({
       status: "waiting",
+      matched: false,
       partnerId: null,
       partnerProfile: null,
     })

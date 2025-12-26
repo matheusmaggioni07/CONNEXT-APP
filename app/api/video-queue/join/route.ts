@@ -61,13 +61,9 @@ export async function POST(req: Request) {
       const partnerId = waitingUser.user_id
       const roomId = waitingUser.room_id
 
-      console.log("[v0] MATCH CREATED:", {
-        partnerId,
-        currentUserId: userId,
-        roomId,
-        timestamp: new Date().toISOString(),
-      })
+      console.log("[v0] MATCH FOUND - Creating bidirectional match")
 
+      // Update waiting user to active
       const { error: updateError } = await supabase
         .from("video_queue")
         .update({
@@ -82,6 +78,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: String(updateError) }, { status: 500 })
       }
 
+      // Insert new user as active in same room
       const { error: insertError } = await supabase.from("video_queue").insert({
         user_id: userId,
         room_id: roomId,
@@ -91,19 +88,16 @@ export async function POST(req: Request) {
       })
 
       if (insertError) {
-        console.error("[v0] Error creating current user queue entry:", insertError)
+        console.error("[v0] Error inserting current user:", insertError)
         return NextResponse.json({ success: false, error: String(insertError) }, { status: 500 })
       }
 
-      const { data: partnerProfile, error: profileError } = await supabase
+      // Fetch partner profile
+      const { data: partnerProfile } = await supabase
         .from("profiles")
         .select("id, full_name, avatar_url, city")
         .eq("id", partnerId)
         .single()
-
-      if (profileError) {
-        console.error("[v0] Error fetching partner profile:", profileError)
-      }
 
       return NextResponse.json({
         success: true,
@@ -124,11 +118,11 @@ export async function POST(req: Request) {
     })
 
     if (insertError) {
-      console.error("[v0] Error creating waiting queue entry:", insertError)
+      console.error("[v0] Error creating waiting entry:", insertError)
       return NextResponse.json({ success: false, error: String(insertError) }, { status: 500 })
     }
 
-    console.log("[v0] User added to WAITING queue:", { userId, roomId, timestamp: new Date().toISOString() })
+    console.log("[v0] User added to WAITING queue in new room:", roomId)
 
     return NextResponse.json({
       success: true,

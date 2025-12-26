@@ -991,120 +991,122 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [isLiked, currentPartner, handleMatchSuccess])
 
   // New handler for starting the call
-  const handleStartCall = async () => {
-    console.log("[v0] Starting video call...")
-
-    if (videoState !== "idle") {
-      console.warn("[v0] Video state is not idle:", videoState)
+  const handleStartCall = useCallback(async () => {
+    if (limitReached) {
+      setPermissionError("Limite de chamadas atingido")
       return
     }
 
-    setIsLoading(true)
+    setVideoState("searching")
     setConnectionStatus("")
-    setPermissionError("")
+    setPermissionError(null)
+    setCurrentPartner(null)
+    setIsLoading(true) // Set loading true here
 
     try {
-      const stream = await getLocalStream()
-      if (!stream) {
-        setPermissionError("Permissão de câmera e microfone necessárias")
+      console.log("[v0] Calling joinVideoQueue...")
+      // Pass userProfile to joinVideoQueue if it's used there
+      const joinResult = await joinVideoQueue({ userId, userProfile })
+
+      if (!joinResult.success) {
+        console.error("[v0] Failed to join queue:", joinResult.error)
+        setVideoState("error")
+        setPermissionError("Erro ao entrar na fila")
         setIsLoading(false)
         return
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        setPermissionError("Usuário não autenticado")
-        setIsLoading(false)
-        return
-      }
+      currentRoomIdRef.current = joinResult.roomId
+      console.log("[v0] Entered room:", joinResult.roomId)
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url, city")
-        .eq("id", user.id)
-        .single()
-
-      const result = await joinVideoQueue({
-        userId: user.id,
-        userProfile: profile || { full_name: "Usuário", avatar_url: "", city: "" },
-      })
-
-      if (!result.success) {
-        console.error("[v0] Failed to join queue:", result.error)
-        stream.getTracks().forEach((track) => track.stop())
-        localStreamRef.current = null
-        setVideoState("idle")
-        setConnectionStatus("")
-        setPermissionError(result.error || "Falha ao conectar à fila")
-        setIsLoading(false)
-        return
-      }
-
-      console.log("[v0] Joined queue successfully, roomId:", result.roomId)
-      currentRoomIdRef.current = result.roomId
-      currentPartnerIdRef.current = result.partnerId || null
-      connectionAttemptRef.current = 0
-
-      if (result.matched && result.partnerId) {
-        console.log("[v0] Matched instantly with:", result.partnerId)
-        setCurrentPartner(result.partnerProfile || null)
+      if (joinResult.matched && joinResult.partnerId) {
+        console.log("[v0] Immediate match found! Starting WebRTC...")
+        currentPartnerIdRef.current = joinResult.partnerId
+        isInitiatorRef.current = true // Assuming the one who successfully joins is the initiator
+        setCurrentPartner(joinResult.partnerProfile || { id: joinResult.partnerId, full_name: "User", avatar_url: "" })
         setVideoState("connecting")
-        setConnectionStatus("")
-        setIsLoading(false)
 
-        const isInitiator = user.id < result.partnerId
-        await setupWebRTC(result.roomId, isInitiator)
+        // Fetch and attach local stream before setting up WebRTC
+        const localStream = await getLocalStream()
+        if (!localStream) {
+          setVideoState("permission_denied")
+          setPermissionError("Não foi possível obter acesso à câmera/microfone.")
+          setIsLoading(false)
+          return
+        }
+        localStreamRef.current = localStream
+        attachStreamToVideo(localVideoRef.current, localStream, "local")
+
+        await setupWebRTC(joinResult.roomId, true)
+        setIsLoading(false)
         return
       }
 
-      let checkCount = 0
-      const maxChecks = 150
-
-      setConnectionStatus("")
+      console.log("[v0] No match yet, starting polling...")
       setVideoState("waiting")
 
-      pollingRef.current = setInterval(async () => {
-        checkCount++
+      let pollCount = 0
+      const maxPolls = 300 // 5 minutes with 1s interval
 
-        if (checkCount > maxChecks) {
+      // Fetch and attach local stream now for the waiting state
+      const localStream = await getLocalStream()
+      if (!localStream) {
+        setVideoState("permission_denied")
+        setPermissionError("Não foi possível obter acesso à câmera/microfone.")
+        setIsLoading(false)
+        return
+      }
+      localStreamRef.current = localStream
+      attachStreamToVideo(localVideoRef.current, localStream, "local")
+
+      pollingRef.current = setInterval(async () => {
+        pollCount++
+
+        if (pollCount > maxPolls) {
+          console.log("[v0] Polling timeout")
           clearInterval(pollingRef.current!)
           pollingRef.current = null
           setVideoState("idle")
-          setConnectionStatus("")
-          setPermissionError("Ninguém disponível no momento. Tente novamente.")
-          stream.getTracks().forEach((track) => track.stop()) // Stop stream on timeout
-          localStreamRef.current = null
+          setCurrentPartner(null)
+          setPermissionError("Nenhum usuário disponível. Tente novamente.")
+          if (localStreamRef.current) {
+            // Stop stream on timeout
+            localStreamRef.current.getTracks().forEach((track) => track.stop())
+            localStreamRef.current = null
+          }
           setIsLoading(false)
           return
         }
 
-        const status = await checkRoomStatus(result.roomId, user.id)
+        try {
+          const statusResult = await checkRoomStatus(joinResult.roomId, userId)
 
-        if (status.status === "active" && status.partnerId) {
-          clearInterval(pollingRef.current!)
-          pollingRef.current = null
+          if (statusResult.matched && statusResult.partnerId) {
+            console.log("[v0] MATCH FOUND! Partner:", statusResult.partnerId)
+            clearInterval(pollingRef.current!)
+            pollingRef.current = null
 
-          console.log("[v0] Match found during polling:", status.partnerId)
-          setCurrentPartner(status.partnerProfile || null)
-          currentPartnerIdRef.current = status.partnerId
-          setVideoState("connecting")
-          setConnectionStatus("")
-          setIsLoading(false)
+            currentPartnerIdRef.current = statusResult.partnerId
+            isInitiatorRef.current = false // Not the initiator since we're the second to join
+            setCurrentPartner(
+              statusResult.partnerProfile || { id: statusResult.partnerId, full_name: "User", avatar_url: "" },
+            )
+            setVideoState("connecting")
 
-          const isInitiator = user.id < status.partnerId
-          await setupWebRTC(result.roomId, isInitiator)
+            await setupWebRTC(joinResult.roomId, false)
+            setIsLoading(false)
+          }
+        } catch (error) {
+          console.error("[v0] Polling error:", error instanceof Error ? error.message : error)
         }
-      }, 300)
+      }, 1000) // Poll every 1 second
     } catch (error) {
-      console.error("[v0] Error starting call:", error)
-      setVideoState("idle")
-      setConnectionStatus("")
-      setPermissionError("Erro ao iniciar chamada")
+      console.error("[v0] Error in handleStartCall:", error)
+      setVideoState("error")
+      setPermissionError("Erro ao conectar")
       setIsLoading(false)
     }
-  }
+  }, [userId, userProfile, limitReached, setupWebRTC, attachStreamToVideo])
 
   if (videoState === "permission_denied") {
     return (
