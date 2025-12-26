@@ -86,33 +86,43 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
 
   if (!isAdmin(user.email)) {
     const limitCheck = await checkCallLimit()
+    console.log("[v0] Limit check result:", limitCheck)
     if (!limitCheck.canCall) {
+      console.log("[v0] ❌ Call limit exceeded")
       return { success: false, error: "Você atingiu o limite diário de chamadas. Faça upgrade para o Pro!" }
     }
+  } else {
+    console.log("[v0] ✅ Admin user - no call limits")
   }
 
-  console.log("[v0] 🔍 User joining queue:", user.id)
+  console.log("[v0] 🔍 User joining queue:", user.id, "email:", user.email)
 
   // Clean up old rooms
   try {
-    await supabase
+    const cleanupResult1 = await supabase
       .from("video_rooms")
       .update({ status: "ended", ended_at: new Date().toISOString() })
       .eq("user1_id", user.id)
       .in("status", ["waiting", "connecting"])
 
-    await supabase
+    console.log("[v0] Cleanup user1_id rooms:", cleanupResult1)
+
+    const cleanupResult2 = await supabase
       .from("video_rooms")
       .update({ status: "ended", ended_at: new Date().toISOString() })
       .eq("user2_id", user.id)
       .in("status", ["waiting", "connecting"])
 
+    console.log("[v0] Cleanup user2_id rooms:", cleanupResult2)
+
     await supabase.from("signaling").delete().eq("from_user_id", user.id)
     await supabase.from("signaling").delete().eq("to_user_id", user.id)
     await supabase.from("ice_candidates").delete().eq("from_user_id", user.id)
     await supabase.from("ice_candidates").delete().eq("to_user_id", user.id)
+
+    console.log("[v0] ✅ Cleanup complete")
   } catch (err) {
-    console.log("[v0] Cleanup warning:", err)
+    console.log("[v0] ⚠️ Cleanup error:", err)
   }
 
   // Try to find waiting rooms
@@ -121,6 +131,8 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
   const maxRetries = 5
 
   while (!waitingRooms && retries < maxRetries) {
+    console.log(`[v0] 🔎 Searching for waiting rooms (attempt ${retries + 1}/${maxRetries})...`)
+
     const result = await supabase
       .from("video_rooms")
       .select("id, user1_id, created_at")
@@ -130,10 +142,13 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
       .order("created_at", { ascending: true })
       .limit(5)
 
+    console.log(`[v0] Query result (attempt ${retries + 1}):`, result)
+
     if (result.error) {
-      console.log(`[v0] Error fetching rooms (attempt ${retries + 1}):`, result.error)
+      console.log(`[v0] ❌ Error fetching rooms (attempt ${retries + 1}):`, result.error)
     } else {
       waitingRooms = result.data
+      console.log(`[v0] Found ${waitingRooms?.length || 0} waiting rooms`)
     }
 
     if (!waitingRooms || waitingRooms.length === 0) {
@@ -148,13 +163,15 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
   // Join existing room if found
   if (waitingRooms && waitingRooms.length > 0) {
     for (const roomToJoin of waitingRooms) {
-      console.log("[v0] ✅ Found waiting room:", roomToJoin.id)
+      console.log("[v0] ✅ Found waiting room:", roomToJoin.id, "user1:", roomToJoin.user1_id)
 
       const { data: partnerProfile } = await supabase
         .from("profiles")
         .select("id, full_name, avatar_url, bio, city, position, company")
         .eq("id", roomToJoin.user1_id)
         .single()
+
+      console.log("[v0] Partner profile fetched:", partnerProfile?.id)
 
       const { error: joinError, data: updatedRoom } = await supabase
         .from("video_rooms")
@@ -164,10 +181,18 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
         .select()
         .single()
 
+      console.log("[v0] Join result:", { joinError, updatedRoomId: updatedRoom?.id })
+
       if (!joinError && updatedRoom) {
-        console.log("[v0] ✅ Successfully joined room!")
+        console.log("[v0] ✅ Successfully joined room!", updatedRoom.id)
+
         if (!isAdmin(user.email)) {
-          await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+          try {
+            const rpcResult = await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+            console.log("[v0] RPC increment_daily_calls result:", rpcResult)
+          } catch (rpcErr) {
+            console.error("[v0] ⚠️ RPC error (non-blocking):", rpcErr)
+          }
         }
 
         return {
@@ -178,7 +203,7 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
           partnerProfile: partnerProfile || { full_name: "Usuário", avatar_url: null },
         }
       } else {
-        console.log("[v0] ⚠️ Another user joined first, trying next room...")
+        console.log("[v0] ⚠️ Join failed or race condition. Error:", joinError)
         continue
       }
     }
@@ -200,6 +225,8 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
       .select()
       .single()
 
+    console.log("[v0] Create room response:", { createError, roomId: room?.id })
+
     if (createError) {
       console.error("[v0] ❌ Create room error:", createError.message, createError.code, createError.details)
       return { success: false, error: "Erro ao criar sala. Tente novamente." }
@@ -213,7 +240,12 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
     console.log("[v0] ✅ New waiting room created:", room.id)
 
     if (!isAdmin(user.email)) {
-      await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+      try {
+        const rpcResult = await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+        console.log("[v0] RPC increment_daily_calls result:", rpcResult)
+      } catch (rpcErr) {
+        console.error("[v0] ⚠️ RPC error (non-blocking):", rpcErr)
+      }
     }
 
     return { success: true, roomId: room.id, waiting: true, matched: false }
@@ -394,7 +426,12 @@ export async function createVideoRoomWithPartner(partnerId: string) {
   }
 
   if (!isAdmin(user.email)) {
-    await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+    try {
+      const rpcResult = await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+      console.log("[v0] RPC increment_daily_calls result:", rpcResult)
+    } catch (rpcErr) {
+      console.error("[v0] ⚠️ RPC error (non-blocking):", rpcErr)
+    }
   }
 
   revalidatePath("/dashboard/video")

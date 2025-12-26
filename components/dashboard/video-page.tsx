@@ -324,6 +324,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [cleanup])
 
   const handleStartCall = useCallback(async () => {
+    console.log("[v0] 📞 START CALL button clicked")
+
     setState("searching")
     setWaitTime(0)
     setErrorMsg("")
@@ -332,27 +334,39 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     try {
       const result = await joinVideoQueue()
+      console.log("[v0] joinVideoQueue result:", result)
+
       if (!result.success) {
+        console.log("[v0] ❌ joinVideoQueue failed:", result.error)
         setErrorMsg(result.error || "Erro ao conectar")
         setState("error")
         return
       }
 
       roomIdRef.current = result.roomId
+      console.log("[v0] Room ID set:", result.roomId)
 
       if (result.matched && result.partnerId) {
+        console.log("[v0] 🎉 Immediate match found:", result.partnerId)
         setPartner(result.partnerProfile)
         await setupWebRTC(result.roomId, true, result.partnerId)
         return
       }
 
+      console.log("[v0] ⏳ No immediate match, starting polling...")
       let pollCounter = 0
       const pollInterval = setInterval(async () => {
         pollCounter++
-        setWaitTime(pollCounter * 0.05) // Convert to seconds
+        const elapsedSeconds = (pollCounter * 50) / 1000
+        setWaitTime(elapsedSeconds)
+
+        if (pollCounter % 20 === 0) {
+          console.log(`[v0] Polling... ${pollCounter} requests (${elapsedSeconds.toFixed(1)}s elapsed)`)
+        }
 
         if (pollCounter > 3600) {
           clearInterval(pollInterval)
+          console.log("[v0] ❌ Polling timeout after 3600 attempts")
           setErrorMsg("Nenhum parceiro disponível. Tente novamente.")
           setState("error")
           await leaveVideoQueue(result.roomId)
@@ -367,13 +381,27 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             .single()
 
           if (error) {
-            console.log("[v0] Polling error:", error.message)
+            if (pollCounter % 20 === 0) {
+              console.log("[v0] Polling query error:", error.message)
+            }
             return
+          }
+
+          if (room) {
+            if (pollCounter % 20 === 0) {
+              console.log("[v0] Room status:", {
+                status: room.status,
+                user1_id: room.user1_id,
+                user2_id: room.user2_id,
+                userId,
+              })
+            }
           }
 
           if (room && room.status === "active" && room.user2_id && room.user2_id !== userId) {
             const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
             clearInterval(pollInterval)
+            console.log("[v0] 🎉 MATCH FOUND!", partnerId, "after", pollCounter, "polls")
 
             const { data: partnerProfile } = await supabase
               .from("profiles")
@@ -393,13 +421,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             await setupWebRTC(result.roomId, false, partnerId)
           }
         } catch (err) {
-          console.log("[v0] Polling exception:", err)
+          if (pollCounter % 20 === 0) {
+            console.log("[v0] Polling exception:", err)
+          }
         }
       }, 50)
 
       intervalsRef.current.push(pollInterval)
     } catch (err) {
-      console.error("[v0] Start call error:", err)
+      console.error("[v0] ❌ Start call exception:", err)
       setErrorMsg("Erro ao iniciar chamada")
       setState("error")
     }
