@@ -92,7 +92,7 @@ export async function proxy(request: NextRequest) {
     "X-Frame-Options": "SAMEORIGIN",
     "X-XSS-Protection": "1; mode=block",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
+    "Permissions-Policy": "camera=*, microphone=*, geolocation=()",
   }
 
   const csp = [
@@ -101,9 +101,9 @@ export async function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https: http:",
-    "connect-src 'self' https: wss:",
+    "connect-src 'self' https: http: wss: ws: blob:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-    "media-src 'self' blob: https:",
+    "media-src 'self' blob: https: http:",
     "worker-src 'self' blob:",
   ].join("; ")
 

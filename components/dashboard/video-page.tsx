@@ -131,35 +131,65 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const attachStreamToVideo = useCallback(
     (videoElement: HTMLVideoElement | null, stream: MediaStream, label: string): boolean => {
       if (!videoElement) {
+        console.error("[v0] No video element provided")
         return false
       }
-      if (!stream) {
+      if (!stream || stream.getTracks().length === 0) {
+        console.error("[v0] Invalid stream:", stream?.getTracks().length)
         return false
       }
 
-      // Enable all tracks
-      stream.getTracks().forEach((track) => {
-        track.enabled = true
-      })
-
-      // Set stream to video element
-      videoElement.srcObject = stream
-      videoElement.muted = label.includes("local")
-      videoElement.autoplay = true
-      videoElement.playsInline = true
-
-      // Force play
-      const playVideo = () => {
-        videoElement.play().catch(() => {
-          setTimeout(() => videoElement.play().catch(() => {}), 100)
+      try {
+        stream.getTracks().forEach((track) => {
+          track.enabled = true
+          console.log("[v0] Track enabled:", track.kind, track.enabled)
         })
+
+        videoElement.srcObject = stream
+        videoElement.muted = label.includes("local")
+        videoElement.autoplay = true
+        videoElement.playsInline = true
+        videoElement.controls = false
+
+        let playAttempts = 0
+        const maxPlayAttempts = 5
+
+        const playVideo = () => {
+          playAttempts++
+          console.log("[v0] Attempting to play video:", { label, attempt: playAttempts })
+
+          videoElement
+            .play()
+            .then(() => {
+              console.log("[v0] Video playing successfully:", label)
+            })
+            .catch((err) => {
+              console.warn("[v0] Play error:", err.message)
+              if (playAttempts < maxPlayAttempts) {
+                setTimeout(playVideo, 200)
+              }
+            })
+        }
+
+        // Try to play immediately
+        playVideo()
+
+        // Also setup event listeners for when metadata loads
+        videoElement.onloadedmetadata = () => {
+          console.log("[v0] Metadata loaded:", label)
+          playVideo()
+        }
+
+        videoElement.oncanplay = () => {
+          console.log("[v0] Can play:", label)
+          playVideo()
+        }
+
+        return true
+      } catch (error) {
+        console.error("[v0] Error attaching stream:", error)
+        return false
       }
-
-      playVideo()
-      videoElement.onloadedmetadata = playVideo
-      videoElement.oncanplay = playVideo
-
-      return true
     },
     [],
   )
@@ -234,110 +264,122 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [userId])
 
   const setupWebRTC = useCallback(
-    async (roomId: string, isInitiator: boolean, partnerId: string) => {
+    async (roomId: string, isInitiator: boolean) => {
+      console.log("[v0] setupWebRTC starting:", { roomId, isInitiator })
+
       try {
-        processedSignalingIds.current = new Set()
-        processedIceCandidateIds.current = new Set()
-        iceCandidateBufferRef.current = []
-        hasRemoteDescriptionRef.current = false
-        connectionAttemptRef.current = 0
+        const localStream = await getLocalStream()
 
-        isInitiatorRef.current = isInitiator
-        currentRoomIdRef.current = roomId
-        currentPartnerIdRef.current = partnerId
-
-        // Fetch ICE servers
         let iceServers: RTCIceServer[] = [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
+          { urls: "stun:stun3.l.google.com:19302" },
+          { urls: "stun:stun4.l.google.com:19302" },
         ]
 
         try {
+          console.log("[v0] Fetching TURN credentials...")
           const response = await fetch("/api/turn-credentials")
           if (response.ok) {
             const data = await response.json()
             if (data.iceServers && data.iceServers.length > 0) {
               iceServers = data.iceServers
+              console.log("[v0] TURN servers loaded:", iceServers.length)
             }
           }
         } catch (error) {
-          console.error("[v0] Error fetching TURN:", error)
+          console.warn("[v0] TURN fetch failed, using STUN only:", error)
         }
 
-        // Create peer connection
+        console.log("[v0] Creating RTCPeerConnection with ICE servers:", iceServers.length)
         const pc = new RTCPeerConnection({
           iceServers,
           iceCandidatePoolSize: 10,
         })
 
-        peerConnectionRef.current = pc
-        const supabase = await createBrowserClient()
-
-        try {
-          await supabase.from("signaling").delete().eq("room_id", roomId)
-          await supabase.from("ice_candidates").delete().eq("room_id", roomId)
-        } catch (e) {
-          // Silent cleanup - not critical
+        pc.oniceconnectionstatechange = () => {
+          console.log("[v0] ICE connection state:", pc.iceConnectionState)
         }
 
-        if (localStreamRef.current) {
-          const tracks = localStreamRef.current.getTracks()
-          tracks.forEach((track) => {
-            pc.addTrack(track, localStreamRef.current!)
-          })
-        } else {
-          console.error("[v0] ERROR: No local stream!")
+        pc.onconnectionstatechange = () => {
+          console.log("[v0] Connection state:", pc.connectionState)
+        }
+
+        pc.onsignalingstatechange = () => {
+          console.log("[v0] Signaling state:", pc.signalingState)
+        }
+
+        // ... rest of setupWebRTC ...
+        if (!localStream || localStream.getTracks().length === 0) {
+          console.error("[v0] ERROR: No valid local stream!")
+          setVideoState("error")
+          setConnectionStatus("Erro: Stream local inválido")
           return
         }
 
-        pc.ontrack = (event) => {
-          event.track.enabled = true
-          console.log("[v0] TRACK RECEIVED:", { kind: event.track.kind, readyState: event.track.readyState }) // Debug remote track
+        console.log("[v0] Local stream verified:", {
+          videoTracks: localStream.getVideoTracks().length,
+          audioTracks: localStream.getAudioTracks().length,
+        })
 
-          // Use the stream provided by the event
-          const stream = event.streams[0] || remoteStreamRef.current || new MediaStream()
+        localStreamRef.current = localStream
+        console.log("[v0] Attaching local stream to video element")
+        const attachResult = attachStreamToVideo(localVideoRef.current, localStream, "local")
 
-          if (!remoteStreamRef.current) {
-            remoteStreamRef.current = stream
-          }
-
-          // Add track to existing stream if not already there
-          if (!remoteStreamRef.current.getTracks().find((t) => t.id === event.track.id)) {
-            remoteStreamRef.current.addTrack(event.track)
-          }
-
-          // Attach to video element
-          if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-            remoteVideoRef.current.srcObject = remoteStreamRef.current
-            remoteVideoRef.current.autoplay = true
-            remoteVideoRef.current.playsInline = true
-            remoteVideoRef.current.play().catch((e) => console.error("[v0] Play error:", e))
-          }
-
-          setRemoteVideoReady(true)
-          setVideoState("connected")
-          setConnectionStatus("Conectado!")
+        if (!attachResult) {
+          console.error("[v0] Failed to attach stream to video element")
+          setVideoState("permission_denied")
+          setPermissionError("Falha ao exibir câmera")
+          return
         }
 
-        pc.onconnectionstatechange = handleConnectionStateChange
+        const videoTrack = localStream.getVideoTracks()[0]
+        const audioTrack = localStream.getAudioTracks()[0]
 
-        pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === "failed") {
-            console.error("[v0] ICE connection failed")
+        if (videoTrack) pc.addTrack(videoTrack, localStream)
+        if (audioTrack) pc.addTrack(audioTrack, localStream)
+
+        console.log("[v0] Tracks added to peer connection:", { videoTrack: !!videoTrack, audioTrack: !!audioTrack })
+
+        pc.ontrack = (event) => {
+          console.log("[v0] REMOTE TRACK RECEIVED:", { kind: event.track.kind })
+          event.track.enabled = true
+
+          const stream = event.streams[0]
+          if (stream) {
+            if (!remoteStreamRef.current) {
+              remoteStreamRef.current = stream
+            }
+
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = stream
+              remoteVideoRef.current.autoplay = true
+              remoteVideoRef.current.playsInline = true
+
+              remoteVideoRef.current.play().catch((e) => {
+                console.error("[v0] Remote play error:", e)
+              })
+            }
+
+            setRemoteVideoReady(true)
+            setVideoState("connected")
+            setConnectionStatus("Conectado")
+            console.log("[v0] CALL CONNECTED - Remote video attached")
           }
         }
 
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
             try {
+              const supabase = await createBrowserClient()
               await supabase.from("ice_candidates").insert({
                 room_id: roomId,
                 from_user_id: userId,
-                to_user_id: partnerId,
                 candidate: JSON.stringify(event.candidate.toJSON()),
               })
             } catch (error) {
-              console.error("[v0] Error sending ICE candidate:", error)
+              console.warn("[v0] Error sending ICE candidate:", error)
             }
           }
         }
@@ -352,13 +394,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           }
 
           try {
-            // Poll for signaling messages
+            const supabase = await createBrowserClient()
             const { data: signals, error: signalError } = await supabase
               .from("signaling")
               .select("*")
               .eq("room_id", roomId)
-              .eq("from_user_id", partnerId)
-              .eq("to_user_id", userId)
               .order("created_at", { ascending: true })
 
             if (signalError) {
@@ -367,83 +407,44 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
 
             if (signals && signals.length > 0) {
-              console.log("[v0] SIGNALS RECEIVED:", signals.length)
+              console.log("[v0] Processing", signals.length, "signals")
               for (const signal of signals) {
                 if (processedSignalingIds.current.has(signal.id)) continue
                 processedSignalingIds.current.add(signal.id)
-                console.log("[v0] PROCESSING SIGNAL:", { type: signal.type, id: signal.id })
 
                 const pc = peerConnectionRef.current
                 if (!pc || pc.connectionState === "closed") break
 
                 try {
                   if (signal.type === "offer" && !isInitiator) {
+                    console.log("[v0] Processing OFFER")
                     const offerDesc = JSON.parse(signal.sdp)
-                    console.log("[v0] APPLYING REMOTE OFFER")
-
                     await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
-                    hasRemoteDescriptionRef.current = true
-                    console.log("[v0] REMOTE DESC SET")
-
-                    for (const candidate of iceCandidateBufferRef.current) {
-                      try {
-                        await pc.addIceCandidate(candidate)
-                      } catch (e) {
-                        console.error("[v0] Error adding queued candidate:", e)
-                      }
-                    }
-                    iceCandidateBufferRef.current = []
-
-                    // Create and send answer
                     const answer = await pc.createAnswer()
-                    console.log("[v0] ANSWER CREATED")
                     await pc.setLocalDescription(answer)
-                    console.log("[v0] LOCAL DESC SET FOR ANSWER")
 
-                    const { error: answerError } = await supabase.from("signaling").insert({
+                    await supabase.from("signaling").insert({
                       room_id: roomId,
                       from_user_id: userId,
-                      to_user_id: partnerId,
                       type: "answer",
                       sdp: JSON.stringify(answer),
                     })
-                    if (answerError) {
-                      console.error("[v0] ERROR SENDING ANSWER:", answerError)
-                    } else {
-                      console.log("[v0] ANSWER SENT")
-                    }
+                    console.log("[v0] ANSWER SENT")
                   } else if (signal.type === "answer" && isInitiator) {
+                    console.log("[v0] Processing ANSWER")
                     const answerDesc = JSON.parse(signal.sdp)
-                    console.log("[v0] APPLYING REMOTE ANSWER")
                     await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
-                    hasRemoteDescriptionRef.current = true
-                    console.log("[v0] REMOTE DESC SET FOR ANSWER")
-
-                    for (const candidate of iceCandidateBufferRef.current) {
-                      try {
-                        await pc.addIceCandidate(candidate)
-                      } catch (error) {
-                        const err = error as Error
-                        if (!err.message?.includes("duplicate")) {
-                          console.error("[v0] ICE add error:", err.message)
-                        }
-                      }
-                    }
-                    iceCandidateBufferRef.current = []
                   }
                 } catch (error) {
-                  console.error("[v0] Error processing signal:", signal.type, "-", error)
+                  console.error("[v0] Signal processing error:", error)
                 }
               }
             }
 
-            // Poll for ICE candidates
             const { data: iceCandidates, error: iceError } = await supabase
               .from("ice_candidates")
               .select("*")
               .eq("room_id", roomId)
-              .eq("from_user_id", partnerId)
-              .eq("to_user_id", userId)
               .order("created_at", { ascending: true })
 
             if (iceError) {
@@ -452,7 +453,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
 
             if (iceCandidates && iceCandidates.length > 0) {
-              console.log("[v0] ICE CANDIDATES RECEIVED:", iceCandidates.length)
               for (const ice of iceCandidates) {
                 if (processedIceCandidateIds.current.has(ice.id)) continue
                 processedIceCandidateIds.current.add(ice.id)
@@ -463,21 +463,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 try {
                   const candidateObj = JSON.parse(ice.candidate)
                   const candidate = new RTCIceCandidate(candidateObj)
-
-                  if (hasRemoteDescriptionRef.current) {
-                    try {
-                      await pc.addIceCandidate(candidate)
-                    } catch (error) {
-                      const err = error as Error
-                      if (!err.message?.includes("duplicate")) {
-                        console.error("[v0] ICE add error:", err.message)
-                      }
-                    }
-                  } else {
-                    iceCandidateBufferRef.current.push(candidate)
-                  }
+                  await pc.addIceCandidate(candidate)
                 } catch (error) {
-                  console.error("[v0] Error parsing ICE candidate:", error)
+                  console.warn("[v0] ICE candidate error:", error)
                 }
               }
             }
@@ -486,43 +474,41 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           }
         }
 
-        console.log("[v0] SETUP WEBRTC: Starting polling interval", { roomId, isInitiator, partnerId })
+        console.log("[v0] Starting signaling poll")
         signalingPollingRef.current = setInterval(pollForSignaling, 50)
-        await pollForSignaling() // Run immediately
+        await pollForSignaling()
 
-        // Create offer if initiator
         if (isInitiator) {
           try {
-            console.log("[v0] INITIATOR: Creating offer", { roomId, partnerId })
+            console.log("[v0] INITIATOR: Creating offer")
             const offer = await pc.createOffer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             })
-            console.log("[v0] OFFER CREATED:", { type: offer.type })
             await pc.setLocalDescription(offer)
-            console.log("[v0] LOCAL DESC SET")
 
-            // Send offer
+            const supabase = await createBrowserClient()
             const { error: insertError } = await supabase.from("signaling").insert({
               room_id: roomId,
               from_user_id: userId,
-              to_user_id: partnerId,
               type: "offer",
               sdp: JSON.stringify(offer),
             })
             if (insertError) {
-              console.error("[v0] ERROR SENDING OFFER:", insertError)
+              console.error("[v0] Offer send error:", insertError)
             } else {
-              console.log("[v0] OFFER SENT TO SUPABASE")
+              console.log("[v0] OFFER SENT")
             }
           } catch (error) {
-            console.error("[v0] Error creating offer:", error)
+            console.error("[v0] Offer creation error:", error)
           }
         } else {
-          console.log("[v0] NOT INITIATOR: Waiting for offer", { roomId, partnerId })
+          console.log("[v0] Waiting for offer...")
         }
       } catch (error) {
-        console.error("[v0] Error setting up WebRTC:", error)
+        console.error("[v0] WebRTC setup error:", error)
+        setVideoState("error")
+        setConnectionStatus("Erro ao conectar")
       }
     },
     [userId],
@@ -548,8 +534,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         // Wait before retrying
         await new Promise((resolve) => setTimeout(resolve, 2000))
 
-        if (peerConnectionRef.current && currentRoomIdRef.current && currentPartnerIdRef.current) {
-          await setupWebRTC(currentRoomIdRef.current, isInitiatorRef.current, currentPartnerIdRef.current)
+        if (peerConnectionRef.current && currentRoomIdRef.current) {
+          await setupWebRTC(currentRoomIdRef.current, isInitiatorRef.current)
         }
       } else {
         setVideoState("error")
@@ -617,7 +603,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 setConnectionStatus("Estabelecendo conexão...")
 
                 const isInitiator = userId < partnerId
-                await setupWebRTC(currentRoomIdRef.current!, isInitiator, partnerId)
+                await setupWebRTC(currentRoomIdRef.current!, isInitiator)
               }
             }
           },
@@ -635,49 +621,78 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     setIsLoading(true)
     setVideoState("searching")
+    setPermissionError("")
+    setConnectionStatus("Acessando câmera...")
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingModeRef.current },
-        audio: true,
-      })
-      if (!stream) {
-        setIsLoading(false)
+      let stream: MediaStream | null = null
+
+      try {
+        stream = await getLocalStream()
+      } catch (err) {
+        console.error("[v0] getUserMedia failed:", err)
         setVideoState("permission_denied")
-        setPermissionError("Falha ao acessar câmera e microfone")
+        setPermissionError(err.message)
+        setIsLoading(false)
+        return
+      }
+
+      if (!stream || stream.getTracks().length === 0) {
+        setVideoState("permission_denied")
+        setPermissionError("Nenhuma stream de mídia obtida")
+        setIsLoading(false)
         return
       }
 
       localStreamRef.current = stream
-      attachStreamToVideo(localVideoRef.current, stream, "local")
+      console.log("[v0] Attaching local stream to video element")
+      const attachResult = attachStreamToVideo(localVideoRef.current, stream, "local")
+
+      if (!attachResult) {
+        console.error("[v0] Failed to attach stream to video element")
+        setVideoState("permission_denied")
+        setPermissionError("Falha ao exibir câmera")
+        setIsLoading(false)
+        return
+      }
+
+      setConnectionStatus("Conectando à fila...")
 
       const result = await joinVideoQueue(userId)
 
       if (!result.success) {
         console.error("[v0] Failed to join queue:", result.error)
+        stream.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
         setVideoState("idle")
+        setConnectionStatus("")
+        setPermissionError(result.error || "Falha ao conectar à fila")
         setIsLoading(false)
         return
       }
 
       currentRoomIdRef.current = result.roomId
+      console.log("[v0] Joined queue with room:", result.roomId)
 
       await subscribeToQueueUpdates()
 
       if (result.matched && result.partnerId && result.partnerProfile) {
+        console.log("[v0] Immediate match found:", result.partnerId)
         currentPartnerIdRef.current = result.partnerId
         setCurrentPartner(result.partnerProfile as PartnerProfile)
         setVideoState("connecting")
-        setConnectionStatus("Estabelecendo conexão...")
+        setConnectionStatus("Conectando...")
         setIsLoading(false)
 
         const isInitiator = userId < result.partnerId
-        await setupWebRTC(result.roomId!, isInitiator, result.partnerId)
+        await setupWebRTC(result.roomId!, isInitiator)
         return
       }
 
       let checkCount = 0
-      const maxChecks = 90 // 90 checks * 500ms = 45 seconds
+      const maxChecks = 150 // 150 checks * 300ms = 45 seconds
+
+      setConnectionStatus("Aguardando outro usuário...")
 
       pollingRef.current = setInterval(async () => {
         checkCount++
@@ -690,6 +705,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           setVideoState("idle")
           setConnectionStatus("")
           setPermissionError("Nenhum usuário disponível. Tente novamente.")
+          console.log("[v0] Search timeout - no match found")
           return
         }
 
@@ -702,22 +718,26 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               pollingRef.current = null
             }
 
+            console.log("[v0] Match found during polling:", status.partnerId)
             currentPartnerIdRef.current = status.partnerId
             setCurrentPartner(status.partnerProfile as PartnerProfile)
             setVideoState("connecting")
-            setConnectionStatus("Estabelecendo conexão...")
+            setConnectionStatus("Conectando...")
 
             const isInitiator = userId < status.partnerId
 
-            await setupWebRTC(currentRoomIdRef.current!, isInitiator, status.partnerId)
+            await setupWebRTC(currentRoomIdRef.current!, isInitiator)
           }
         } catch (error) {
           console.log("[v0] Polling error (non-critical):", error instanceof Error ? error.message : error)
         }
-      }, 500)
+      }, 300)
     } catch (error) {
       console.error("[v0] Error starting search:", error)
-      setVideoState("idle")
+      const err = error as Error
+      setVideoState("permission_denied")
+      setPermissionError(err?.message || "Erro desconhecido ao iniciar câmera")
+      setConnectionStatus("")
     } finally {
       setIsLoading(false)
     }
@@ -1111,4 +1131,50 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       )}
     </div>
   )
+}
+
+async function getLocalStream() {
+  console.log("[v0] Requesting local media stream")
+
+  try {
+    // First, try with optimal constraints
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: { ideal: "user" },
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    })
+
+    console.log("[v0] Local stream acquired successfully:", {
+      videoTracks: stream.getVideoTracks().length,
+      audioTracks: stream.getAudioTracks().length,
+    })
+
+    return stream
+  } catch (error: any) {
+    console.warn("[v0] Optimal constraints failed, trying fallback:", error.message)
+
+    try {
+      // Fallback: basic constraints without facingMode
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      })
+
+      console.log("[v0] Local stream acquired with fallback constraints")
+      return stream
+    } catch (fallbackError: any) {
+      console.error("[v0] getUserMedia failed completely:", {
+        originalError: error.message,
+        fallbackError: fallbackError.message,
+      })
+      throw new Error(`Não foi possível acessar câmera/microfone: ${fallbackError.message}`)
+    }
+  }
 }
