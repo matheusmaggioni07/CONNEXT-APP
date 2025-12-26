@@ -46,16 +46,8 @@ interface PartnerProfile {
   city?: string
 }
 
-type VideoState =
-  | "idle"
-  | "searching"
-  | "connecting"
-  | "connected"
-  | "ended"
-  | "permission_denied"
-  | "matched"
-  | "error"
-  | "waiting" // Added for new state
+// Updated VideoState type
+type VideoState = "idle" | "searching" | "connected" | "ended" | "error" | "permission_denied" | "matched" | "waiting"
 
 export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const router = useRouter()
@@ -901,22 +893,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     setIsLoading(true)
 
     try {
-      console.log("[v0] 📞 handleStartCall - Joining queue...")
-      console.log("[v0] Current user ID:", userId)
+      console.log("[v0] handleStartCall - Joining queue...")
 
       const joinResult = await joinVideoQueue()
 
-      console.log("[v0] ✅ Join result:", {
-        success: joinResult.success,
-        roomId: joinResult.roomId,
-        matched: joinResult.matched,
-        partnerId: joinResult.partnerId,
-        waiting: joinResult.waiting,
-        hasPartnerProfile: !!joinResult.partnerProfile,
-      })
-
       if (!joinResult.success) {
-        console.error("[v0] ❌ Failed to join queue:", joinResult.error)
+        console.error("[v0] Failed to join queue:", joinResult.error)
         setVideoState("error")
         setPermissionError("Erro ao entrar na fila")
         setIsLoading(false)
@@ -924,23 +906,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       }
 
       currentRoomIdRef.current = joinResult.roomId
-      console.log("[v0] ✅ Joined room:", joinResult.roomId)
 
+      // Get local stream first
       let localStream: MediaStream | null = null
       try {
-        console.log("[v0] 📹 Requesting local stream...")
         localStream = await getLocalStream()
-        console.log("[v0] ✅ Local stream acquired:", {
-          videoTracks: localStream?.getVideoTracks().length,
-          audioTracks: localStream?.getAudioTracks().length,
-        })
       } catch (streamError: any) {
-        console.error("[v0] ❌ CRITICAL: Failed to get local stream:", streamError.message)
+        console.error("[v0] Failed to get local stream:", streamError.message)
         setVideoState("permission_denied")
         setPermissionError(`Erro de câmera/microfone: ${streamError.message || "Permissão negada"}`)
         setIsLoading(false)
-
-        // Try to leave the queue since we can't proceed
         try {
           await leaveVideoQueue(joinResult.roomId)
         } catch (leaveError) {
@@ -950,11 +925,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       }
 
       if (!localStream || localStream.getTracks().length === 0) {
-        console.error("[v0] ❌ Invalid local stream")
+        console.error("[v0] Invalid local stream")
         setVideoState("permission_denied")
         setPermissionError("Não foi possível obter acesso à câmera/microfone.")
         setIsLoading(false)
-
         try {
           await leaveVideoQueue(joinResult.roomId)
         } catch (leaveError) {
@@ -966,12 +940,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       localStreamRef.current = localStream
       const attachResult = attachStreamToVideo(localVideoRef.current, localStream, "local")
       if (!attachResult) {
-        console.error("[v0] ❌ Failed to attach local stream to video element")
+        console.error("[v0] Failed to attach local stream to video element")
         setVideoState("permission_denied")
         setPermissionError("Não foi possível exibir câmera")
         setIsLoading(false)
         localStream.getTracks().forEach((track) => track.stop())
-
         try {
           await leaveVideoQueue(joinResult.roomId)
         } catch (leaveError) {
@@ -980,85 +953,66 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         return
       }
 
-      console.log("[v0] ✅ Local stream attached to video element")
       setLocalVideoReady(true)
 
       if (joinResult.matched && joinResult.partnerId) {
-        console.log("[v0] 🎉 IMMEDIATE MATCH - Starting WebRTC with partner:", joinResult.partnerId)
+        console.log("[v0] Immediate match - starting WebRTC")
         currentPartnerIdRef.current = joinResult.partnerId
-        isInitiatorRef.current = !joinResult.waiting // If not waiting, means we joined existing room = non-initiator
+        isInitiatorRef.current = true // Primeiro a criar = initiator
         setCurrentPartner(joinResult.partnerProfile || { id: joinResult.partnerId, full_name: "User", avatar_url: "" })
         setVideoState("connecting")
         setIsLoading(false)
-
-        await setupWebRTC(joinResult.roomId, isInitiatorRef.current)
+        await setupWebRTC(joinResult.roomId, true)
         return
       }
 
       // No match yet - start polling
-      if (!joinResult.matched) {
-        console.log("[v0] ⏳ Starting polling with room:", joinResult.roomId)
-        let pollCount = 0
-        const maxPolls = 120 // 60 seconds max (polling every 500ms)
+      console.log("[v0] No match - starting polling")
+      let pollCount = 0
+      const maxPolls = 120 // 60 seconds
 
-        pollingRef.current = setInterval(async () => {
-          pollCount++
+      pollingRef.current = setInterval(async () => {
+        pollCount++
 
-          if (pollCount % 4 === 0) {
-            console.log(`[v0] 🔍 Poll attempt #${pollCount}/${maxPolls}`)
+        if (pollCount >= maxPolls) {
+          console.log("[v0] Polling timeout")
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+          setVideoState("idle")
+          setCurrentPartner(null)
+          setPermissionError("Nenhum usuário disponível.")
+          if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach((track) => track.stop())
+            localStreamRef.current = null
           }
+          setIsLoading(false)
+          return
+        }
 
-          if (pollCount >= maxPolls) {
-            console.log("[v0] ⏱️ Polling timeout - no match found after 60s")
+        try {
+          const statusResult = await checkRoomStatus(joinResult.roomId)
+
+          if (statusResult.status === "active" && statusResult.partnerId && statusResult.partnerId !== userId) {
+            console.log("[v0] Match found! Starting WebRTC as non-initiator")
             clearInterval(pollingRef.current!)
             pollingRef.current = null
-            setVideoState("idle")
-            setCurrentPartner(null)
-            setPermissionError("Nenhum usuário disponível.")
-            if (localStreamRef.current) {
-              localStreamRef.current.getTracks().forEach((track) => track.stop())
-              localStreamRef.current = null
-            }
+
+            currentPartnerIdRef.current = statusResult.partnerId
+            setCurrentPartner(
+              statusResult.partnerProfile || { id: statusResult.partnerId, full_name: "User", avatar_url: "" },
+            )
+            setVideoState("connecting")
             setIsLoading(false)
-            return
+
+            isInitiatorRef.current = false // Segundo a entrar = non-initiator
+            await setupWebRTC(joinResult.roomId, false)
           }
-
-          try {
-            const statusResult = await checkRoomStatus(joinResult.roomId)
-
-            if (pollCount % 4 === 0) {
-              console.log("[v0] 🔄 Status check result:", {
-                status: statusResult.status,
-                hasPartnerId: !!statusResult.partnerId,
-                partnerId: statusResult.partnerId,
-              })
-            }
-
-            if (statusResult.status === "active" && statusResult.partnerId && statusResult.partnerId !== userId) {
-              console.log("[v0] 🎉 MATCH FOUND! Partner:", statusResult.partnerId)
-              clearInterval(pollingRef.current!)
-              pollingRef.current = null
-
-              currentPartnerIdRef.current = statusResult.partnerId
-              setCurrentPartner(
-                statusResult.partnerProfile || { id: statusResult.partnerId, full_name: "User", avatar_url: "" },
-              )
-              setVideoState("connecting")
-              setIsLoading(false)
-
-              const isInitiator = false
-              console.log("[v0] 🔌 WebRTC initiator:", isInitiator)
-              await setupWebRTC(joinResult.roomId, isInitiator)
-            }
-          } catch (error) {
-            if (pollCount % 20 === 0) {
-              console.error("[v0] ❌ Polling error on attempt #", pollCount, error)
-            }
-          }
-        }, 500)
-      }
+        } catch (error) {
+          console.error("[v0] Polling error:", error)
+        }
+      }, 500)
     } catch (error) {
-      console.error("[v0] ❌ Error in handleStartCall:", error)
+      console.error("[v0] Error in handleStartCall:", error)
       setVideoState("error")
       setPermissionError(`Erro ao conectar: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
       setIsLoading(false)
@@ -1373,6 +1327,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   )
 }
 
+// Moved getLocalStream function outside of the component
 async function getLocalStream() {
   console.log("[v0] Requesting local media stream")
 
