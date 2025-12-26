@@ -274,6 +274,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         pc.ontrack = (event) => {
           event.track.enabled = true
+          console.log("[v0] TRACK RECEIVED:", { kind: event.track.kind, readyState: event.track.readyState }) // Debug remote track
 
           // Use the stream provided by the event
           const stream = event.streams[0] || remoteStreamRef.current || new MediaStream()
@@ -365,9 +366,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
 
             if (signals && signals.length > 0) {
+              console.log("[v0] SIGNALS RECEIVED:", signals.length) // Debug signaling messages
               for (const signal of signals) {
                 if (processedSignalingIds.current.has(signal.id)) continue
                 processedSignalingIds.current.add(signal.id)
+                console.log("[v0] PROCESSING SIGNAL:", { type: signal.type, id: signal.id }) // Debug signal processing
 
                 const pc = peerConnectionRef.current
                 if (!pc || pc.connectionState === "closed") break
@@ -375,9 +378,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 try {
                   if (signal.type === "offer" && !isInitiator) {
                     const offerDesc = JSON.parse(signal.sdp)
+                    console.log("[v0] APPLYING REMOTE OFFER") // Debug
 
                     await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
                     hasRemoteDescriptionRef.current = true
+                    console.log("[v0] REMOTE DESC SET") // Debug
 
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
@@ -390,19 +395,28 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
                     // Create and send answer
                     const answer = await pc.createAnswer()
+                    console.log("[v0] ANSWER CREATED") // Debug
                     await pc.setLocalDescription(answer)
+                    console.log("[v0] LOCAL DESC SET FOR ANSWER") // Debug
 
-                    await supabase.from("signaling").insert({
+                    const { error: answerError } = await supabase.from("signaling").insert({
                       room_id: roomId,
                       from_user_id: userId,
                       to_user_id: partnerId,
                       type: "answer",
                       sdp: JSON.stringify(answer),
                     })
+                    if (answerError) {
+                      console.error("[v0] ERROR SENDING ANSWER:", answerError) // Debug
+                    } else {
+                      console.log("[v0] ANSWER SENT") // Debug
+                    }
                   } else if (signal.type === "answer" && isInitiator) {
                     const answerDesc = JSON.parse(signal.sdp)
+                    console.log("[v0] APPLYING REMOTE ANSWER") // Debug
                     await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
                     hasRemoteDescriptionRef.current = true
+                    console.log("[v0] REMOTE DESC SET FOR ANSWER") // Debug
 
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
@@ -437,6 +451,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
 
             if (iceCandidates && iceCandidates.length > 0) {
+              console.log("[v0] ICE CANDIDATES RECEIVED:", iceCandidates.length) // Debug ICE candidates
               for (const ice of iceCandidates) {
                 if (processedIceCandidateIds.current.has(ice.id)) continue
                 processedIceCandidateIds.current.add(ice.id)
@@ -470,29 +485,40 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           }
         }
 
+        console.log("[v0] SETUP WEBRTC: Starting polling interval", { roomId, isInitiator, partnerId }) // Debug setup start
         signalingPollingRef.current = setInterval(pollForSignaling, 100)
         await pollForSignaling() // Run immediately
 
         // Create offer if initiator
         if (isInitiator) {
           try {
+            console.log("[v0] INITIATOR: Creating offer", { roomId, partnerId }) // Debug offer creation
             const offer = await pc.createOffer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             })
+            console.log("[v0] OFFER CREATED:", { type: offer.type }) // Debug offer created
             await pc.setLocalDescription(offer)
+            console.log("[v0] LOCAL DESC SET") // Debug local description
 
             // Send offer
-            await supabase.from("signaling").insert({
+            const { error: insertError } = await supabase.from("signaling").insert({
               room_id: roomId,
               from_user_id: userId,
               to_user_id: partnerId,
               type: "offer",
               sdp: JSON.stringify(offer),
             })
+            if (insertError) {
+              console.error("[v0] ERROR SENDING OFFER:", insertError) // Debug offer send error
+            } else {
+              console.log("[v0] OFFER SENT TO SUPABASE") // Debug offer sent success
+            }
           } catch (error) {
             console.error("[v0] Error creating offer:", error)
           }
+        } else {
+          console.log("[v0] NOT INITIATOR: Waiting for offer", { roomId, partnerId }) // Debug non-initiator state
         }
       } catch (error) {
         console.error("[v0] Error setting up WebRTC:", error)
@@ -784,6 +810,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     <VideoIcon className="h-4 md:h-6 w-4 md:w-6 text-primary-foreground" />
                   </div>
                 </div>
+              ) : videoState === "connecting" ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Aguardando resposta...</span>
+                </div>
               ) : null}
 
               <h2 className="mb-2 text-lg md:text-2xl font-bold text-foreground">
@@ -791,7 +822,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   ? "Buscando empreendedor..."
                   : videoState === "idle"
                     ? "Pronto para conectar?"
-                    : "Erro de Conexão"}
+                    : videoState === "connecting"
+                      ? "Estabelecendo conexão..."
+                      : "Erro de Conexão"}
               </h2>
 
               {videoState === "searching" ? (
@@ -817,6 +850,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   <Search className="h-3 md:h-4 w-3 md:w-4" />
                   Começar Chamada
                 </Button>
+              ) : videoState === "connecting" ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Aguardando resposta...</span>
+                </div>
               ) : null}
             </div>
           )}
