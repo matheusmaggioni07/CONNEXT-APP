@@ -42,7 +42,15 @@ interface PartnerProfile {
   city?: string
 }
 
-type VideoState = "idle" | "searching" | "connecting" | "connected" | "ended" | "permission_denied" | "matched"
+type VideoState =
+  | "idle"
+  | "searching"
+  | "connecting"
+  | "connected"
+  | "ended"
+  | "permission_denied"
+  | "matched"
+  | "error"
 
 export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const router = useRouter()
@@ -163,56 +171,57 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     if (isCleaningUpRef.current) return
     isCleaningUpRef.current = true
 
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
-    }
-
-    if (signalingPollingRef.current) {
-      clearInterval(signalingPollingRef.current)
-      signalingPollingRef.current = null
-    }
-
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.ontrack = null
-      peerConnectionRef.current.onicecandidate = null
-      peerConnectionRef.current.onconnectionstatechange = null
-      peerConnectionRef.current.oniceconnectionstatechange = null
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
-    }
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop())
-      localStreamRef.current = null
-    }
-
-    if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((track) => track.stop())
-      remoteStreamRef.current = null
-    }
-
-    const roomId = currentRoomIdRef.current
-    if (roomId && roomId !== "undefined") {
-      try {
-        await leaveVideoQueue(roomId, userId)
-      } catch (e) {
-        console.error("[v0] Error leaving queue:", e)
+    try {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
       }
+
+      if (signalingPollingRef.current) {
+        clearInterval(signalingPollingRef.current)
+        signalingPollingRef.current = null
+      }
+
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.ontrack = null
+        peerConnectionRef.current.onicecandidate = null
+        peerConnectionRef.current.onconnectionstatechange = null
+        peerConnectionRef.current.oniceconnectionstatechange = null
+        peerConnectionRef.current.close()
+        peerConnectionRef.current = null
+      }
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null
+      }
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+
+      if (currentRoomIdRef.current) {
+        try {
+          await leaveVideoQueue(currentRoomIdRef.current, userId)
+        } catch (leaveError) {
+          console.log("[v0] Leave error (non-critical):", leaveError instanceof Error ? leaveError.message : leaveError)
+        }
+        currentRoomIdRef.current = null
+      }
+
+      currentPartnerIdRef.current = null
+      processedSignalingIds.current.clear()
+      processedIceCandidateIds.current.clear()
+      hasRemoteDescriptionRef.current = false
+      iceCandidateBufferRef.current = []
+      connectionAttemptRef.current = 0
+    } finally {
+      isCleaningUpRef.current = false
     }
-
-    currentRoomIdRef.current = null
-    currentPartnerIdRef.current = null
-    hasRemoteDescriptionRef.current = false
-    iceCandidateBufferRef.current = []
-    processedSignalingIds.current.clear()
-    processedIceCandidateIds.current.clear()
-    connectionAttemptRef.current = 0
-    setLocalVideoReady(false)
-    setRemoteVideoReady(false)
-    setIsLiked(false)
-
-    isCleaningUpRef.current = false
   }, [userId])
 
   const setupWebRTC = useCallback(
@@ -301,24 +310,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           setConnectionStatus("Conectado!")
         }
 
-        pc.onconnectionstatechange = () => {
-          if (pc.connectionState === "connected" || pc.connectionState === "completed") {
-            setVideoState("connected")
-            setConnectionStatus("Conectado!")
-          } else if (pc.connectionState === "disconnected") {
-            setConnectionStatus("Reconectando...")
-          } else if (pc.connectionState === "failed") {
-            setConnectionStatus("Conexão falhou")
-            if (isInitiatorRef.current && connectionAttemptRef.current < maxConnectionAttempts) {
-              connectionAttemptRef.current++
-              try {
-                pc.restartIce()
-              } catch (e) {
-                console.error("[v0] Error restarting ICE:", e)
-              }
-            }
-          }
-        }
+        pc.onconnectionstatechange = handleConnectionStateChange
 
         pc.oniceconnectionstatechange = () => {
           if (pc.iceConnectionState === "failed") {
@@ -366,11 +358,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
 
             if (signals && signals.length > 0) {
-              console.log("[v0] SIGNALS RECEIVED:", signals.length) // Debug signaling messages
+              console.log("[v0] SIGNALS RECEIVED:", signals.length)
               for (const signal of signals) {
                 if (processedSignalingIds.current.has(signal.id)) continue
                 processedSignalingIds.current.add(signal.id)
-                console.log("[v0] PROCESSING SIGNAL:", { type: signal.type, id: signal.id }) // Debug signal processing
+                console.log("[v0] PROCESSING SIGNAL:", { type: signal.type, id: signal.id })
 
                 const pc = peerConnectionRef.current
                 if (!pc || pc.connectionState === "closed") break
@@ -378,11 +370,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 try {
                   if (signal.type === "offer" && !isInitiator) {
                     const offerDesc = JSON.parse(signal.sdp)
-                    console.log("[v0] APPLYING REMOTE OFFER") // Debug
+                    console.log("[v0] APPLYING REMOTE OFFER")
 
                     await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
                     hasRemoteDescriptionRef.current = true
-                    console.log("[v0] REMOTE DESC SET") // Debug
+                    console.log("[v0] REMOTE DESC SET")
 
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
@@ -395,9 +387,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
                     // Create and send answer
                     const answer = await pc.createAnswer()
-                    console.log("[v0] ANSWER CREATED") // Debug
+                    console.log("[v0] ANSWER CREATED")
                     await pc.setLocalDescription(answer)
-                    console.log("[v0] LOCAL DESC SET FOR ANSWER") // Debug
+                    console.log("[v0] LOCAL DESC SET FOR ANSWER")
 
                     const { error: answerError } = await supabase.from("signaling").insert({
                       room_id: roomId,
@@ -407,16 +399,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                       sdp: JSON.stringify(answer),
                     })
                     if (answerError) {
-                      console.error("[v0] ERROR SENDING ANSWER:", answerError) // Debug
+                      console.error("[v0] ERROR SENDING ANSWER:", answerError)
                     } else {
-                      console.log("[v0] ANSWER SENT") // Debug
+                      console.log("[v0] ANSWER SENT")
                     }
                   } else if (signal.type === "answer" && isInitiator) {
                     const answerDesc = JSON.parse(signal.sdp)
-                    console.log("[v0] APPLYING REMOTE ANSWER") // Debug
+                    console.log("[v0] APPLYING REMOTE ANSWER")
                     await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
                     hasRemoteDescriptionRef.current = true
-                    console.log("[v0] REMOTE DESC SET FOR ANSWER") // Debug
+                    console.log("[v0] REMOTE DESC SET FOR ANSWER")
 
                     for (const candidate of iceCandidateBufferRef.current) {
                       try {
@@ -451,7 +443,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
 
             if (iceCandidates && iceCandidates.length > 0) {
-              console.log("[v0] ICE CANDIDATES RECEIVED:", iceCandidates.length) // Debug ICE candidates
+              console.log("[v0] ICE CANDIDATES RECEIVED:", iceCandidates.length)
               for (const ice of iceCandidates) {
                 if (processedIceCandidateIds.current.has(ice.id)) continue
                 processedIceCandidateIds.current.add(ice.id)
@@ -485,21 +477,21 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           }
         }
 
-        console.log("[v0] SETUP WEBRTC: Starting polling interval", { roomId, isInitiator, partnerId }) // Debug setup start
-        signalingPollingRef.current = setInterval(pollForSignaling, 100)
+        console.log("[v0] SETUP WEBRTC: Starting polling interval", { roomId, isInitiator, partnerId })
+        signalingPollingRef.current = setInterval(pollForSignaling, 50)
         await pollForSignaling() // Run immediately
 
         // Create offer if initiator
         if (isInitiator) {
           try {
-            console.log("[v0] INITIATOR: Creating offer", { roomId, partnerId }) // Debug offer creation
+            console.log("[v0] INITIATOR: Creating offer", { roomId, partnerId })
             const offer = await pc.createOffer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             })
-            console.log("[v0] OFFER CREATED:", { type: offer.type }) // Debug offer created
+            console.log("[v0] OFFER CREATED:", { type: offer.type })
             await pc.setLocalDescription(offer)
-            console.log("[v0] LOCAL DESC SET") // Debug local description
+            console.log("[v0] LOCAL DESC SET")
 
             // Send offer
             const { error: insertError } = await supabase.from("signaling").insert({
@@ -510,15 +502,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               sdp: JSON.stringify(offer),
             })
             if (insertError) {
-              console.error("[v0] ERROR SENDING OFFER:", insertError) // Debug offer send error
+              console.error("[v0] ERROR SENDING OFFER:", insertError)
             } else {
-              console.log("[v0] OFFER SENT TO SUPABASE") // Debug offer sent success
+              console.log("[v0] OFFER SENT TO SUPABASE")
             }
           } catch (error) {
             console.error("[v0] Error creating offer:", error)
           }
         } else {
-          console.log("[v0] NOT INITIATOR: Waiting for offer", { roomId, partnerId }) // Debug non-initiator state
+          console.log("[v0] NOT INITIATOR: Waiting for offer", { roomId, partnerId })
         }
       } catch (error) {
         console.error("[v0] Error setting up WebRTC:", error)
@@ -526,6 +518,41 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     },
     [userId],
   )
+
+  const handleConnectionStateChange = useCallback(async () => {
+    if (!peerConnectionRef.current) return
+
+    const state = peerConnectionRef.current.connectionState
+
+    console.log("[v0] Connection state changed:", state)
+
+    if (state === "connected") {
+      console.log("[v0] CALL CONNECTED! ✅")
+      setVideoState("connected")
+      setConnectionStatus("Conectado")
+    } else if (state === "failed") {
+      console.log("[v0] Connection failed, attempting restart...")
+      if (connectionAttemptRef.current < maxConnectionAttempts) {
+        connectionAttemptRef.current++
+        setConnectionStatus(`Tentando reconectar... (${connectionAttemptRef.current}/${maxConnectionAttempts})`)
+
+        // Wait before retrying
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+
+        if (peerConnectionRef.current && currentRoomIdRef.current && currentPartnerIdRef.current) {
+          await setupWebRTC(currentRoomIdRef.current, isInitiatorRef.current, currentPartnerIdRef.current)
+        }
+      } else {
+        setVideoState("error")
+        setConnectionStatus("Falha na conexão após múltiplas tentativas")
+      }
+    } else if (state === "disconnected" || state === "closed") {
+      console.log("[v0] Peer connection closed:", state)
+      setVideoState("idle")
+      setCurrentPartner(null)
+      await cleanup()
+    }
+  }, [cleanup])
 
   const startSearching = useCallback(async () => {
     if (limitReached) return
@@ -572,27 +599,49 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       }
 
       // Poll for room status
+      let checkCount = 0
+      const maxChecks = 225 // 225 checks * 200ms = 45 seconds
+
       pollingRef.current = setInterval(async () => {
         if (!currentRoomIdRef.current) return
 
-        const status = await checkRoomStatus(currentRoomIdRef.current, userId)
+        checkCount++
+        console.log("[v0] Status check", checkCount, "/", maxChecks)
 
-        if (status.status === "active" && status.partnerId && status.partnerProfile) {
+        // Timeout after 45 seconds
+        if (checkCount > maxChecks) {
           if (pollingRef.current) {
             clearInterval(pollingRef.current)
             pollingRef.current = null
           }
-
-          currentPartnerIdRef.current = status.partnerId
-          setCurrentPartner(status.partnerProfile as PartnerProfile)
-          setVideoState("connecting")
-          setConnectionStatus("Estabelecendo conexão...")
-
-          const isInitiator = userId < status.partnerId
-
-          await setupWebRTC(currentRoomIdRef.current!, isInitiator, status.partnerId)
+          setVideoState("error")
+          setConnectionStatus("Sem usuários disponíveis. Tente novamente.")
+          setIsLoading(false)
+          return
         }
-      }, 1500)
+
+        try {
+          const status = await checkRoomStatus(currentRoomIdRef.current, userId)
+
+          if (status.status === "active" && status.partnerId && status.partnerProfile) {
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current)
+              pollingRef.current = null
+            }
+
+            currentPartnerIdRef.current = status.partnerId
+            setCurrentPartner(status.partnerProfile as PartnerProfile)
+            setVideoState("connecting")
+            setConnectionStatus("Estabelecendo conexão...")
+
+            const isInitiator = userId < status.partnerId
+
+            await setupWebRTC(currentRoomIdRef.current!, isInitiator, status.partnerId)
+          }
+        } catch (error) {
+          console.log("[v0] Polling error (non-critical):", error instanceof Error ? error.message : error)
+        }
+      }, 200) // Keep at 200ms for status polling
     } catch (error) {
       console.error("[v0] Error starting search:", error)
       setVideoState("idle")
@@ -815,6 +864,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-sm text-muted-foreground">Aguardando resposta...</span>
                 </div>
+              ) : videoState === "error" ? (
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <span className="text-sm text-destructive">{connectionStatus}</span>
+                </div>
               ) : null}
 
               <h2 className="mb-2 text-lg md:text-2xl font-bold text-foreground">
@@ -824,7 +878,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     ? "Pronto para conectar?"
                     : videoState === "connecting"
                       ? "Estabelecendo conexão..."
-                      : "Erro de Conexão"}
+                      : videoState === "error"
+                        ? "Erro de Conexão"
+                        : "Erro de Conexão"}
               </h2>
 
               {videoState === "searching" ? (
@@ -855,6 +911,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-sm text-muted-foreground">Aguardando resposta...</span>
                 </div>
+              ) : videoState === "error" ? (
+                <Button
+                  onClick={startSearching}
+                  className="gradient-bg text-primary-foreground gap-2 text-xs md:text-sm h-8 md:h-10"
+                >
+                  Tentar Novamente
+                </Button>
               ) : null}
             </div>
           )}
@@ -904,7 +967,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           )}
 
           {/* Local Controls Overlay */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 md:gap-4">
+          <div className="absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 md:gap-4">
             <Button
               size="icon"
               variant={isMuted ? "destructive" : "secondary"}
