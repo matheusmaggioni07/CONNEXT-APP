@@ -39,6 +39,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const roomIdRef = useRef<string>("")
   const partnerIdRef = useRef<string>("")
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -112,22 +113,38 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       // Add local tracks
       localStream.getTracks().forEach((track) => {
         pc.addTrack(track, localStream)
-        console.log("[v0] Added local track:", track.kind)
+        console.log("[v0] Added local track:", track.kind, "enabled:", track.enabled)
       })
 
       pc.ontrack = (event) => {
-        console.log("[v0] Remote track received:", event.track.kind)
+        console.log("[v0] ✅ REMOTE TRACK RECEIVED!", {
+          kind: event.track.kind,
+          enabled: event.track.enabled,
+          streams: event.streams.length,
+        })
+
         if (event.streams && event.streams[0]) {
+          remoteStreamRef.current = event.streams[0]
+          console.log(
+            "[v0] Remote stream stored:",
+            event.streams[0].getTracks().map((t) => ({ kind: t.kind, enabled: t.enabled })),
+          )
+
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = event.streams[0]
-            console.log("[v0] Remote video stream set")
+            remoteVideoRef.current.play().catch((err) => console.log("[v0] Play error (normal):", err.message))
+            console.log("[v0] ✅ Remote video element srcObject set")
+          } else {
+            console.warn("[v0] ⚠️ remoteVideoRef is null!")
           }
+        } else {
+          console.warn("[v0] ⚠️ No streams in track event!")
         }
       }
 
       pc.onicecandidate = async (event) => {
         if (event.candidate) {
-          console.log("[v0] ICE candidate generated:", event.candidate.candidate.substring(0, 50))
+          console.log("[v0] ICE candidate:", event.candidate.candidate.substring(0, 50) + "...")
           try {
             await supabase.from("ice_candidates").insert({
               room_id: roomId,
@@ -136,21 +153,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               candidate: JSON.stringify(event.candidate.toJSON()),
             })
           } catch (err) {
-            console.error("[v0] Error saving ICE candidate:", err)
+            console.error("[v0] Error saving ICE:", err)
           }
-        }
-      }
-
-      // Handle connection state changes
-      pc.onconnectionstatechange = () => {
-        console.log("[v0] Connection state changed:", pc.connectionState)
-        if (pc.connectionState === "connected") {
-          console.log("[v0] ✅ WebRTC connected successfully!")
-          setState("connected")
-        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-          console.error("[v0] Connection failed or closed")
-          setState("error")
-          setErrorMsg("Conexão perdida")
         }
       }
 
@@ -158,17 +162,29 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         console.log("[v0] ICE gathering state:", pc.iceGatheringState)
       }
 
+      pc.onconnectionstatechange = () => {
+        console.log("[v0] Connection state:", pc.connectionState)
+        if (pc.connectionState === "connected") {
+          console.log("[v0] ✅ WebRTC CONNECTED! Waiting for remote tracks...")
+          setState("connected")
+        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          console.error("[v0] Connection FAILED:", pc.connectionState)
+          setState("error")
+          setErrorMsg("Conexão perdida")
+        }
+      }
+
       if (isInitiator) {
-        console.log("[v0] 🎬 Creating offer (initiator)...")
+        console.log("[v0] 🎬 INITIATOR - Creating offer...")
         try {
           const offer = await pc.createOffer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true,
           })
-          console.log("[v0] Offer created")
+          console.log("[v0] ✅ Offer created with audio/video flags")
 
           await pc.setLocalDescription(offer)
-          console.log("[v0] Local description set (offer)")
+          console.log("[v0] ✅ Local description set")
 
           await supabase.from("signaling").insert({
             room_id: roomId,
@@ -177,17 +193,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             type: "offer",
             sdp: JSON.stringify(offer),
           })
-          console.log("[v0] ✅ Offer saved to database")
+          console.log("[v0] ✅ Offer sent to database")
         } catch (err) {
           console.error("[v0] Error creating offer:", err)
         }
       } else {
-        console.log("[v0] ⏳ Waiting for offer (non-initiator)...")
+        console.log("[v0] ⏳ NON-INITIATOR - Waiting for offer...")
       }
 
       signalingIntervalRef.current = setInterval(async () => {
         if (!peerRef.current || peerRef.current.connectionState === "closed") {
-          console.log("[v0] Stopping signaling polling - connection closed")
           clearInterval(signalingIntervalRef.current!)
           return
         }
@@ -201,12 +216,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             .order("created_at", { ascending: true })
 
           if (error) {
-            console.error("[v0] Error fetching signaling:", error)
+            console.error("[v0] Signaling fetch error:", error)
             return
           }
 
           if (signals && signals.length > 0) {
-            console.log(`[v0] Found ${signals.length} signaling messages`)
             for (const sig of signals) {
               if (processedSignalingRef.current.has(sig.id)) continue
               processedSignalingRef.current.add(sig.id)
@@ -215,18 +229,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 console.log("[v0] 📨 Processing OFFER...")
                 try {
                   const offer = JSON.parse(sig.sdp)
-                  console.log("[v0] Setting remote description (offer)")
                   await pc.setRemoteDescription(new RTCSessionDescription(offer))
-                  console.log("[v0] Remote description set, creating answer...")
+                  console.log("[v0] ✅ Remote description set (offer)")
 
                   const answer = await pc.createAnswer({
                     offerToReceiveAudio: true,
                     offerToReceiveVideo: true,
                   })
-                  console.log("[v0] Answer created")
+                  console.log("[v0] ✅ Answer created")
 
                   await pc.setLocalDescription(answer)
-                  console.log("[v0] Local description set (answer)")
+                  console.log("[v0] ✅ Local description set (answer)")
 
                   await supabase.from("signaling").insert({
                     room_id: roomId,
@@ -235,7 +248,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                     type: "answer",
                     sdp: JSON.stringify(answer),
                   })
-                  console.log("[v0] ✅ Answer saved to database")
+                  console.log("[v0] ✅ Answer sent")
                 } catch (err) {
                   console.error("[v0] Error processing offer:", err)
                 }
@@ -243,7 +256,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 console.log("[v0] 📨 Processing ANSWER...")
                 try {
                   const answer = JSON.parse(sig.sdp)
-                  console.log("[v0] Setting remote description (answer)")
                   await pc.setRemoteDescription(new RTCSessionDescription(answer))
                   console.log("[v0] ✅ Remote description set (answer)")
                 } catch (err) {
@@ -253,7 +265,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             }
           }
         } catch (err) {
-          console.error("[v0] Signaling polling error:", err)
+          console.error("[v0] Signaling poll error:", err)
         }
       }, 500)
 
