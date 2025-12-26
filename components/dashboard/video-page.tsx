@@ -133,6 +133,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           type: "offer",
           sdp: JSON.stringify(offer),
         })
+        console.log("[v0] Offer saved to database")
       } else {
         console.log("[v0] Waiting for offer...")
       }
@@ -152,19 +153,21 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             .neq("from_user_id", userId)
             .order("created_at", { ascending: true })
 
-          if (signals) {
+          if (signals && signals.length > 0) {
+            console.log("[v0] Found", signals.length, "signaling messages")
             for (const sig of signals) {
               if (processedSignalingRef.current.has(sig.id)) continue
               processedSignalingRef.current.add(sig.id)
 
               if (sig.type === "offer" && !isInitiator) {
-                console.log("[v0] Processing offer")
+                console.log("[v0] Processing offer - setting remote description")
                 const offer = JSON.parse(sig.sdp)
                 await pc.setRemoteDescription(new RTCSessionDescription(offer))
 
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
 
+                console.log("[v0] Answer created and set as local description, saving to database")
                 await supabase.from("signaling").insert({
                   room_id: roomId,
                   from_user_id: userId,
@@ -173,7 +176,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                   sdp: JSON.stringify(answer),
                 })
               } else if (sig.type === "answer" && isInitiator) {
-                console.log("[v0] Processing answer")
+                console.log("[v0] Processing answer - setting remote description")
                 const answer = JSON.parse(sig.sdp)
                 await pc.setRemoteDescription(new RTCSessionDescription(answer))
               }
@@ -199,19 +202,24 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             .neq("from_user_id", userId)
             .order("created_at", { ascending: true })
 
-          if (ices) {
+          if (ices && ices.length > 0) {
             for (const ice of ices) {
               if (processedIceRef.current.has(ice.id)) continue
               processedIceRef.current.add(ice.id)
 
-              if (peerRef.current?.remoteDescription) {
-                const candidate = new RTCIceCandidate(JSON.parse(ice.candidate))
-                await peerRef.current.addIceCandidate(candidate)
+              try {
+                if (peerRef.current?.remoteDescription) {
+                  const candidate = new RTCIceCandidate(JSON.parse(ice.candidate))
+                  await peerRef.current.addIceCandidate(candidate)
+                  console.log("[v0] ICE candidate added")
+                }
+              } catch (err) {
+                console.error("[v0] Error adding ICE candidate:", err)
               }
             }
           }
         } catch (err) {
-          console.error("[v0] ICE error:", err)
+          console.error("[v0] ICE polling error:", err)
         }
       }, 500)
 

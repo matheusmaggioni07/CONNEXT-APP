@@ -483,3 +483,112 @@ export async function getRemainingCalls() {
     isPro: false,
   }
 }
+
+export async function saveSignaling(
+  roomId: string,
+  fromUserId: string,
+  toUserId: string,
+  type: "offer" | "answer",
+  sdp: any,
+) {
+  const supabase = await createClient()
+
+  try {
+    const { data, error } = await supabase
+      .from("signaling")
+      .insert({
+        room_id: roomId,
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        type,
+        sdp: typeof sdp === "string" ? sdp : JSON.stringify(sdp),
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Save signaling error:", error)
+      return null
+    }
+
+    return data
+  } catch (err) {
+    console.error("[v0] Save signaling exception:", err)
+    return null
+  }
+}
+
+export async function getSignaling(roomId: string, userId: string) {
+  const supabase = await createClient()
+
+  try {
+    const { data, error } = await supabase
+      .from("signaling")
+      .select("*")
+      .eq("room_id", roomId)
+      .eq("to_user_id", userId)
+      .order("created_at", { ascending: true })
+
+    if (error) {
+      console.error("[v0] Get signaling error:", error)
+      return []
+    }
+
+    return data || []
+  } catch (err) {
+    console.error("[v0] Get signaling exception:", err)
+    return []
+  }
+}
+
+export async function saveIceCandidate(roomId: string, fromUserId: string, toUserId: string, candidate: any) {
+  const supabase = await createClient()
+
+  try {
+    const { data, error } = await supabase
+      .from("ice_candidates")
+      .insert({
+        room_id: roomId,
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        candidate: typeof candidate === "string" ? candidate : JSON.stringify(candidate),
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Save ICE candidate error:", error)
+      return null
+    }
+
+    return data
+  } catch (err) {
+    console.error("[v0] Save ICE exception:", err)
+    return null
+  }
+}
+
+export async function getIceCandidates(roomId: string, userId: string) {
+  const supabase = await createClient()
+
+  try {
+    const { data, error } = await supabase
+      .from("ice_candidates")
+      .select("*")
+      .eq("room_id", roomId)
+      .eq("to_user_id", userId)
+      .order("created_at", { ascending: true })
+
+    if (error) {
+      console.error("[v0] Get ICE candidates error:", error)
+      return []
+    }
+
+    return data || []
+  } catch (err) {
+    console.error("[v0] Get ICE exception:", err)
+    return []
+  }
+}
