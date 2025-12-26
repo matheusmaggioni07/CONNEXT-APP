@@ -25,9 +25,9 @@ export async function POST(req: Request) {
       .single()
 
     if (userError || !userEntry) {
-      console.log("[v0] User entry not found")
+      console.log("[v0] User entry not found in room:", roomId)
       return NextResponse.json({
-        status: "not_found",
+        status: "waiting",
         matched: false,
         partnerId: null,
         partnerProfile: null,
@@ -35,13 +35,13 @@ export async function POST(req: Request) {
     }
 
     if (userEntry.matched_user_id) {
+      console.log("[v0] User has matched_user_id:", userEntry.matched_user_id)
       const { data: partnerProfile } = await supabase
         .from("profiles")
         .select("id, full_name, avatar_url, city")
         .eq("id", userEntry.matched_user_id)
         .single()
 
-      console.log("[v0] Returning matched partner:", userEntry.matched_user_id)
       return NextResponse.json({
         status: "active",
         matched: true,
@@ -58,27 +58,25 @@ export async function POST(req: Request) {
     if (roomError || !roomEntries) {
       console.log("[v0] Error fetching room entries")
       return NextResponse.json({
-        status: "error",
+        status: "waiting",
         matched: false,
         partnerId: null,
         partnerProfile: null,
       })
     }
 
-    const activeCount = roomEntries.length
-    console.log("[v0] Room status - active users:", activeCount)
+    console.log("[v0] Room entries count:", roomEntries.length, "for room:", roomId)
 
-    if (activeCount >= 2) {
-      // Find the other user
+    if (roomEntries.length >= 2) {
       const partner = roomEntries.find((entry) => entry.user_id !== userId)
       if (partner) {
+        console.log("[v0] Found partner in room, returning:", partner.user_id)
         const { data: partnerProfile } = await supabase
           .from("profiles")
           .select("id, full_name, avatar_url, city")
           .eq("id", partner.user_id)
           .single()
 
-        console.log("[v0] Match detected - returning partner:", partner.user_id)
         return NextResponse.json({
           status: "active",
           matched: true,
@@ -88,7 +86,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Still waiting
+    console.log("[v0] Still waiting in room:", roomId)
     return NextResponse.json({
       status: "waiting",
       matched: false,
