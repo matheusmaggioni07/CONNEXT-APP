@@ -154,6 +154,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       hasRemoteDescriptionRef.current = false
       iceCandidateBufferRef.current = []
       connectionAttemptRef.current = 0
+      setLocalVideoReady(false)
+      setRemoteVideoReady(false)
+      setIsMuted(false)
+      setIsVideoOff(false)
+      setConnectionStatus("")
 
       if (realtimeChannelRef.current) {
         await supabase.removeChannel(realtimeChannelRef.current!)
@@ -218,7 +223,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   // Wait time counter
   useEffect(() => {
-    if (videoState === "searching") {
+    if (videoState === "searching" || videoState === "waiting") {
+      // Added 'waiting' state
       waitTimeRef.current = setInterval(() => {
         setWaitTime((prev) => prev + 1)
       }, 1000)
@@ -749,19 +755,30 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const handleEndCall = endCall
 
   const skipToNext = useCallback(async () => {
+    setIsLoading(true)
+    setPermissionError(null)
+
     try {
-      console.log("[v0] ⏹️ Skipping to next...")
       await cleanup()
+      console.log("[v0] ✅ Cleanup completed successfully")
+
+      // Reset states
       setVideoState("idle")
       setCurrentPartner(null)
       setConnectionStatus("")
-      setIsLoading(false)
-      setPermissionError(null)
-      console.log("[v0] ✅ Skip completed successfully")
+      setLocalVideoReady(false)
+      setRemoteVideoReady(false)
+      setWaitTime(0)
+
+      // Try to reconnect
+      if (handleStartCallRef.current) {
+        await handleStartCallRef.current()
+      }
     } catch (error) {
-      console.error("[v0] ❌ Error during skip:", error)
-      setVideoState("idle")
-      setCurrentPartner(null)
+      console.error("[v0] ❌ Error in skipToNext:", error)
+      setPermissionError(`Erro ao desconectar: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
+      setVideoState("error")
+    } finally {
       setIsLoading(false)
     }
   }, [cleanup])
@@ -909,17 +926,62 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       currentRoomIdRef.current = joinResult.roomId
       console.log("[v0] ✅ Joined room:", joinResult.roomId)
 
-      // Fetch local stream immediately
-      const localStream = await getLocalStream()
-      if (!localStream) {
+      let localStream: MediaStream | null = null
+      try {
+        console.log("[v0] 📹 Requesting local stream...")
+        localStream = await getLocalStream()
+        console.log("[v0] ✅ Local stream acquired:", {
+          videoTracks: localStream?.getVideoTracks().length,
+          audioTracks: localStream?.getAudioTracks().length,
+        })
+      } catch (streamError: any) {
+        console.error("[v0] ❌ CRITICAL: Failed to get local stream:", streamError.message)
+        setVideoState("permission_denied")
+        setPermissionError(`Erro de câmera/microfone: ${streamError.message || "Permissão negada"}`)
+        setIsLoading(false)
+
+        // Try to leave the queue since we can't proceed
+        try {
+          await leaveVideoQueue(joinResult.roomId)
+        } catch (leaveError) {
+          console.warn("[v0] Leave error:", leaveError)
+        }
+        return
+      }
+
+      if (!localStream || localStream.getTracks().length === 0) {
+        console.error("[v0] ❌ Invalid local stream")
         setVideoState("permission_denied")
         setPermissionError("Não foi possível obter acesso à câmera/microfone.")
         setIsLoading(false)
+
+        try {
+          await leaveVideoQueue(joinResult.roomId)
+        } catch (leaveError) {
+          console.warn("[v0] Leave error:", leaveError)
+        }
         return
       }
+
       localStreamRef.current = localStream
-      attachStreamToVideo(localVideoRef.current, localStream, "local")
+      const attachResult = attachStreamToVideo(localVideoRef.current, localStream, "local")
+      if (!attachResult) {
+        console.error("[v0] ❌ Failed to attach local stream to video element")
+        setVideoState("permission_denied")
+        setPermissionError("Não foi possível exibir câmera")
+        setIsLoading(false)
+        localStream.getTracks().forEach((track) => track.stop())
+
+        try {
+          await leaveVideoQueue(joinResult.roomId)
+        } catch (leaveError) {
+          console.warn("[v0] Leave error:", leaveError)
+        }
+        return
+      }
+
       console.log("[v0] ✅ Local stream attached to video element")
+      setLocalVideoReady(true)
 
       // Immediate match case
       if (joinResult.matched && joinResult.partnerId) {
@@ -973,7 +1035,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               })
             }
 
-            if (statusResult.status === "active" && statusResult.partnerId) {
+            if (statusResult.status === "active" && statusResult.partnerId && statusResult.partnerId !== userId) {
               console.log("[v0] 🎉 MATCH FOUND! Partner:", statusResult.partnerId)
               clearInterval(pollingRef.current!)
               pollingRef.current = null
@@ -999,7 +1061,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     } catch (error) {
       console.error("[v0] ❌ Error in handleStartCall:", error)
       setVideoState("error")
-      setPermissionError("Erro ao conectar")
+      setPermissionError(`Erro ao conectar: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
       setIsLoading(false)
     }
   }, [userId, limitReached, setupWebRTC, attachStreamToVideo])
