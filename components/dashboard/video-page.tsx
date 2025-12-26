@@ -349,7 +349,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       if (result.matched && result.partnerId) {
         console.log("[v0] 🎉 Immediate match found:", result.partnerId)
         setPartner(result.partnerProfile)
-        await setupWebRTC(result.roomId, true, result.partnerId)
+        await setupWebRTC(result.roomId, false, result.partnerId)
         return
       }
 
@@ -364,9 +364,9 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           console.log(`[v0] Polling... ${pollCounter} requests (${elapsedSeconds.toFixed(1)}s elapsed)`)
         }
 
-        if (pollCounter > 3600) {
+        if (pollCounter > 2400) {
           clearInterval(pollInterval)
-          console.log("[v0] ❌ Polling timeout after 3600 attempts")
+          console.log("[v0] ❌ Polling timeout after 2 minutes")
           setErrorMsg("Nenhum parceiro disponível. Tente novamente.")
           setState("error")
           await leaveVideoQueue(result.roomId)
@@ -418,7 +418,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               },
             )
 
-            await setupWebRTC(result.roomId, false, partnerId)
+            await setupWebRTC(result.roomId, true, partnerId)
           }
         } catch (err) {
           if (pollCounter % 20 === 0) {
