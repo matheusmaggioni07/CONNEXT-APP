@@ -17,6 +17,7 @@ interface PartnerProfile {
   id: string
   full_name: string
   avatar_url: string
+  city: string
 }
 
 const formatTime = (seconds: number) => {
@@ -353,56 +354,56 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         return
       }
 
-      console.log("[v0] 🔄 Starting polling for partner - Room:", result.roomId)
-
       let pollCounter = 0
       const pollInterval = setInterval(async () => {
         pollCounter++
-        setWaitTime(pollCounter)
+        setWaitTime(pollCounter * 0.05) // Convert to seconds
 
-        if (pollCounter > 180) {
+        if (pollCounter > 3600) {
           clearInterval(pollInterval)
           setErrorMsg("Nenhum parceiro disponível. Tente novamente.")
           setState("error")
+          await leaveVideoQueue(result.roomId)
           return
         }
 
         try {
-          const { data: room } = await supabase
+          const { data: room, error } = await supabase
             .from("video_rooms")
             .select("id, user1_id, user2_id, status")
             .eq("id", result.roomId)
             .single()
 
-          if (room) {
-            console.log("[v0] Room state:", { status: room.status, user1: room.user1_id, user2: room.user2_id })
+          if (error) {
+            console.log("[v0] Polling error:", error.message)
+            return
+          }
 
-            if (room.status === "active" && room.user2_id && room.user2_id !== userId) {
-              const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
-              console.log("[v0] ✅ Partner found:", partnerId)
-              clearInterval(pollInterval)
+          if (room && room.status === "active" && room.user2_id && room.user2_id !== userId) {
+            const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
+            clearInterval(pollInterval)
 
-              const { data: partnerProfile } = await supabase
-                .from("profiles")
-                .select("id, full_name, avatar_url")
-                .eq("id", partnerId)
-                .single()
+            const { data: partnerProfile } = await supabase
+              .from("profiles")
+              .select("id, full_name, avatar_url, city")
+              .eq("id", partnerId)
+              .single()
 
-              setPartner(
-                partnerProfile || {
-                  id: partnerId,
-                  full_name: "Conectando...",
-                  avatar_url: "",
-                },
-              )
+            setPartner(
+              partnerProfile || {
+                id: partnerId,
+                full_name: "Conectando...",
+                avatar_url: "",
+                city: "",
+              },
+            )
 
-              await setupWebRTC(result.roomId, false, partnerId)
-            }
+            await setupWebRTC(result.roomId, false, partnerId)
           }
         } catch (err) {
-          console.error("[v0] Poll error:", err)
+          console.log("[v0] Polling exception:", err)
         }
-      }, 200)
+      }, 50)
 
       intervalsRef.current.push(pollInterval)
     } catch (err) {
