@@ -51,20 +51,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const isInitiatorRef = useRef(false)
   const intervalsRef = useRef<NodeJS.Timeout[]>([])
   const isConnectingRef = useRef(false)
-
   const processedSignalsRef = useRef<Set<string>>(new Set())
   const processedCandidatesRef = useRef<Set<string>>(new Set())
-  const unsubscribeRef = useRef<(() => void) | null>(null)
 
   const cleanup = useCallback(() => {
-    console.log("[v0] Cleaning up resources")
     intervalsRef.current.forEach(clearInterval)
     intervalsRef.current = []
-
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current()
-      unsubscribeRef.current = null
-    }
 
     if (peerRef.current) {
       peerRef.current.close()
@@ -276,7 +268,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           } catch (err) {
             console.error("[v0] Polling error:", err)
           }
-        }, 100)
+        }, 50)
 
         intervalsRef.current.push(signalingInterval)
       } catch (err) {
@@ -422,7 +414,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
         <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 rounded-full mix-blend-multiply filter blur-3xl animate-pulse"></div>
+          <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-purple-600 via-pink-500 to-blue-600 rounded-full mix-blend-multiply filter blur-3xl animate-pulse"></div>
           <div
             className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-600 via-purple-500 to-pink-600 rounded-full mix-blend-multiply filter blur-3xl animate-pulse"
             style={{ animationDelay: "2s" }}
@@ -431,10 +423,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         <div className="max-w-2xl w-full relative z-10">
           <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent mb-4">
-              Videochamada Connext
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent mb-4">
+              Conecte-se com empreendedores
             </h1>
-            <p className="text-purple-200 text-lg">Conecte-se instantaneamente com profissionais</p>
+            <p className="text-purple-200 text-lg">Videochamadas profissionais instantâneas</p>
           </div>
           <div className="bg-gradient-to-b from-purple-950/80 to-slate-900/80 rounded-3xl p-8 md:p-12 border border-purple-500/30 shadow-2xl backdrop-blur-sm">
             <Button
@@ -475,7 +467,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="mb-8">
-            <Loader2 className="w-16 h-16 animate-spin bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 bg-clip-text text-transparent mx-auto" />
+            <Loader2 className="w-16 h-16 animate-spin text-purple-400 mx-auto" />
           </div>
           <p className="text-white text-2xl mb-2">Conectando...</p>
           <p className="text-purple-300">{formatTime(waitTime)}</p>
@@ -489,57 +481,75 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   // Connected state
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 relative">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 md:p-6 relative">
       {showMatchAnimation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="animate-pulse">
-            <div className="text-6xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
-              ✨ MATCH! ✨
+          <div className="text-center">
+            <div className="animate-pulse">
+              <div className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent drop-shadow-lg">
+                ✨ MATCH! ✨
+              </div>
             </div>
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-600/30 via-pink-500/30 to-blue-600/30 animate-pulse rounded-full blur-3xl"></div>
           </div>
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 via-pink-500/20 to-purple-600/20 animate-pulse"></div>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div className="max-w-7xl mx-auto h-screen flex flex-col">
+        {/* Header */}
+        <div className="mb-6 text-center flex-shrink-0">
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Videochamada</h1>
+          <p className="text-purple-300 text-sm md:text-base">Conecte-se com empreendedores</p>
+        </div>
+
+        {/* Videos Container - 50%-50% layout */}
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-6 min-h-0">
+          {/* Local video - 50% */}
           <div
-            className="relative bg-slate-950 rounded-2xl overflow-hidden border-2 border-transparent bg-clip-padding shadow-xl"
+            className="relative bg-slate-950 rounded-2xl overflow-hidden border-2 border-transparent bg-clip-padding shadow-xl w-full h-full"
             style={{
               backgroundImage: "linear-gradient(#0f172a, #0f172a), linear-gradient(135deg, #a855f7, #ec4899, #3b82f6)",
+              backgroundSize: "100% 100%, 100% 100%",
             }}
           >
-            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover min-h-80" />
-            <div className="absolute top-4 left-4 bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm">
+            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+            <div className="absolute top-3 left-3 bg-slate-900/90 px-4 py-2 rounded-lg backdrop-blur-sm border border-purple-500/30">
               <p className="text-white text-sm font-semibold">Você</p>
             </div>
           </div>
 
+          {/* Remote video - 50% */}
           <div
-            className="relative bg-gradient-to-br from-purple-950 to-slate-950 rounded-2xl overflow-hidden border-2 border-transparent bg-clip-padding shadow-xl flex items-center justify-center"
+            className="relative bg-gradient-to-br from-purple-950 to-slate-950 rounded-2xl overflow-hidden border-2 border-transparent bg-clip-padding shadow-xl w-full h-full flex items-center justify-center"
             style={{
               backgroundImage:
-                "linear-gradient(rgba(88, 28, 135, 0.5), rgba(15, 23, 42, 0.5)), linear-gradient(135deg, #3b82f6, #a855f7, #ec4899)",
+                "linear-gradient(rgba(88, 28, 135, 0.5), rgba(15, 23, 42, 0.5)), linear-gradient(135deg, #a855f7, #ec4899, #3b82f6)",
+              backgroundSize: "100% 100%, 100% 100%",
             }}
           >
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover min-h-80" />
+            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             {state === "connected" && partner && (
-              <div className="absolute top-4 left-4 bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm">
-                <p className="text-white text-sm font-semibold">{partner.full_name}</p>
+              <div className="absolute top-3 left-3 bg-slate-900/90 px-4 py-2 rounded-lg backdrop-blur-sm border border-purple-500/30">
+                <div>
+                  <p className="text-white text-sm font-semibold">{partner.full_name}</p>
+                  {partner.city && <p className="text-purple-300 text-xs">{partner.city}</p>}
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex justify-center gap-4 flex-wrap">
+        {/* Controls - Centered at bottom */}
+        <div className="flex justify-center gap-3 md:gap-4 flex-wrap items-center flex-shrink-0">
           <Button
             onClick={toggleMute}
             size="lg"
-            className={`rounded-full w-16 h-16 transition-all ${
+            className={`rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center transition-all duration-200 ${
               isMuted
                 ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50"
                 : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-600/50"
             }`}
+            title={isMuted ? "Ativar som" : "Mutar som"}
           >
             {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
           </Button>
@@ -547,11 +557,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={toggleVideo}
             size="lg"
-            className={`rounded-full w-16 h-16 transition-all ${
+            className={`rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center transition-all duration-200 ${
               isVideoOff
                 ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50"
                 : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-lg shadow-purple-600/50"
             }`}
+            title={isVideoOff ? "Ativar câmera" : "Desligar câmera"}
           >
             {isVideoOff ? <VideoOff className="w-6 h-6" /> : <VideoIcon className="w-6 h-6" />}
           </Button>
@@ -559,7 +570,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={flipCamera}
             size="lg"
-            className="rounded-full w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-lg shadow-purple-600/50"
+            className="rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-600/50 transition-all duration-200"
+            title="Trocar câmera"
           >
             <Repeat2 className="w-6 h-6" />
           </Button>
@@ -567,7 +579,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={handleSkip}
             size="lg"
-            className="rounded-full w-16 h-16 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 shadow-lg shadow-yellow-600/50"
+            className="rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 shadow-lg shadow-yellow-600/50 transition-all duration-200"
+            title="Pular"
           >
             <SkipForward className="w-6 h-6" />
           </Button>
@@ -575,7 +588,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={() => likeUser(partner?.id || "")}
             size="lg"
-            className="rounded-full w-16 h-16 bg-gradient-to-r from-pink-600 to-red-600 hover:from-pink-700 hover:to-red-700 shadow-lg shadow-pink-600/50"
+            className="rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center bg-gradient-to-r from-pink-600 to-red-600 hover:from-pink-700 hover:to-red-700 shadow-lg shadow-pink-600/50 transition-all duration-200"
+            title="Curtir"
           >
             <Heart className="w-6 h-6" />
           </Button>
@@ -583,7 +597,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={handleHangup}
             size="lg"
-            className="rounded-full w-16 h-16 bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50"
+            className="rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50 transition-all duration-200"
+            title="Desligar"
           >
             <PhoneOff className="w-6 h-6" />
           </Button>
