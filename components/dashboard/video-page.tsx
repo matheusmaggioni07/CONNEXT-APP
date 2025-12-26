@@ -180,7 +180,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         await new Promise((resolve) => setTimeout(resolve, 2000))
 
         if (peerConnectionRef.current && currentRoomIdRef.current) {
-          await setupWebRTC(currentRoomIdRef.current, isInitiatorRef.current)
+          await setupWebRTC(currentRoomIdRef.current!, isInitiatorRef.current)
         }
       } else {
         setVideoState("error")
@@ -672,7 +672,19 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       setConnectionStatus("Conectando à fila...")
 
-      const result = await joinVideoQueue(userId)
+      const generateUUID = (): string => {
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0
+          const v = c === "x" ? r : (r & 0x3) | 0x8
+          return v.toString(16)
+        })
+      }
+
+      const result = await joinVideoQueue({
+        userId,
+        roomId: generateUUID(), // Use proper UUID instead of text
+        userProfile,
+      })
 
       if (!result.success) {
         console.error("[v0] Failed to join queue:", result.error)

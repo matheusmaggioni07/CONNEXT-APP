@@ -25,12 +25,20 @@ interface CheckRoomStatusResponse {
   }
 }
 
-export async function joinVideoQueue(userId: string): Promise<JoinVideoQueueResponse> {
+export async function joinVideoQueue({
+  userId,
+  roomId,
+  userProfile,
+}: {
+  userId: string
+  roomId: string
+  userProfile: { full_name: string; avatar_url?: string; city?: string }
+}): Promise<JoinVideoQueueResponse> {
   try {
     const response = await fetch("/api/video-queue/join", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, roomId, userProfile }),
     })
 
     if (!response.ok) {
@@ -49,7 +57,11 @@ export async function joinVideoQueue(userId: string): Promise<JoinVideoQueueResp
   }
 }
 
-export async function checkRoomStatus(roomId: string, userId: string): Promise<CheckRoomStatusResponse> {
+export async function checkRoomStatus(roomId: string | null, userId: string): Promise<CheckRoomStatusResponse> {
+  if (!roomId) {
+    return { status: "error" }
+  }
+
   try {
     const response = await fetch("/api/video-queue/status", {
       method: "POST",
@@ -82,14 +94,18 @@ export async function leaveVideoQueue(roomId: string, userId: string): Promise<v
   }
 }
 
-export async function likeUser(userId: string, partnerId: string): Promise<void> {
+export async function likeUser(partnerId: string): Promise<void> {
   try {
     const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-    // Record the like
+    if (!user) return
+
     await supabase.from("likes").insert({
-      user_id: userId,
-      liked_user_id: partnerId,
+      from_user_id: user.id,
+      to_user_id: partnerId,
     })
   } catch (error) {
     console.error("[v0] Like user error:", error)
