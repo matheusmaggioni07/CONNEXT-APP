@@ -52,9 +52,11 @@ type VideoState =
   | "permission_denied"
   | "matched"
   | "error"
+  | "waiting" // Added for new state
 
 export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const router = useRouter()
+  const supabase = createBrowserClient()
 
   // State
   const [videoState, setVideoState] = useState<VideoState>("idle")
@@ -150,14 +152,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       connectionAttemptRef.current = 0
 
       if (realtimeChannelRef.current) {
-        const supabase = await createBrowserClient()
         await supabase.removeChannel(realtimeChannelRef.current!)
         realtimeChannelRef.current = null
       }
     } finally {
       isCleaningUpRef.current = false
     }
-  }, [userId])
+  }, [userId, supabase])
 
   const handleConnectionStateChange = useCallback(async () => {
     if (!peerConnectionRef.current) return
@@ -169,12 +170,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     if (state === "connected") {
       console.log("[v0] CALL CONNECTED! ✅")
       setVideoState("connected")
-      setConnectionStatus("Conectado")
+      setConnectionStatus("") // Updated: User-friendly message
     } else if (state === "failed") {
       console.log("[v0] Connection failed, attempting restart...")
       if (connectionAttemptRef.current < maxConnectionAttempts) {
         connectionAttemptRef.current++
-        setConnectionStatus(`Tentando reconectar... (${connectionAttemptRef.current}/${maxConnectionAttempts})`)
+        setConnectionStatus("") // Updated: User-friendly message
 
         // Wait before retrying
         await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -184,12 +185,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }
       } else {
         setVideoState("error")
-        setConnectionStatus("Falha na conexão após múltiplas tentativas")
+        setConnectionStatus("Falha na conexão") // Updated: User-friendly message
+        setPermissionError("Falha na conexão") // Added
       }
     } else if (state === "disconnected" || state === "closed") {
       console.log("[v0] Peer connection closed:", state)
       setVideoState("idle")
       setCurrentPartner(null)
+      setConnectionStatus("") // Updated: User-friendly message
       await cleanup()
     }
   }, [cleanup])
@@ -413,7 +416,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
             setRemoteVideoReady(true)
             setVideoState("connected")
-            setConnectionStatus("Conectado")
+            setConnectionStatus("") // Updated: User-friendly message
             console.log("[v0] CALL CONNECTED - Remote video attached")
           }
         }
@@ -421,7 +424,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
             try {
-              const supabase = await createBrowserClient()
               await supabase.from("ice_candidates").insert({
                 room_id: roomId,
                 from_user_id: userId,
@@ -443,7 +445,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           }
 
           try {
-            const supabase = await createBrowserClient()
             const { data: signals, error: signalError } = await supabase
               .from("signaling")
               .select("*")
@@ -536,7 +537,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             })
             await pc.setLocalDescription(offer)
 
-            const supabase = await createBrowserClient()
             const { error: insertError } = await supabase.from("signaling").insert({
               room_id: roomId,
               from_user_id: userId,
@@ -560,15 +560,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         setConnectionStatus("Erro ao conectar")
       }
     },
-    [userId, handleConnectionStateChange],
+    [userId, handleConnectionStateChange, supabase],
   )
 
   const subscribeToQueueUpdates = useCallback(async () => {
     if (!currentRoomIdRef.current) return
 
     try {
-      const supabase = await createBrowserClient()
-
       // Unsubscribe from old channel if exists
       if (realtimeChannelRef.current) {
         await supabase.removeChannel(realtimeChannelRef.current)
@@ -614,8 +612,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 }
 
                 setVideoState("connecting")
-                setConnectionStatus("Estabelecendo conexão...")
-
+                setConnectionStatus("") // Updated: User-friendly message
                 const isInitiator = userId < partnerId
                 await setupWebRTC(currentRoomIdRef.current!, isInitiator)
               }
@@ -628,7 +625,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     } catch (error) {
       console.error("[v0] Error subscribing to queue updates:", error)
     }
-  }, [userId, setupWebRTC])
+  }, [userId, setupWebRTC, supabase])
 
   const startSearching = useCallback(async () => {
     if (limitReached) return
@@ -636,7 +633,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     setIsLoading(true)
     setVideoState("searching")
     setPermissionError("")
-    setConnectionStatus("Acessando câmera...")
+    setConnectionStatus("") // Updated: User-friendly message
 
     try {
       let stream: MediaStream | null = null
@@ -670,19 +667,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         return
       }
 
-      setConnectionStatus("Conectando à fila...")
-
-      const generateUUID = (): string => {
-        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-          const r = (Math.random() * 16) | 0
-          const v = c === "x" ? r : (r & 0x3) | 0x8
-          return v.toString(16)
-        })
-      }
+      setConnectionStatus("Conectando à fila...") // This message remains as it's specific to queue connection
 
       const result = await joinVideoQueue({
         userId,
-        roomId: generateUUID(), // Use proper UUID instead of text
         userProfile,
       })
 
@@ -707,7 +695,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         currentPartnerIdRef.current = result.partnerId
         setCurrentPartner(result.partnerProfile as PartnerProfile)
         setVideoState("connecting")
-        setConnectionStatus("Conectando...")
+        setConnectionStatus("") // Updated: User-friendly message
         setIsLoading(false)
 
         const isInitiator = userId < result.partnerId
@@ -718,7 +706,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       let checkCount = 0
       const maxChecks = 150 // 150 checks * 300ms = 45 seconds
 
-      setConnectionStatus("Aguardando outro usuário...")
+      setConnectionStatus("") // Updated: User-friendly message
+      setVideoState("waiting") // Changed from "searching" to "waiting" for clarity
 
       pollingRef.current = setInterval(async () => {
         checkCount++
@@ -731,7 +720,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           setVideoState("idle")
           setConnectionStatus("")
           setPermissionError("Nenhum usuário disponível. Tente novamente.")
-          console.log("[v0] Search timeout - no match found")
+          // Stop local stream if no match found after timeout
+          if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach((track) => track.stop())
+            localStreamRef.current = null
+          }
+          setIsLoading(false)
           return
         }
 
@@ -748,7 +742,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             currentPartnerIdRef.current = status.partnerId
             setCurrentPartner(status.partnerProfile as PartnerProfile)
             setVideoState("connecting")
-            setConnectionStatus("Conectando...")
+            setConnectionStatus("") // Updated: User-friendly message
 
             const isInitiator = userId < status.partnerId
 
@@ -767,18 +761,23 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [subscribeToQueueUpdates, userId, limitReached, attachStreamToVideo, setupWebRTC])
+  }, [subscribeToQueueUpdates, userId, limitReached, attachStreamToVideo, setupWebRTC, userProfile])
 
   const endCall = useCallback(async () => {
     await cleanup()
     setVideoState("ended")
     setCurrentPartner(null)
+    setConnectionStatus("") // Clear status on end
   }, [cleanup])
+
+  // Alias for the endCall function used in error states
+  const handleEndCall = endCall
 
   const skipToNext = useCallback(async () => {
     await cleanup()
     setVideoState("idle")
     setCurrentPartner(null)
+    setConnectionStatus("") // Clear status on skip
     startSearching()
   }, [cleanup, startSearching])
 
@@ -835,6 +834,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       }
     } catch (error) {
       console.error("[v0] Error flipping camera:", error)
+      setPermissionError("Erro ao trocar câmera.") // Added error handling
     }
   }, [attachStreamToVideo])
 
@@ -856,12 +856,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       if (!currentPartner || !userId) return
 
       try {
-        const { error } = await createBrowserClient()
-          .from("matches")
-          .insert({
-            user1_id: userId < currentPartner.id ? userId : currentPartner.id,
-            user2_id: userId < currentPartner.id ? currentPartner.id : userId,
-          })
+        const { error } = await supabase.from("matches").insert({
+          user1_id: userId < currentPartner.id ? userId : currentPartner.id,
+          user2_id: userId < currentPartner.id ? currentPartner.id : userId,
+        })
 
         if (!error) {
           // Redirect immediately to matches page with highlight of the new match
@@ -879,7 +877,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
 
     setTimeout(recordAndRedirect, 2000)
-  }, [currentPartner, userId, router])
+  }, [currentPartner, userId, router, supabase])
 
   // Call handleMatchSuccess after handleLike if it's a match
   useEffect(() => {
@@ -887,6 +885,122 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       handleMatchSuccess()
     }
   }, [isLiked, currentPartner, handleMatchSuccess])
+
+  // New handler for starting the call
+  const handleStartCall = async () => {
+    console.log("[v0] Starting video call...")
+
+    if (videoState !== "idle") {
+      console.warn("[v0] Video state is not idle:", videoState)
+      return
+    }
+
+    setIsLoading(true)
+    setConnectionStatus("")
+    setPermissionError("")
+
+    try {
+      const stream = await getLocalStream()
+      if (!stream) {
+        setPermissionError("Permissão de câmera e microfone necessárias")
+        setIsLoading(false)
+        return
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        setPermissionError("Usuário não autenticado")
+        setIsLoading(false)
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url, city")
+        .eq("id", user.id)
+        .single()
+
+      const result = await joinVideoQueue({
+        userId: user.id,
+        userProfile: profile || { full_name: "Usuário", avatar_url: "", city: "" },
+      })
+
+      if (!result.success) {
+        console.error("[v0] Failed to join queue:", result.error)
+        stream.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+        setVideoState("idle")
+        setConnectionStatus("")
+        setPermissionError(result.error || "Falha ao conectar à fila")
+        setIsLoading(false)
+        return
+      }
+
+      console.log("[v0] Joined queue successfully, roomId:", result.roomId)
+      currentRoomIdRef.current = result.roomId
+      currentPartnerIdRef.current = result.partnerId || null
+      connectionAttemptRef.current = 0
+
+      if (result.matched && result.partnerId) {
+        console.log("[v0] Matched instantly with:", result.partnerId)
+        setCurrentPartner(result.partnerProfile || null)
+        setVideoState("connecting")
+        setConnectionStatus("")
+        setIsLoading(false)
+
+        const isInitiator = user.id < result.partnerId
+        await setupWebRTC(result.roomId, isInitiator)
+        return
+      }
+
+      let checkCount = 0
+      const maxChecks = 150
+
+      setConnectionStatus("")
+      setVideoState("waiting")
+
+      pollingRef.current = setInterval(async () => {
+        checkCount++
+
+        if (checkCount > maxChecks) {
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+          setVideoState("idle")
+          setConnectionStatus("")
+          setPermissionError("Ninguém disponível no momento. Tente novamente.")
+          stream.getTracks().forEach((track) => track.stop()) // Stop stream on timeout
+          localStreamRef.current = null
+          setIsLoading(false)
+          return
+        }
+
+        const status = await checkRoomStatus(result.roomId, user.id)
+
+        if (status.status === "active" && status.partnerId) {
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+
+          console.log("[v0] Match found during polling:", status.partnerId)
+          setCurrentPartner(status.partnerProfile || null)
+          currentPartnerIdRef.current = status.partnerId
+          setVideoState("connecting")
+          setConnectionStatus("")
+          setIsLoading(false)
+
+          const isInitiator = user.id < status.partnerId
+          await setupWebRTC(result.roomId, isInitiator)
+        }
+      }, 300)
+    } catch (error) {
+      console.error("[v0] Error starting call:", error)
+      setVideoState("idle")
+      setConnectionStatus("")
+      setPermissionError("Erro ao iniciar chamada")
+      setIsLoading(false)
+    }
+  }
 
   if (videoState === "permission_denied") {
     return (
@@ -961,7 +1075,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
             />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4 md:p-6 text-center">
-              {videoState === "searching" ? (
+              {videoState === "searching" || videoState === "waiting" ? ( // Updated for 'waiting' state
                 <div className="mb-4 md:mb-6 flex h-16 md:h-24 w-16 md:w-24 items-center justify-center rounded-full bg-primary/10">
                   <div className="h-8 md:h-12 w-8 md:w-12 animate-spin rounded-full border-4 border-primary"></div>
                 </div>
@@ -974,28 +1088,30 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               ) : videoState === "connecting" ? (
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Aguardando resposta...</span>
+                  <span className="text-sm text-muted-foreground">Conectando com um empreendedor...</span>
                 </div>
               ) : videoState === "error" ? (
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-destructive" />
-                  <span className="text-sm text-destructive">{connectionStatus}</span>
+                  <span className="text-sm text-destructive">
+                    {connectionStatus || permissionError || "Erro de conexão"}
+                  </span>
                 </div>
               ) : null}
 
               <h2 className="mb-2 text-lg md:text-2xl font-bold text-foreground">
-                {videoState === "searching"
-                  ? "Buscando empreendedor..."
+                {videoState === "searching" || videoState === "waiting"
+                  ? "Conectando com um empreendedor..." // Updated message
                   : videoState === "idle"
                     ? "Pronto para conectar?"
                     : videoState === "connecting"
-                      ? "Estabelecendo conexão..."
+                      ? "Conectando com um empreendedor..." // Updated message
                       : videoState === "error"
                         ? "Erro de Conexão"
                         : "Erro de Conexão"}
               </h2>
 
-              {videoState === "searching" ? (
+              {videoState === "searching" || videoState === "waiting" ? ( // Updated for 'waiting' state
                 <p className="mb-4 flex items-center justify-center gap-2 text-xs md:text-sm text-muted-foreground">
                   <Clock className="h-3 md:h-4 w-3 md:w-4" />
                   Tempo de espera: {formatWaitTime(waitTime)}
@@ -1006,13 +1122,13 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 </p>
               ) : null}
 
-              {videoState === "searching" ? (
+              {videoState === "searching" || videoState === "waiting" ? ( // Updated for 'waiting' state
                 <Button onClick={endCall} variant="outline" size="sm" className="text-xs md:text-sm bg-transparent">
                   Cancelar
                 </Button>
               ) : videoState === "idle" ? (
                 <Button
-                  onClick={startSearching}
+                  onClick={handleStartCall} // Changed from startSearching
                   className="gradient-bg text-primary-foreground gap-2 text-xs md:text-sm h-8 md:h-10"
                 >
                   <Search className="h-3 md:h-4 w-3 md:w-4" />
@@ -1021,11 +1137,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               ) : videoState === "connecting" ? (
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Aguardando resposta...</span>
+                  <span className="text-sm text-muted-foreground">Conectando com um empreendedor...</span>
                 </div>
               ) : videoState === "error" ? (
                 <Button
-                  onClick={startSearching}
+                  onClick={handleStartCall} // Changed from startSearching
                   className="gradient-bg text-primary-foreground gap-2 text-xs md:text-sm h-8 md:h-10"
                 >
                   Tentar Novamente
@@ -1146,6 +1262,44 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               <SkipForward className="h-4 md:h-6 w-4 md:w-6" />
             )}
           </Button>
+        </div>
+      )}
+
+      {/* Status Section Updates */}
+      {videoState === "waiting" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary">
+              <Loader2 className="h-6 w-6 animate-spin text-primary-foreground" />
+            </div>
+            <p className="text-sm text-white">Conectando com um empreendedor...</p>
+          </div>
+        </div>
+      )}
+
+      {videoState === "connecting" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary">
+              <Loader2 className="h-6 w-6 animate-spin text-primary-foreground" />
+            </div>
+            <p className="text-sm text-white">Conectando com um empreendedor...</p>
+          </div>
+        </div>
+      )}
+
+      {videoState === "error" && permissionError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 text-center px-6">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <p className="text-sm text-white">{permissionError}</p>
+            <button
+              onClick={handleEndCall}
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
+            >
+              Fechar
+            </button>
+          </div>
         </div>
       )}
     </div>

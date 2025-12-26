@@ -27,18 +27,16 @@ interface CheckRoomStatusResponse {
 
 export async function joinVideoQueue({
   userId,
-  roomId,
   userProfile,
 }: {
   userId: string
-  roomId: string
   userProfile: { full_name: string; avatar_url?: string; city?: string }
 }): Promise<JoinVideoQueueResponse> {
   try {
     const response = await fetch("/api/video-queue/join", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, roomId, userProfile }),
+      body: JSON.stringify({ userId, userProfile }),
     })
 
     if (!response.ok) {
