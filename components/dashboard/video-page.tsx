@@ -749,11 +749,21 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const handleEndCall = endCall
 
   const skipToNext = useCallback(async () => {
-    await cleanup()
-    setVideoState("idle")
-    setCurrentPartner(null)
-    setConnectionStatus("") // Clear status on skip
-    handleStartCallRef.current()
+    try {
+      console.log("[v0] ⏹️ Skipping to next...")
+      await cleanup()
+      setVideoState("idle")
+      setCurrentPartner(null)
+      setConnectionStatus("")
+      setIsLoading(false)
+      setPermissionError(null)
+      console.log("[v0] ✅ Skip completed successfully")
+    } catch (error) {
+      console.error("[v0] ❌ Error during skip:", error)
+      setVideoState("idle")
+      setCurrentPartner(null)
+      setIsLoading(false)
+    }
   }, [cleanup])
 
   const toggleMute = useCallback(() => {
@@ -928,17 +938,17 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       if (!joinResult.matched) {
         console.log("[v0] ⏳ Starting polling with room:", joinResult.roomId)
         let pollCount = 0
-        const maxPolls = 300 // 150 seconds max
+        const maxPolls = 120 // 60 seconds max (polling every 500ms)
 
         pollingRef.current = setInterval(async () => {
           pollCount++
 
-          if (pollCount % 10 === 0) {
+          if (pollCount % 4 === 0) {
             console.log(`[v0] 🔍 Poll attempt #${pollCount}/${maxPolls}`)
           }
 
           if (pollCount >= maxPolls) {
-            console.log("[v0] ⏱️ Polling timeout")
+            console.log("[v0] ⏱️ Polling timeout - no match found after 60s")
             clearInterval(pollingRef.current!)
             pollingRef.current = null
             setVideoState("idle")
@@ -955,16 +965,15 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           try {
             const statusResult = await checkRoomStatus(joinResult.roomId)
 
-            if (pollCount % 10 === 0) {
-              console.log("[v0] Status check result:", {
+            if (pollCount % 4 === 0) {
+              console.log("[v0] 🔄 Status check result:", {
                 status: statusResult.status,
                 hasPartnerId: !!statusResult.partnerId,
                 partnerId: statusResult.partnerId,
-                hasPartnerProfile: !!statusResult.partnerProfile,
               })
             }
 
-            if (statusResult.partnerId && statusResult.status === "active") {
+            if (statusResult.status === "active" && statusResult.partnerId) {
               console.log("[v0] 🎉 MATCH FOUND! Partner:", statusResult.partnerId)
               clearInterval(pollingRef.current!)
               pollingRef.current = null
@@ -977,7 +986,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               setIsLoading(false)
 
               const isInitiator = userId < statusResult.partnerId
-              console.log("[v0] WebRTC initiator:", isInitiator)
+              console.log("[v0] 🔌 WebRTC initiator:", isInitiator)
               await setupWebRTC(joinResult.roomId, isInitiator)
             }
           } catch (error) {
@@ -985,7 +994,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               console.error("[v0] ❌ Polling error on attempt #", pollCount, error)
             }
           }
-        }, 500) // Poll every 500ms instead of 1000ms for faster detection
+        }, 500)
       }
     } catch (error) {
       console.error("[v0] ❌ Error in handleStartCall:", error)

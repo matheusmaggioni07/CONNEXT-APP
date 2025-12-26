@@ -178,7 +178,6 @@ export async function checkRoomStatus(roomId: string) {
   if (room.status === "active" && room.user2_id) {
     const partnerId = room.user1_id === user.id ? room.user2_id : room.user1_id
 
-    // Get partner profile
     const { data: partnerProfile } = await supabase
       .from("profiles")
       .select("id, full_name, avatar_url, bio, city, position, company")
@@ -194,6 +193,7 @@ export async function checkRoomStatus(roomId: string) {
   }
 
   // Still waiting
+  console.log("[v0] Room still waiting - user2_id:", room.user2_id, "status:", room.status)
   return { status: "waiting" }
 }
 
