@@ -93,27 +93,32 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
 
   console.log("[v0] 🔍 User joining queue:", user.id)
 
-  await supabase
-    .from("video_rooms")
-    .update({ status: "ended", ended_at: new Date().toISOString() })
-    .eq("user1_id", user.id)
-    .in("status", ["waiting", "connecting"])
+  // Clean up old rooms
+  try {
+    await supabase
+      .from("video_rooms")
+      .update({ status: "ended", ended_at: new Date().toISOString() })
+      .eq("user1_id", user.id)
+      .in("status", ["waiting", "connecting"])
 
-  await supabase
-    .from("video_rooms")
-    .update({ status: "ended", ended_at: new Date().toISOString() })
-    .eq("user2_id", user.id)
-    .in("status", ["waiting", "connecting"])
+    await supabase
+      .from("video_rooms")
+      .update({ status: "ended", ended_at: new Date().toISOString() })
+      .eq("user2_id", user.id)
+      .in("status", ["waiting", "connecting"])
 
-  // Also clean up any stale signaling/ice_candidates from old sessions
-  await supabase.from("signaling").delete().eq("from_user_id", user.id)
-  await supabase.from("signaling").delete().eq("to_user_id", user.id)
-  await supabase.from("ice_candidates").delete().eq("from_user_id", user.id)
-  await supabase.from("ice_candidates").delete().eq("to_user_id", user.id)
+    await supabase.from("signaling").delete().eq("from_user_id", user.id)
+    await supabase.from("signaling").delete().eq("to_user_id", user.id)
+    await supabase.from("ice_candidates").delete().eq("from_user_id", user.id)
+    await supabase.from("ice_candidates").delete().eq("to_user_id", user.id)
+  } catch (err) {
+    console.log("[v0] Cleanup warning:", err)
+  }
 
+  // Try to find waiting rooms
   let waitingRooms = null
   let retries = 0
-  const maxRetries = 5 // Increased from 3
+  const maxRetries = 5
 
   while (!waitingRooms && retries < maxRetries) {
     const result = await supabase
@@ -123,9 +128,14 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
       .is("user2_id", null)
       .neq("user1_id", user.id)
       .order("created_at", { ascending: true })
-      .limit(5) // Get 5 waiting rooms to increase match probability
+      .limit(5)
 
-    waitingRooms = result.data
+    if (result.error) {
+      console.log(`[v0] Error fetching rooms (attempt ${retries + 1}):`, result.error)
+    } else {
+      waitingRooms = result.data
+    }
+
     if (!waitingRooms || waitingRooms.length === 0) {
       console.log(`[v0] ⏳ No waiting rooms found (attempt ${retries + 1}/${maxRetries})`)
       if (retries < maxRetries - 1) {
@@ -135,6 +145,7 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
     retries++
   }
 
+  // Join existing room if found
   if (waitingRooms && waitingRooms.length > 0) {
     for (const roomToJoin of waitingRooms) {
       console.log("[v0] ✅ Found waiting room:", roomToJoin.id)
@@ -149,7 +160,7 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
         .from("video_rooms")
         .update({ user2_id: user.id, status: "active", updated_at: new Date().toISOString() })
         .eq("id", roomToJoin.id)
-        .eq("status", "waiting") // Ensure it's still waiting
+        .eq("status", "waiting")
         .select()
         .single()
 
@@ -168,35 +179,48 @@ export async function joinVideoQueue(stateFilter?: string, cityFilter?: string) 
         }
       } else {
         console.log("[v0] ⚠️ Another user joined first, trying next room...")
-        continue // Try next room
+        continue
       }
     }
   }
 
   console.log("[v0] 📍 Creating new waiting room for:", user.id)
   const createdNow = new Date().toISOString()
-  const { data: room, error: createError } = await supabase
-    .from("video_rooms")
-    .insert({
-      user1_id: user.id,
-      status: "waiting",
-      created_at: createdNow,
-      updated_at: createdNow,
-    })
-    .select()
-    .single()
 
-  if (createError) {
-    console.error("[v0] ❌ Create room error:", createError)
-    return { success: false, error: "Erro ao criar sala" }
+  try {
+    const { data: room, error: createError } = await supabase
+      .from("video_rooms")
+      .insert([
+        {
+          user1_id: user.id,
+          status: "waiting",
+          created_at: createdNow,
+        },
+      ])
+      .select()
+      .single()
+
+    if (createError) {
+      console.error("[v0] ❌ Create room error:", createError.message, createError.code, createError.details)
+      return { success: false, error: "Erro ao criar sala. Tente novamente." }
+    }
+
+    if (!room) {
+      console.error("[v0] ❌ Room created but data is null")
+      return { success: false, error: "Erro ao criar sala. Tente novamente." }
+    }
+
+    console.log("[v0] ✅ New waiting room created:", room.id)
+
+    if (!isAdmin(user.email)) {
+      await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
+    }
+
+    return { success: true, roomId: room.id, waiting: true, matched: false }
+  } catch (err) {
+    console.error("[v0] ❌ Exception creating room:", err)
+    return { success: false, error: "Erro ao criar sala. Tente novamente." }
   }
-
-  if (!isAdmin(user.email)) {
-    await supabase.rpc("increment_daily_calls", { p_user_id: user.id })
-  }
-
-  console.log("[v0] ✅ New waiting room created:", room.id)
-  return { success: true, roomId: room.id, waiting: true, matched: false }
 }
 
 export async function checkRoomStatus(roomId: string) {
@@ -354,11 +378,13 @@ export async function createVideoRoomWithPartner(partnerId: string) {
 
   const { data: room, error } = await supabase
     .from("video_rooms")
-    .insert({
-      user1_id: user.id,
-      user2_id: partnerId,
-      status: "active",
-    })
+    .insert([
+      {
+        user1_id: user.id,
+        user2_id: partnerId,
+        status: "active",
+      },
+    ])
     .select()
     .single()
 
