@@ -21,8 +21,11 @@ import {
   Search,
 } from "lucide-react"
 import { getRemainingCalls } from "@/app/actions/video"
-import { joinVideoQueue, checkRoomStatus, leaveVideoQueue, likeUser } from "@/lib/video-functions"
+import { joinVideoQueue, checkRoomStatus, leaveVideoQueue } from "@/app/actions/video"
 import type { RealtimeChannel } from "@supabase/supabase-js"
+
+// Import likeUser action
+import { likeUser } from "@/app/actions/user"
 
 interface VideoPageProps {
   userId: string
@@ -137,7 +140,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       if (currentRoomIdRef.current) {
         try {
-          await leaveVideoQueue(currentRoomIdRef.current, userId)
+          await leaveVideoQueue(currentRoomIdRef.current)
         } catch (leaveError) {
           console.log("[v0] Leave error (non-critical):", leaveError instanceof Error ? leaveError.message : leaveError)
         }
@@ -738,6 +741,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     setVideoState("searching")
     setPermissionError("")
     setConnectionStatus("") // Updated: User-friendly message
+    setCurrentPartner(null) // Clear current partner when starting a new search
 
     try {
       let stream: MediaStream | null = null
@@ -989,7 +993,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
   }, [isLiked, currentPartner, handleMatchSuccess])
 
-  // New handler for starting the call
   const handleStartCall = useCallback(async () => {
     if (limitReached) {
       setPermissionError("Limite de chamadas atingido")
@@ -1004,7 +1007,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     try {
       console.log("[v0] 📞 handleStartCall - Joining queue...")
-      const joinResult = await joinVideoQueue({ userId, userProfile })
+      const joinResult = await joinVideoQueue() // Removed userId and userProfile as they are no longer needed for this action
 
       if (!joinResult.success) {
         console.error("[v0] ❌ Failed to join queue:", joinResult.error)
@@ -1057,7 +1060,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           clearInterval(pollingRef.current!)
           pollingRef.current = null
           setVideoState("idle")
-          setCurrentPartner(null)
+          setCurrentPartner(null) // Clear partner on timeout
           setPermissionError("Nenhum usuário disponível. Tente novamente.")
           if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -1069,7 +1072,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         try {
           console.log(`[v0] 🔍 Polling check #${pollCount} for room:`, joinResult.roomId)
-          const statusResult = await checkRoomStatus(joinResult.roomId, userId)
+          const statusResult = await checkRoomStatus(joinResult.roomId) // Removed userId as it's no longer needed
 
           console.log("[v0] Status result:", {
             status: statusResult.status,
@@ -1102,7 +1105,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       setPermissionError("Erro ao conectar")
       setIsLoading(false)
     }
-  }, [userId, userProfile, limitReached, setupWebRTC, attachStreamToVideo])
+  }, [limitReached, setupWebRTC, attachStreamToVideo]) // Removed userId, userProfile as they are no longer needed as arguments
 
   if (videoState === "permission_denied") {
     return (

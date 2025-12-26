@@ -114,24 +114,6 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@keyframes slideInFromLeft {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInFromRight {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
