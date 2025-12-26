@@ -1,7 +1,14 @@
-// A API está correta, mas vou adicionar logs melhores para debug
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === "x" ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
 
 export async function POST(req: Request) {
   try {
@@ -47,7 +54,7 @@ export async function POST(req: Request) {
       console.error("[v0] Error finding waiting users:", waitError)
     }
 
-    const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const roomId = generateUUID()
 
     if (waitingUsers && waitingUsers.length > 0) {
       const waitingUser = waitingUsers[0]
