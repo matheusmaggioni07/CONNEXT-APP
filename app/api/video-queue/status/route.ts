@@ -17,14 +17,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Missing parameters" }, { status: 400 })
     }
 
-    const { data: room } = await supabase
+    const { data: userQueue, error: queueError } = await supabase
       .from("video_queue")
-      .select("*, profiles:matched_user_id(id, full_name, avatar_url, city)")
+      .select("*")
       .eq("room_id", roomId)
       .eq("user_id", userId)
       .single()
 
-    if (!room) {
+    if (queueError || !userQueue) {
+      console.log("[v0] Queue entry not found")
       return NextResponse.json({
         status: "not_found",
         partnerId: null,
@@ -32,16 +33,29 @@ export async function POST(req: Request) {
       })
     }
 
-    if (room.status === "active" && room.matched_user_id) {
+    if (userQueue.status === "active" && userQueue.matched_user_id) {
+      const partnerId = userQueue.matched_user_id
+
+      const { data: partnerProfile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, city")
+        .eq("id", partnerId)
+        .single()
+
+      if (profileError) {
+        console.error("[v0] Error fetching partner profile:", profileError)
+      }
+
       return NextResponse.json({
         status: "active",
-        partnerId: room.matched_user_id,
-        partnerProfile: room.profiles,
+        partnerId,
+        partnerProfile: partnerProfile || null,
       })
     }
 
+    // Still waiting
     return NextResponse.json({
-      status: room.status,
+      status: "waiting",
       partnerId: null,
       partnerProfile: null,
     })

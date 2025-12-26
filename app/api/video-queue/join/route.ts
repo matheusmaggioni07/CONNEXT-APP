@@ -17,38 +17,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 })
     }
 
-    const { data: existingRoom } = await supabase
+    const { data: existingQueue } = await supabase
       .from("video_queue")
       .select("*")
       .eq("user_id", userId)
       .eq("status", "active")
       .single()
 
-    if (existingRoom) {
+    if (existingQueue) {
       return NextResponse.json({
         success: true,
-        roomId: existingRoom.room_id,
-        matched: false,
-        partnerId: null,
+        roomId: existingQueue.room_id,
+        matched: !!existingQueue.matched_user_id,
+        partnerId: existingQueue.matched_user_id || null,
         partnerProfile: null,
       })
     }
 
-    const { data: waitingRooms } = await supabase
+    const { data: waitingUsers, error: waitError } = await supabase
       .from("video_queue")
-      .select("*, profiles:user_id(id, full_name, avatar_url, city)")
+      .select("user_id, room_id, id")
       .eq("status", "waiting")
+      .order("created_at", { ascending: true })
       .limit(1)
+
+    if (waitError) {
+      console.error("[v0] Error finding waiting users:", waitError)
+    }
 
     const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-    if (waitingRooms && waitingRooms.length > 0) {
-      const waitingRoom = waitingRooms[0]
-      const partnerId = waitingRoom.user_id
-      const partnerProfile = waitingRoom.profiles
+    if (waitingUsers && waitingUsers.length > 0) {
+      const waitingUser = waitingUsers[0]
+      const partnerId = waitingUser.user_id
 
-      // Update waiting room to active with matched partner
-      await supabase
+      console.log("[v0] MATCH FOUND:", { partnerId, currentUser: userId, roomId })
+
+      // Update waiting user's queue entry to active and matched
+      const { error: updateError } = await supabase
         .from("video_queue")
         .update({
           status: "active",
@@ -56,10 +62,15 @@ export async function POST(req: Request) {
           room_id: roomId,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", waitingRoom.id)
+        .eq("id", waitingUser.id)
 
-      // Create new active room for current user
-      await supabase.from("video_queue").insert({
+      if (updateError) {
+        console.error("[v0] Error updating waiting user:", updateError)
+        return NextResponse.json({ success: false, error: String(updateError) }, { status: 500 })
+      }
+
+      // Create new active queue entry for current user
+      const { error: insertError } = await supabase.from("video_queue").insert({
         user_id: userId,
         room_id: roomId,
         status: "active",
@@ -67,21 +78,44 @@ export async function POST(req: Request) {
         created_at: new Date().toISOString(),
       })
 
+      if (insertError) {
+        console.error("[v0] Error creating current user queue entry:", insertError)
+        return NextResponse.json({ success: false, error: String(insertError) }, { status: 500 })
+      }
+
+      // Fetch partner profile
+      const { data: partnerProfile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, city")
+        .eq("id", partnerId)
+        .single()
+
+      if (profileError) {
+        console.error("[v0] Error fetching partner profile:", profileError)
+      }
+
       return NextResponse.json({
         success: true,
         roomId,
         matched: true,
         partnerId,
-        partnerProfile,
+        partnerProfile: partnerProfile || null,
       })
     }
 
-    await supabase.from("video_queue").insert({
+    const { error: insertError } = await supabase.from("video_queue").insert({
       user_id: userId,
       room_id: roomId,
       status: "waiting",
       created_at: new Date().toISOString(),
     })
+
+    if (insertError) {
+      console.error("[v0] Error creating waiting queue entry:", insertError)
+      return NextResponse.json({ success: false, error: String(insertError) }, { status: 500 })
+    }
+
+    console.log("[v0] USER IN WAITING QUEUE:", { userId, roomId })
 
     return NextResponse.json({
       success: true,
