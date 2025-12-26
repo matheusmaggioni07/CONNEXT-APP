@@ -1,3 +1,4 @@
+// A API está correta, mas vou adicionar logs melhores para debug
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
       .single()
 
     if (existingQueue) {
+      console.log("[v0] User already active in room:", existingQueue.room_id)
       return NextResponse.json({
         success: true,
         roomId: existingQueue.room_id,
@@ -51,9 +53,13 @@ export async function POST(req: Request) {
       const waitingUser = waitingUsers[0]
       const partnerId = waitingUser.user_id
 
-      console.log("[v0] MATCH FOUND:", { partnerId, currentUser: userId, roomId })
+      console.log("[v0] MATCH CREATED:", {
+        partnerId,
+        currentUserId: userId,
+        roomId,
+        timestamp: new Date().toISOString(),
+      })
 
-      // Update waiting user's queue entry to active and matched
       const { error: updateError } = await supabase
         .from("video_queue")
         .update({
@@ -69,7 +75,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: String(updateError) }, { status: 500 })
       }
 
-      // Create new active queue entry for current user
       const { error: insertError } = await supabase.from("video_queue").insert({
         user_id: userId,
         room_id: roomId,
@@ -83,7 +88,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: String(insertError) }, { status: 500 })
       }
 
-      // Fetch partner profile
       const { data: partnerProfile, error: profileError } = await supabase
         .from("profiles")
         .select("id, full_name, avatar_url, city")
@@ -115,7 +119,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: String(insertError) }, { status: 500 })
     }
 
-    console.log("[v0] USER IN WAITING QUEUE:", { userId, roomId })
+    console.log("[v0] User added to WAITING queue:", { userId, roomId, timestamp: new Date().toISOString() })
 
     return NextResponse.json({
       success: true,

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { createClient as createBrowserClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { getRemainingCalls } from "@/app/actions/video"
 import { joinVideoQueue, checkRoomStatus, leaveVideoQueue, likeUser } from "@/lib/video-functions"
+import type { RealtimeChannel } from "@supabase/supabase-js"
 
 interface VideoPageProps {
   userId: string
@@ -92,6 +93,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   const connectionAttemptRef = useRef(0)
   const maxConnectionAttempts = 5
+
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null)
 
   // Check remaining calls on mount
   useEffect(() => {
@@ -219,6 +222,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       hasRemoteDescriptionRef.current = false
       iceCandidateBufferRef.current = []
       connectionAttemptRef.current = 0
+
+      if (realtimeChannelRef.current) {
+        const supabase = await createBrowserClient()
+        await supabase.removeChannel(realtimeChannelRef.current!)
+        realtimeChannelRef.current = null
+      }
     } finally {
       isCleaningUpRef.current = false
     }
@@ -262,7 +271,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         })
 
         peerConnectionRef.current = pc
-        const supabase = createClient()
+        const supabase = await createBrowserClient()
 
         try {
           await supabase.from("signaling").delete().eq("room_id", roomId)
@@ -554,6 +563,73 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     }
   }, [cleanup])
 
+  const subscribeToQueueUpdates = useCallback(async () => {
+    if (!currentRoomIdRef.current) return
+
+    try {
+      const supabase = await createBrowserClient()
+
+      // Unsubscribe from old channel if exists
+      if (realtimeChannelRef.current) {
+        await supabase.removeChannel(realtimeChannelRef.current)
+      }
+
+      realtimeChannelRef.current = supabase
+        .channel(`room:${currentRoomIdRef.current}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "video_queue",
+            filter: `room_id=eq.${currentRoomIdRef.current}`,
+          },
+          async (payload: any) => {
+            console.log("[v0] Queue update received:", payload)
+
+            const updatedRow = payload.new
+
+            // Check if we now have a match
+            if (updatedRow.matched_user_id && !currentPartnerIdRef.current) {
+              const partnerId = updatedRow.matched_user_id
+
+              if (partnerId !== userId) {
+                currentPartnerIdRef.current = partnerId
+
+                // Fetch partner profile
+                const { data: partnerProfile } = await supabase
+                  .from("profiles")
+                  .select("id, full_name, avatar_url, city")
+                  .eq("id", partnerId)
+                  .single()
+
+                if (partnerProfile) {
+                  setCurrentPartner(partnerProfile as PartnerProfile)
+                }
+
+                // Stop polling immediately
+                if (pollingRef.current) {
+                  clearInterval(pollingRef.current)
+                  pollingRef.current = null
+                }
+
+                setVideoState("connecting")
+                setConnectionStatus("Estabelecendo conexão...")
+
+                const isInitiator = userId < partnerId
+                await setupWebRTC(currentRoomIdRef.current!, isInitiator, partnerId)
+              }
+            }
+          },
+        )
+        .subscribe((status) => {
+          console.log("[v0] Subscription status:", status)
+        })
+    } catch (error) {
+      console.error("[v0] Error subscribing to queue updates:", error)
+    }
+  }, [userId])
+
   const startSearching = useCallback(async () => {
     if (limitReached) return
 
@@ -586,6 +662,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       currentRoomIdRef.current = result.roomId
 
+      await subscribeToQueueUpdates()
+
       if (result.matched && result.partnerId && result.partnerProfile) {
         currentPartnerIdRef.current = result.partnerId
         setCurrentPartner(result.partnerProfile as PartnerProfile)
@@ -598,25 +676,20 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         return
       }
 
-      // Poll for room status
       let checkCount = 0
-      const maxChecks = 225 // 225 checks * 200ms = 45 seconds
+      const maxChecks = 90 // 90 checks * 500ms = 45 seconds
 
       pollingRef.current = setInterval(async () => {
-        if (!currentRoomIdRef.current) return
-
         checkCount++
-        console.log("[v0] Status check", checkCount, "/", maxChecks)
 
-        // Timeout after 45 seconds
-        if (checkCount > maxChecks) {
+        if (checkCount >= maxChecks) {
           if (pollingRef.current) {
             clearInterval(pollingRef.current)
             pollingRef.current = null
           }
-          setVideoState("error")
-          setConnectionStatus("Sem usuários disponíveis. Tente novamente.")
-          setIsLoading(false)
+          setVideoState("idle")
+          setConnectionStatus("")
+          setPermissionError("Nenhum usuário disponível. Tente novamente.")
           return
         }
 
@@ -641,14 +714,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         } catch (error) {
           console.log("[v0] Polling error (non-critical):", error instanceof Error ? error.message : error)
         }
-      }, 200) // Keep at 200ms for status polling
+      }, 500)
     } catch (error) {
       console.error("[v0] Error starting search:", error)
       setVideoState("idle")
     } finally {
       setIsLoading(false)
     }
-  }, [userId, attachStreamToVideo, setupWebRTC, limitReached])
+  }, [subscribeToQueueUpdates, userId, limitReached])
 
   const endCall = useCallback(async () => {
     await cleanup()
@@ -737,7 +810,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       if (!currentPartner || !userId) return
 
       try {
-        const { error } = await createClient()
+        const { error } = await createBrowserClient()
           .from("matches")
           .insert({
             user1_id: userId < currentPartner.id ? userId : currentPartner.id,
