@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       .single()
 
     if (queueError || !userQueue) {
-      console.log("[v0] Queue entry not found")
+      console.log("[v0] Queue entry not found for roomId:", roomId)
       return NextResponse.json({
         status: "not_found",
         partnerId: null,

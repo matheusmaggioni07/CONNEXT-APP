@@ -56,11 +56,10 @@ export async function POST(req: Request) {
       console.error("[v0] Error finding waiting users:", waitError)
     }
 
-    const roomId = generateUUID()
-
     if (waitingUsers && waitingUsers.length > 0) {
       const waitingUser = waitingUsers[0]
       const partnerId = waitingUser.user_id
+      const roomId = waitingUser.room_id
 
       console.log("[v0] MATCH CREATED:", {
         partnerId,
@@ -74,7 +73,6 @@ export async function POST(req: Request) {
         .update({
           status: "active",
           matched_user_id: userId,
-          room_id: roomId,
           updated_at: new Date().toISOString(),
         })
         .eq("id", waitingUser.id)
@@ -115,6 +113,8 @@ export async function POST(req: Request) {
         partnerProfile: partnerProfile || null,
       })
     }
+
+    const roomId = generateUUID()
 
     const { error: insertError } = await supabase.from("video_queue").insert({
       user_id: userId,

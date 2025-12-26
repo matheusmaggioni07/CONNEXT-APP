@@ -447,11 +447,12 @@ export function DiscoverPage() {
                     }`}
                     onClick={handleLike}
                     disabled={!likeStatus.canLike || isLiking}
+                    title={likeStatus.canLike ? "Curtir este perfil" : `Limite diário atingido - Faça upgrade para Pro`}
                   >
                     {isLiking ? (
                       <Loader2 className="w-7 h-7 md:w-8 md:h-8 animate-spin" />
                     ) : (
-                      <Heart className="w-7 h-7 md:w-8 md:h-8" />
+                      <Heart className={`w-7 h-7 md:w-8 md:h-8 transition-all fill-white`} />
                     )}
                   </Button>
 
@@ -509,15 +510,22 @@ export function DiscoverPage() {
                   )}
                 </div>
               </div>
-              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-rose-500 rounded-full p-2 shadow-lg">
-                <Heart className="w-5 h-5 text-white fill-white" />
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 animate-bounce">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-pink-500/30 blur-xl rounded-full animate-pulse" />
+                  <div className="bg-gradient-to-r from-pink-500 to-rose-500 rounded-full p-3 shadow-2xl shadow-pink-500/50">
+                    <Heart className="w-8 h-8 text-white fill-white animate-pulse" />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-rose-500 bg-clip-text text-transparent mb-2">
+            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-500 to-rose-500 bg-clip-text text-transparent mb-2 animate-in fade-in zoom-in duration-500">
               É um Match!
             </h2>
-            <p className="text-muted-foreground mb-6">Você e {matchedProfile.full_name} têm interesse mútuo!</p>
+            <p className="text-muted-foreground mb-6 animate-in fade-in slide-in-from-bottom-2 duration-700">
+              Você e {matchedProfile?.full_name} têm interesse mútuo!
+            </p>
 
             <div className="space-y-3">
               <Button
