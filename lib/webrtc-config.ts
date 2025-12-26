@@ -1,14 +1,6 @@
 export const rtcConfig: RTCConfiguration = {
-  iceServers: [
-    // Google's free STUN servers (most reliable)
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
-    // Twilio STUN
-    { urls: "stun:global.stun.twilio.com:3478" },
-  ],
+  // ICE servers are fetched dynamically in setupWebRTC()
+  iceServers: [],
   iceCandidatePoolSize: 10,
   iceTransportPolicy: "all",
   bundlePolicy: "max-bundle",

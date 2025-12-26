@@ -20,32 +20,12 @@ interface PartnerProfile {
   city: string
 }
 
-const ICE_SERVERS = [
+const DEFAULT_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
   { urls: "stun:stun3.l.google.com:19302" },
   { urls: "stun:stun4.l.google.com:19302" },
-  {
-    urls: "turn:a.relay.metered.ca:80",
-    username: "87e69d8f6e87d94518d47ac4",
-    credential: "yWdZ8VhPV8dLGF0H",
-  },
-  {
-    urls: "turn:a.relay.metered.ca:80?transport=tcp",
-    username: "87e69d8f6e87d94518d47ac4",
-    credential: "yWdZ8VhPV8dLGF0H",
-  },
-  {
-    urls: "turn:a.relay.metered.ca:443",
-    username: "87e69d8f6e87d94518d47ac4",
-    credential: "yWdZ8VhPV8dLGF0H",
-  },
-  {
-    urls: "turns:a.relay.metered.ca:443?transport=tcp",
-    username: "87e69d8f6e87d94518d47ac4",
-    credential: "yWdZ8VhPV8dLGF0H",
-  },
 ]
 
 export function VideoPage({ userId, userProfile }: VideoPageProps) {
@@ -71,6 +51,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const intervalsRef = useRef<NodeJS.Timeout[]>([])
   const processedSignalsRef = useRef<Set<string>>(new Set())
   const processedCandidatesRef = useRef<Set<string>>(new Set())
+  const iceServersRef = useRef(DEFAULT_ICE_SERVERS)
 
   const cleanup = useCallback(() => {
     intervalsRef.current.forEach(clearInterval)
@@ -93,6 +74,19 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const setupWebRTC = useCallback(
     async (roomId: string, isInitiator: boolean, partnerId: string) => {
       try {
+        console.log("[v0] Fetching ICE servers from /api/turn-credentials")
+        try {
+          const turnResponse = await fetch("/api/turn-credentials")
+          if (turnResponse.ok) {
+            const turnData = await turnResponse.json()
+            iceServersRef.current = turnData.iceServers || DEFAULT_ICE_SERVERS
+            console.log("[v0] ICE servers loaded:", iceServersRef.current.length, "servers")
+          }
+        } catch (err) {
+          console.error("[v0] Failed to fetch TURN credentials, using defaults:", err)
+          iceServersRef.current = DEFAULT_ICE_SERVERS
+        }
+
         const localStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -100,7 +94,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
         localStreamRef.current = localStream
 
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
         peerRef.current = pc
         roomIdRef.current = roomId
         partnerIdRef.current = partnerId

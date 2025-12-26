@@ -77,32 +77,71 @@ export async function joinVideoQueue() {
   if (!user) return { success: false, error: "Not authenticated" }
 
   try {
-    // Delete old rooms from this user
+    console.log("[v0] User joining video queue:", user.id)
+
     await supabase.from("video_rooms").delete().or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
 
-    // Try to find waiting room
-    const { data: waitingRooms } = await supabase.from("video_rooms").select("*").eq("status", "waiting").limit(1)
+    const { data: waitingRooms, error: searchError } = await supabase
+      .from("video_rooms")
+      .select("*")
+      .eq("status", "waiting")
+      .neq("user1_id", user.id) // Make sure user1 is NOT this user
+      .is("user2_id", null) // Make sure no user2 yet
+      .order("created_at", { ascending: true })
+      .limit(1)
 
-    const existingRoom = waitingRooms?.[0]
+    console.log("[v0] Searching for waiting room:", waitingRooms?.length, "found")
 
-    if (existingRoom && existingRoom.user1_id !== user.id) {
-      await supabase.from("video_rooms").update({ user2_id: user.id, status: "active" }).eq("id", existingRoom.id)
+    if (waitingRooms && waitingRooms.length > 0) {
+      const existingRoom = waitingRooms[0]
+      console.log("[v0] Found waiting room, joining:", existingRoom.id)
+
+      const { data: updatedRoom, error: updateError } = await supabase
+        .from("video_rooms")
+        .update({
+          user2_id: user.id,
+          status: "active",
+          matched_at: new Date().toISOString(),
+        })
+        .eq("id", existingRoom.id)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error("[v0] Failed to update room:", updateError)
+        return { success: false, error: "Failed to join room" }
+      }
+
+      console.log("[v0] Successfully matched! Room ID:", updatedRoom.id)
 
       return {
         success: true,
-        roomId: existingRoom.id,
+        roomId: updatedRoom.id,
         matched: true,
-        partnerId: existingRoom.user1_id,
+        partnerId: existingRoom.user1_id, // Return the other user's ID
       }
     }
 
+    console.log("[v0] No waiting room found, creating new one")
+
     const { data: newRoom, error: createError } = await supabase
       .from("video_rooms")
-      .insert([{ user1_id: user.id, status: "waiting", created_at: new Date().toISOString() }])
+      .insert([
+        {
+          user1_id: user.id,
+          status: "waiting",
+          created_at: new Date().toISOString(),
+        },
+      ])
       .select()
       .single()
 
-    if (createError) return { success: false, error: "Failed to create room" }
+    if (createError) {
+      console.error("[v0] Failed to create room:", createError)
+      return { success: false, error: "Failed to create room" }
+    }
+
+    console.log("[v0] Created waiting room:", newRoom.id)
 
     return {
       success: true,
