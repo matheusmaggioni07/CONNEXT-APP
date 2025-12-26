@@ -273,26 +273,62 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     processedCandidatesRef.current.clear()
 
     try {
+      console.log("[v0] Starting WebRTC setup for local camera")
+      await setupWebRTC("temp-room", false, "temp-partner")
+
       const result = await joinVideoQueue()
 
       if (!result.success) {
         setErrorMsg(result.error || "Erro ao conectar")
         setState("error")
+        cleanup()
         return
       }
 
       roomIdRef.current = result.roomId
 
+      if (peerRef.current) {
+        const iceCheckInterval = setInterval(async () => {
+          if (!peerRef.current || peerRef.current.connectionState === "closed") {
+            clearInterval(iceCheckInterval)
+            return
+          }
+
+          // Send ICE candidates to correct room
+          peerRef.current.onicecandidate = async (event) => {
+            if (event.candidate) {
+              try {
+                await supabase.from("ice_candidates").insert({
+                  room_id: result.roomId,
+                  from_user_id: userId,
+                  to_user_id: partnerIdRef.current,
+                  candidate: JSON.stringify(event.candidate.toJSON()),
+                })
+              } catch (err) {
+                console.error("[v0] ICE save error:", err)
+              }
+            }
+          }
+        }, 100)
+        intervalsRef.current.push(iceCheckInterval)
+      }
+
       if (result.matched && result.partnerId) {
+        console.log("[v0] Immediately matched! Partner ID:", result.partnerId)
         setPartner({
           id: result.partnerId,
           full_name: "Conectando...",
           avatar_url: "",
           city: "",
         })
+
+        // Reinit WebRTC with correct room and partner
+        cleanup()
         await setupWebRTC(result.roomId, false, result.partnerId)
         return
       }
+
+      console.log("[v0] Waiting for match in room:", result.roomId)
 
       let pollCounter = 0
       const pollInterval = setInterval(async () => {
@@ -304,6 +340,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           setErrorMsg("Sem parceiros disponíveis")
           setState("error")
           await leaveVideoRoom(result.roomId)
+          cleanup()
           return
         }
 
@@ -313,6 +350,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           if (room && room.status === "active" && room.user2_id && room.user2_id !== userId) {
             const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
             clearInterval(pollInterval)
+
+            console.log("[v0] Match found! Partner ID:", partnerId)
 
             const { data: partnerProfile } = await supabase
               .from("profiles")
@@ -329,6 +368,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               },
             )
 
+            // Reinit WebRTC with correct room and partner
+            cleanup()
             await setupWebRTC(result.roomId, true, partnerId)
           }
         } catch (err) {
@@ -342,7 +383,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       setErrorMsg("Erro ao iniciar chamada")
       setState("error")
     }
-  }, [userId, setupWebRTC, supabase])
+  }, [userId, setupWebRTC, supabase, cleanup])
 
   useEffect(() => {
     return () => cleanup()
