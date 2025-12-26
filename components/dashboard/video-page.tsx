@@ -235,7 +235,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         } catch (err) {
           console.error("[v0] Signaling poll error:", err)
         }
-      }, 500)
+      }, 300) // was 500ms, now 300ms
 
       const iceInterval = setInterval(async () => {
         if (pc.connectionState === "closed" || !pc.remoteDescription) {
@@ -264,7 +264,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         } catch (err) {
           console.error("[v0] ICE poll error:", err)
         }
-      }, 500)
+      }, 300) // was 500ms, now 300ms
 
       intervalsRef.current.push(signalingInterval, iceInterval)
     },
@@ -302,7 +302,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       const interval = setInterval(async () => {
         try {
           const status = await checkRoomStatus(result.roomId)
-          console.log("[v0] Status:", status.status)
+          console.log("[v0] 📊 Status check:", status.status)
 
           if (status.status === "active" && status.partnerId) {
             clearInterval(interval)
@@ -314,7 +314,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         } catch (err) {
           console.error("[v0] Poll error:", err)
         }
-      }, 500)
+      }, 200) // was 500ms, now 200ms
 
       intervalsRef.current.push(interval)
     } catch (err) {
