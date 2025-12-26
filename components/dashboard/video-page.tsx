@@ -37,6 +37,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const [isVideoOff, setIsVideoOff] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [isFrontCamera, setIsFrontCamera] = useState(true)
+  const [showMatchAnimation, setShowMatchAnimation] = useState(false)
 
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -164,6 +165,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           console.log("[v0] Connection state:", pc.connectionState)
           if (pc.connectionState === "connected" || pc.connectionState === "completed") {
             console.log("[v0] ✅ CONNECTED!")
+            setShowMatchAnimation(true)
+            setTimeout(() => setShowMatchAnimation(false), 1000)
             setState("connected")
           } else if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
             setErrorMsg("Conexão perdida")
@@ -272,7 +275,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           } catch (err) {
             console.error("[v0] Polling error:", err)
           }
-        }, 100) // Reduced from 250ms to 100ms for faster response
+        }, 100)
 
         intervalsRef.current.push(signalingInterval)
       } catch (err) {
@@ -350,76 +353,56 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         return
       }
 
-      console.log("[v0] 📡 Subscribing to room:", result.roomId)
-      const subscription = supabase
-        .channel(`room:${result.roomId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "video_rooms",
-            filter: `id=eq.${result.roomId}`,
-          },
-          (payload) => {
-            console.log("[v0] 🔔 Room update received:", payload.new)
-            const room = payload.new
+      console.log("[v0] 🔄 Starting polling for partner - Room:", result.roomId)
 
-            // Check if partner joined
-            if (room.status === "active" && room.user2_id && room.user2_id !== userId) {
-              const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
-              console.log("[v0] ✅ Partner found via Realtime:", partnerId)
-
-              setPartner({
-                id: partnerId,
-                full_name: "Conectando...",
-                avatar_url: "",
-              })
-
-              setupWebRTC(result.roomId, false, partnerId)
-
-              if (unsubscribeRef.current) {
-                unsubscribeRef.current()
-              }
-            }
-          },
-        )
-        .subscribe()
-
-      unsubscribeRef.current = () => subscription.unsubscribe()
-
-      // Fallback: if Realtime doesn't work, poll every 500ms as backup
       let pollCounter = 0
       const pollInterval = setInterval(async () => {
         pollCounter++
         setWaitTime(pollCounter)
 
-        // Stop polling after 2 minutes
-        if (pollCounter > 120) {
+        if (pollCounter > 180) {
           clearInterval(pollInterval)
+          setErrorMsg("Nenhum parceiro disponível. Tente novamente.")
+          setState("error")
           return
         }
 
         try {
-          const { data: room } = await supabase.from("video_rooms").select("*").eq("id", result.roomId).single()
+          const { data: room } = await supabase
+            .from("video_rooms")
+            .select("id, user1_id, user2_id, status")
+            .eq("id", result.roomId)
+            .single()
 
-          if (room && room.status === "active" && room.user2_id && room.user2_id !== userId) {
-            const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
-            console.log("[v0] ✅ Partner found via polling:", partnerId)
-            clearInterval(pollInterval)
+          if (room) {
+            console.log("[v0] Room state:", { status: room.status, user1: room.user1_id, user2: room.user2_id })
 
-            setPartner({
-              id: partnerId,
-              full_name: "Conectando...",
-              avatar_url: "",
-            })
+            if (room.status === "active" && room.user2_id && room.user2_id !== userId) {
+              const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
+              console.log("[v0] ✅ Partner found:", partnerId)
+              clearInterval(pollInterval)
 
-            await setupWebRTC(result.roomId, false, partnerId)
+              const { data: partnerProfile } = await supabase
+                .from("profiles")
+                .select("id, full_name, avatar_url")
+                .eq("id", partnerId)
+                .single()
+
+              setPartner(
+                partnerProfile || {
+                  id: partnerId,
+                  full_name: "Conectando...",
+                  avatar_url: "",
+                },
+              )
+
+              await setupWebRTC(result.roomId, false, partnerId)
+            }
           }
         } catch (err) {
           console.error("[v0] Poll error:", err)
         }
-      }, 500)
+      }, 200)
 
       intervalsRef.current.push(pollInterval)
     } catch (err) {
@@ -436,17 +419,27 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   // Idle state
   if (state === "idle") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 rounded-full mix-blend-multiply filter blur-3xl animate-pulse"></div>
+          <div
+            className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-600 via-purple-500 to-pink-600 rounded-full mix-blend-multiply filter blur-3xl animate-pulse"
+            style={{ animationDelay: "2s" }}
+          ></div>
+        </div>
+
+        <div className="max-w-2xl w-full relative z-10">
           <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">Conecte-se com empreendedores ao vivo</h1>
-            <p className="text-purple-200 text-lg">Faça conexões genuínas em tempo real</p>
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent mb-4">
+              Videochamada Connext
+            </h1>
+            <p className="text-purple-200 text-lg">Conecte-se instantaneamente com profissionais</p>
           </div>
-          <div className="bg-gradient-to-b from-purple-950 to-slate-900 rounded-3xl p-8 md:p-12 border border-purple-500/30 shadow-2xl">
+          <div className="bg-gradient-to-b from-purple-950/80 to-slate-900/80 rounded-3xl p-8 md:p-12 border border-purple-500/30 shadow-2xl backdrop-blur-sm">
             <Button
               onClick={handleStartCall}
               size="lg"
-              className="w-full bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 hover:from-purple-700 hover:via-pink-600 hover:to-purple-700 text-white font-bold text-xl py-8 rounded-2xl transition-all duration-300"
+              className="w-full bg-gradient-to-r from-purple-600 via-pink-500 to-blue-600 hover:from-purple-700 hover:via-pink-600 hover:to-blue-700 text-white font-bold text-xl py-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-pink-500/50"
             >
               Começar Chamada
             </Button>
@@ -464,7 +457,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 mb-6 max-w-md">
             <p className="text-red-400 text-lg mb-4">{errorMsg}</p>
           </div>
-          <Button onClick={() => setState("idle")} className="bg-purple-600 hover:bg-purple-700">
+          <Button
+            onClick={() => setState("idle")}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          >
             Voltar
           </Button>
         </div>
@@ -478,7 +474,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="mb-8">
-            <Loader2 className="w-16 h-16 animate-spin text-purple-500 mx-auto" />
+            <Loader2 className="w-16 h-16 animate-spin bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 bg-clip-text text-transparent mx-auto" />
           </div>
           <p className="text-white text-2xl mb-2">Conectando...</p>
           <p className="text-purple-300">{formatTime(waitTime)}</p>
@@ -492,20 +488,42 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   // Connected state
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 relative">
+      {showMatchAnimation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="animate-pulse">
+            <div className="text-6xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
+              ✨ MATCH! ✨
+            </div>
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 via-pink-500/20 to-purple-600/20 animate-pulse"></div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="relative bg-slate-950 rounded-2xl overflow-hidden border-2 border-purple-500/50 shadow-xl">
-            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-            <div className="absolute top-4 left-4 bg-slate-900/80 px-3 py-1 rounded-lg">
+          <div
+            className="relative bg-slate-950 rounded-2xl overflow-hidden border-2 border-transparent bg-clip-padding shadow-xl"
+            style={{
+              backgroundImage: "linear-gradient(#0f172a, #0f172a), linear-gradient(135deg, #a855f7, #ec4899, #3b82f6)",
+            }}
+          >
+            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover min-h-80" />
+            <div className="absolute top-4 left-4 bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm">
               <p className="text-white text-sm font-semibold">Você</p>
             </div>
           </div>
 
-          <div className="relative bg-gradient-to-br from-purple-950 to-slate-950 rounded-2xl overflow-hidden border-2 border-pink-500/50 shadow-xl flex items-center justify-center">
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+          <div
+            className="relative bg-gradient-to-br from-purple-950 to-slate-950 rounded-2xl overflow-hidden border-2 border-transparent bg-clip-padding shadow-xl flex items-center justify-center"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(88, 28, 135, 0.5), rgba(15, 23, 42, 0.5)), linear-gradient(135deg, #3b82f6, #a855f7, #ec4899)",
+            }}
+          >
+            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover min-h-80" />
             {state === "connected" && partner && (
-              <div className="absolute top-4 left-4 bg-slate-900/80 px-3 py-1 rounded-lg">
+              <div className="absolute top-4 left-4 bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm">
                 <p className="text-white text-sm font-semibold">{partner.full_name}</p>
               </div>
             )}
@@ -516,8 +534,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={toggleMute}
             size="lg"
-            className={`rounded-full w-16 h-16 ${
-              isMuted ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"
+            className={`rounded-full w-16 h-16 transition-all ${
+              isMuted
+                ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50"
+                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-600/50"
             }`}
           >
             {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
@@ -526,30 +546,44 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={toggleVideo}
             size="lg"
-            className={`rounded-full w-16 h-16 ${
-              isVideoOff ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"
+            className={`rounded-full w-16 h-16 transition-all ${
+              isVideoOff
+                ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50"
+                : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-lg shadow-purple-600/50"
             }`}
           >
             {isVideoOff ? <VideoOff className="w-6 h-6" /> : <VideoIcon className="w-6 h-6" />}
           </Button>
 
-          <Button onClick={flipCamera} size="lg" className="rounded-full w-16 h-16 bg-purple-600 hover:bg-purple-700">
+          <Button
+            onClick={flipCamera}
+            size="lg"
+            className="rounded-full w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-lg shadow-purple-600/50"
+          >
             <Repeat2 className="w-6 h-6" />
           </Button>
 
-          <Button onClick={handleSkip} size="lg" className="rounded-full w-16 h-16 bg-yellow-600 hover:bg-yellow-700">
+          <Button
+            onClick={handleSkip}
+            size="lg"
+            className="rounded-full w-16 h-16 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 shadow-lg shadow-yellow-600/50"
+          >
             <SkipForward className="w-6 h-6" />
           </Button>
 
           <Button
             onClick={() => likeUser(partner?.id || "")}
             size="lg"
-            className="rounded-full w-16 h-16 bg-pink-600 hover:bg-pink-700"
+            className="rounded-full w-16 h-16 bg-gradient-to-r from-pink-600 to-red-600 hover:from-pink-700 hover:to-red-700 shadow-lg shadow-pink-600/50"
           >
             <Heart className="w-6 h-6" />
           </Button>
 
-          <Button onClick={handleHangup} size="lg" className="rounded-full w-16 h-16 bg-red-600 hover:bg-red-700">
+          <Button
+            onClick={handleHangup}
+            size="lg"
+            className="rounded-full w-16 h-16 bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/50"
+          >
             <PhoneOff className="w-6 h-6" />
           </Button>
         </div>
