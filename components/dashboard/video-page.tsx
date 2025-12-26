@@ -983,11 +983,10 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       console.log("[v0] ✅ Local stream attached to video element")
       setLocalVideoReady(true)
 
-      // Immediate match case
       if (joinResult.matched && joinResult.partnerId) {
         console.log("[v0] 🎉 IMMEDIATE MATCH - Starting WebRTC with partner:", joinResult.partnerId)
         currentPartnerIdRef.current = joinResult.partnerId
-        isInitiatorRef.current = userId < joinResult.partnerId
+        isInitiatorRef.current = !joinResult.waiting // If not waiting, means we joined existing room = non-initiator
         setCurrentPartner(joinResult.partnerProfile || { id: joinResult.partnerId, full_name: "User", avatar_url: "" })
         setVideoState("connecting")
         setIsLoading(false)
@@ -1047,7 +1046,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
               setVideoState("connecting")
               setIsLoading(false)
 
-              const isInitiator = userId < statusResult.partnerId
+              const isInitiator = false
               console.log("[v0] 🔌 WebRTC initiator:", isInitiator)
               await setupWebRTC(joinResult.roomId, isInitiator)
             }
