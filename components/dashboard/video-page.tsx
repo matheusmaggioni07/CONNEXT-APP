@@ -318,14 +318,25 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
       console.log("[v0] setupWebRTC starting:", { roomId, isInitiator })
 
       try {
+        // ✅ CORREÇÃO 1: Obter stream ANTES de criar PeerConnection
         const localStream = await getLocalStream()
+        if (!localStream || localStream.getTracks().length === 0) {
+          console.error("[v0] ERROR: No valid local stream!")
+          setVideoState("error")
+          setConnectionStatus("Erro: Stream local inválido")
+          return
+        }
 
+        console.log("[v0] Local stream verified:", {
+          videoTracks: localStream.getVideoTracks().length,
+          audioTracks: localStream.getAudioTracks().length,
+        })
+
+        // ✅ CORREÇÃO 2: Configurar ICE servers ANTES de criar PeerConnection
         let iceServers: RTCIceServer[] = [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
           { urls: "stun:stun2.l.google.com:19302" },
-          { urls: "stun:stun3.l.google.com:19302" },
-          { urls: "stun:stun4.l.google.com:19302" },
         ]
 
         try {
@@ -342,16 +353,24 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           console.warn("[v0] TURN fetch failed, using STUN only:", error)
         }
 
+        // ✅ CORREÇÃO 3: Criar PeerConnection com configuração robusta
         console.log("[v0] Creating RTCPeerConnection with ICE servers:", iceServers.length)
         const pc = new RTCPeerConnection({
           iceServers,
           iceCandidatePoolSize: 10,
+          bundlePolicy: "max-bundle",
+          rtcpMuxPolicy: "require",
         })
 
         peerConnectionRef.current = pc
 
+        // ✅ CORREÇÃO 4: Event handlers ANTES de adicionar tracks
         pc.oniceconnectionstatechange = () => {
           console.log("[v0] ICE connection state:", pc.iceConnectionState)
+          if (pc.iceConnectionState === "failed") {
+            console.log("[v0] ICE failed, restarting...")
+            pc.restartIce()
+          }
         }
 
         pc.onconnectionstatechange = () => {
@@ -363,144 +382,119 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           console.log("[v0] Signaling state:", pc.signalingState)
         }
 
-        if (!localStream || localStream.getTracks().length === 0) {
-          console.error("[v0] ERROR: No valid local stream!")
-          setVideoState("error")
-          setConnectionStatus("Erro: Stream local inválido")
-          return
+        // ✅ CORREÇÃO 5: ontrack handler com auto-play forçado
+        const pendingCandidates: RTCIceCandidate[] = []
+
+        pc.ontrack = (event) => {
+          console.log("[v0] 🎥 REMOTE TRACK RECEIVED:", {
+            kind: event.track.kind,
+            enabled: event.track.enabled,
+            readyState: event.track.readyState,
+          })
+
+          event.track.enabled = true
+
+          const stream = event.streams[0]
+          if (!stream) {
+            console.error("[v0] No stream in track event!")
+            return
+          }
+
+          console.log("[v0] Remote stream tracks:", stream.getTracks().length)
+          remoteStreamRef.current = stream
+
+          // ✅ CORREÇÃO 6: Attach stream imediatamente com retry automático
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream
+            remoteVideoRef.current.autoplay = true
+            remoteVideoRef.current.playsInline = true
+            remoteVideoRef.current.muted = false
+
+            let playAttempts = 0
+            const tryPlay = () => {
+              playAttempts++
+              remoteVideoRef.current
+                ?.play()
+                .then(() => {
+                  console.log("[v0] ✅ Remote video playing!")
+                  setRemoteVideoReady(true)
+                  setVideoState("connected")
+                  setConnectionStatus("")
+                })
+                .catch((e) => {
+                  console.warn("[v0] Remote play attempt", playAttempts, "failed:", e.message)
+                  if (playAttempts < 10) {
+                    setTimeout(tryPlay, 300)
+                  }
+                })
+            }
+
+            tryPlay()
+            setTimeout(tryPlay, 500)
+            setTimeout(tryPlay, 1000)
+            setTimeout(tryPlay, 2000)
+          }
         }
 
-        console.log("[v0] Local stream verified:", {
-          videoTracks: localStream.getVideoTracks().length,
-          audioTracks: localStream.getAudioTracks().length,
-        })
+        // ✅ CORREÇÃO 7: ICE candidate handler
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            console.log("[v0] 🧊 Sending ICE candidate:", event.candidate.type)
+            try {
+              await supabase.from("ice_candidates").insert({
+                room_id: roomId,
+                from_user_id: userId,
+                to_user_id: currentPartnerIdRef.current, // adicionado to_user_id para routing correto
+                candidate: JSON.stringify(event.candidate.toJSON()),
+                created_at: new Date().toISOString(),
+              })
+              console.log("[v0] ✅ ICE candidate sent")
+            } catch (error) {
+              console.warn("[v0] ❌ Error sending ICE candidate:", error)
+            }
+          }
+        }
 
+        // ✅ CORREÇÃO 8: Salvar stream local
         localStreamRef.current = localStream
+
         console.log("[v0] Attaching local stream to video element")
         const attachResult = attachStreamToVideo(localVideoRef.current, localStream, "local")
-
         if (!attachResult) {
-          console.error("[v0] Failed to attach stream to video element")
+          console.error("[v0] Failed to attach local stream")
           setVideoState("permission_denied")
           setPermissionError("Falha ao exibir câmera")
           return
         }
 
-        const videoTrack = localStream.getVideoTracks()[0]
-        const audioTrack = localStream.getAudioTracks()[0]
+        // ✅ CORREÇÃO 9: Adicionar tracks NA ORDEM CORRETA
+        localStream.getTracks().forEach((track) => {
+          console.log("[v0] Adding track to peer:", track.kind, track.enabled)
+          pc.addTrack(track, localStream)
+        })
 
-        if (videoTrack) pc.addTrack(videoTrack, localStream)
-        if (audioTrack) pc.addTrack(audioTrack, localStream)
+        console.log("[v0] All tracks added to peer connection")
 
-        console.log("[v0] Tracks added to peer connection:", { videoTrack: !!videoTrack, audioTrack: !!audioTrack })
-
-        pc.ontrack = (event) => {
-          console.log("[v0] REMOTE TRACK RECEIVED:", { kind: event.track.kind })
-          event.track.enabled = true
-
-          const stream = event.streams[0]
-          if (stream) {
-            if (!remoteStreamRef.current) {
-              remoteStreamRef.current = stream
-            }
-
-            if (remoteVideoRef.current) {
-              remoteVideoRef.current.srcObject = stream
-              remoteVideoRef.current.autoplay = true
-              remoteVideoRef.current.playsInline = true
-
-              remoteVideoRef.current.play().catch((e) => {
-                console.error("[v0] Remote play error:", e)
-              })
-            }
-
-            setRemoteVideoReady(true)
-            setVideoState("connected")
-            setConnectionStatus("") // Updated: User-friendly message
-            console.log("[v0] CALL CONNECTED - Remote video attached")
-          }
+        // ✅ CORREÇÃO 10: Limpar tabelas antigas ANTES de começar
+        try {
+          await supabase.from("signaling").delete().eq("room_id", roomId)
+          await supabase.from("ice_candidates").delete().eq("room_id", roomId)
+          console.log("[v0] Cleaned old signaling data")
+        } catch (e) {
+          console.warn("[v0] Cleanup failed (non-critical):", e)
         }
 
-        pc.onicecandidate = async (event) => {
-          if (event.candidate) {
-            try {
-              await supabase.from("ice_candidates").insert({
-                room_id: roomId,
-                from_user_id: userId,
-                candidate: JSON.stringify(event.candidate.toJSON()),
-              })
-            } catch (error) {
-              console.warn("[v0] Error sending ICE candidate:", error)
-            }
-          }
-        }
-
-        const pollForSignaling = async () => {
-          if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed") {
-            if (signalingPollingRef.current) {
-              clearInterval(signalingPollingRef.current)
-              signalingPollingRef.current = null
-            }
-            return
-          }
-
+        // ✅ CORREÇÃO 11: Função para processar ICE candidates recebidos
+        const processReceivedIceCandidates = async () => {
           try {
-            const { data: signals, error: signalError } = await supabase
-              .from("signaling")
-              .select("*")
-              .eq("room_id", roomId)
-              .order("created_at", { ascending: true })
-
-            if (signalError) {
-              console.error("[v0] Signal polling error:", signalError)
-              return
-            }
-
-            if (signals && signals.length > 0) {
-              console.log("[v0] Processing", signals.length, "signals")
-              for (const signal of signals) {
-                if (processedSignalingIds.current.has(signal.id)) continue
-                processedSignalingIds.current.add(signal.id)
-
-                const pc = peerConnectionRef.current
-                if (!pc || pc.connectionState === "closed") break
-
-                try {
-                  if (signal.type === "offer" && !isInitiator) {
-                    console.log("[v0] Processing OFFER")
-                    const offerDesc = JSON.parse(signal.sdp)
-                    await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
-                    const answer = await pc.createAnswer()
-                    await pc.setLocalDescription(answer)
-
-                    await supabase.from("signaling").insert({
-                      room_id: roomId,
-                      from_user_id: userId,
-                      type: "answer",
-                      sdp: JSON.stringify(answer),
-                    })
-                    console.log("[v0] ANSWER SENT")
-                  } else if (signal.type === "answer" && isInitiator) {
-                    console.log("[v0] Processing ANSWER")
-                    const answerDesc = JSON.parse(signal.sdp)
-                    await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
-                  }
-                } catch (error) {
-                  console.error("[v0] Signal processing error:", error)
-                }
-              }
-            }
-
-            const { data: iceCandidates, error: iceError } = await supabase
+            const { data: iceCandidates, error } = await supabase
               .from("ice_candidates")
               .select("*")
               .eq("room_id", roomId)
+              .neq("from_user_id", userId)
               .order("created_at", { ascending: true })
 
-            if (iceError) {
-              console.error("[v0] ICE polling error:", iceError)
-              return
-            }
+            if (error) throw error
 
             if (iceCandidates && iceCandidates.length > 0) {
               for (const ice of iceCandidates) {
@@ -513,54 +507,164 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
                 try {
                   const candidateObj = JSON.parse(ice.candidate)
                   const candidate = new RTCIceCandidate(candidateObj)
-                  await pc.addIceCandidate(candidate)
+
+                  // ✅ CORREÇÃO 12: Só adicionar se remoteDescription existe
+                  if (pc.remoteDescription) {
+                    await pc.addIceCandidate(candidate)
+                    console.log("[v0] ✅ ICE candidate added:", candidate.type)
+                  } else {
+                    pendingCandidates.push(candidate)
+                    console.log("[v0] ⏳ ICE candidate buffered (no remote desc yet)")
+                  }
                 } catch (error) {
                   console.warn("[v0] ICE candidate error:", error)
                 }
               }
             }
           } catch (error) {
-            console.error("[v0] Polling error:", error)
+            console.error("[v0] ICE polling error:", error)
           }
         }
 
-        console.log("[v0] Starting signaling poll")
-        signalingPollingRef.current = setInterval(pollForSignaling, 50)
-        await pollForSignaling()
+        // ✅ CORREÇÃO 13: Função para processar signaling
+        const processSignaling = async () => {
+          if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed") {
+            if (signalingPollingRef.current) {
+              clearInterval(signalingPollingRef.current)
+              signalingPollingRef.current = null
+            }
+            return
+          }
 
+          try {
+            const { data: signals, error } = await supabase
+              .from("signaling")
+              .select("*")
+              .eq("room_id", roomId)
+              .neq("from_user_id", userId)
+              .order("created_at", { ascending: true })
+
+            if (error) throw error
+
+            if (signals && signals.length > 0) {
+              console.log("[v0] 📡 Processing", signals.length, "signals")
+
+              for (const signal of signals) {
+                if (processedSignalingIds.current.has(signal.id)) continue
+                processedSignalingIds.current.add(signal.id)
+
+                const pc = peerConnectionRef.current
+                if (!pc || pc.connectionState === "closed") break
+
+                try {
+                  if (signal.type === "offer" && !isInitiator) {
+                    console.log("[v0] 📥 Processing OFFER")
+                    const offerDesc = JSON.parse(signal.sdp)
+                    await pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
+                    console.log("[v0] ✅ Remote description set (offer)")
+
+                    // ✅ CORREÇÃO 14: Adicionar candidatos em buffer
+                    if (pendingCandidates.length > 0) {
+                      console.log("[v0] Adding", pendingCandidates.length, "buffered candidates")
+                      for (const candidate of pendingCandidates) {
+                        try {
+                          await pc.addIceCandidate(candidate)
+                        } catch (e) {
+                          console.warn("[v0] Buffered candidate failed:", e)
+                        }
+                      }
+                      pendingCandidates.length = 0
+                    }
+
+                    const answer = await pc.createAnswer()
+                    await pc.setLocalDescription(answer)
+                    console.log("[v0] ✅ Local description set (answer)")
+
+                    await supabase.from("signaling").insert({
+                      room_id: roomId,
+                      from_user_id: userId,
+                      type: "answer",
+                      sdp: JSON.stringify(answer),
+                      created_at: new Date().toISOString(),
+                    })
+                    console.log("[v0] 📤 ANSWER SENT")
+                  } else if (signal.type === "answer" && isInitiator) {
+                    console.log("[v0] 📥 Processing ANSWER")
+                    const answerDesc = JSON.parse(signal.sdp)
+                    await pc.setRemoteDescription(new RTCSessionDescription(answerDesc))
+                    console.log("[v0] ✅ Remote description set (answer)")
+
+                    // ✅ CORREÇÃO 15: Adicionar candidatos em buffer
+                    if (pendingCandidates.length > 0) {
+                      console.log("[v0] Adding", pendingCandidates.length, "buffered candidates")
+                      for (const candidate of pendingCandidates) {
+                        try {
+                          await pc.addIceCandidate(candidate)
+                        } catch (e) {
+                          console.warn("[v0] Buffered candidate failed:", e)
+                        }
+                      }
+                      pendingCandidates.length = 0
+                    }
+                  }
+                } catch (error) {
+                  console.error("[v0] ❌ Signal processing error:", error)
+                }
+              }
+            }
+
+            await processReceivedIceCandidates()
+          } catch (error) {
+            console.error("[v0] ❌ Signaling polling error:", error)
+          }
+        }
+
+        // ✅ CORREÇÃO 16: Polling com intervalo otimizado (200ms em vez de 50ms)
+        console.log("[v0] Starting signaling poll (every 200ms)")
+        signalingPollingRef.current = setInterval(processSignaling, 200)
+        await processSignaling()
+
+        // ✅ CORREÇÃO 17: CREATE OFFER (apenas se initiator)
         if (isInitiator) {
           try {
-            console.log("[v0] INITIATOR: Creating offer")
+            console.log("[v0] 🎬 INITIATOR: Creating offer")
+
             const offer = await pc.createOffer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             })
+
             await pc.setLocalDescription(offer)
+            console.log("[v0] ✅ Local description set (offer)")
 
             const { error: insertError } = await supabase.from("signaling").insert({
               room_id: roomId,
               from_user_id: userId,
               type: "offer",
               sdp: JSON.stringify(offer),
+              created_at: new Date().toISOString(),
             })
+
             if (insertError) {
-              console.error("[v0] Offer send error:", insertError)
+              console.error("[v0] ❌ Offer send error:", insertError)
             } else {
-              console.log("[v0] OFFER SENT")
+              console.log("[v0] 📤 OFFER SENT")
             }
           } catch (error) {
-            console.error("[v0] Offer creation error:", error)
+            console.error("[v0] ❌ Offer creation error:", error)
+            setVideoState("error")
+            setConnectionStatus("Erro ao criar oferta")
           }
         } else {
-          console.log("[v0] Waiting for offer...")
+          console.log("[v0] ⏳ Waiting for offer...")
         }
       } catch (error) {
-        console.error("[v0] WebRTC setup error:", error)
+        console.error("[v0] ❌ WebRTC setup error:", error)
         setVideoState("error")
         setConnectionStatus("Erro ao conectar")
       }
     },
-    [userId, handleConnectionStateChange, supabase],
+    [userId, handleConnectionStateChange, supabase, attachStreamToVideo],
   )
 
   const subscribeToQueueUpdates = useCallback(async () => {

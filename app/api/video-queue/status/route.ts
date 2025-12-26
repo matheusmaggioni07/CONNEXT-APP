@@ -17,15 +17,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Missing parameters" }, { status: 400 })
     }
 
-    const { data: userQueue, error: queueError } = await supabase
+    const { data: roomEntries, error: queueError } = await supabase
       .from("video_queue")
       .select("*")
       .eq("room_id", roomId)
-      .eq("user_id", userId)
-      .single()
+      .order("created_at", { ascending: true })
 
-    if (queueError || !userQueue) {
-      console.log("[v0] Queue entry not found for roomId:", roomId)
+    if (queueError || !roomEntries || roomEntries.length === 0) {
+      console.log("[v0] Room not found for roomId:", roomId)
       return NextResponse.json({
         status: "not_found",
         partnerId: null,
@@ -33,8 +32,19 @@ export async function POST(req: Request) {
       })
     }
 
-    if (userQueue.status === "active" && userQueue.matched_user_id) {
-      const partnerId = userQueue.matched_user_id
+    const userEntry = roomEntries.find((entry) => entry.user_id === userId)
+
+    if (!userEntry) {
+      console.log("[v0] User entry not found in room:", roomId, userId)
+      return NextResponse.json({
+        status: "not_found",
+        partnerId: null,
+        partnerProfile: null,
+      })
+    }
+
+    if (userEntry.status === "active" && userEntry.matched_user_id) {
+      const partnerId = userEntry.matched_user_id
 
       const { data: partnerProfile, error: profileError } = await supabase
         .from("profiles")
@@ -46,6 +56,7 @@ export async function POST(req: Request) {
         console.error("[v0] Error fetching partner profile:", profileError)
       }
 
+      console.log("[v0] User matched with:", partnerId)
       return NextResponse.json({
         status: "active",
         partnerId,
@@ -53,7 +64,33 @@ export async function POST(req: Request) {
       })
     }
 
+    const activeEntries = roomEntries.filter((entry) => entry.status === "active")
+    if (activeEntries.length >= 2) {
+      const partner = activeEntries.find((entry) => entry.user_id !== userId)
+
+      if (partner) {
+        const partnerId = partner.user_id
+        const { data: partnerProfile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url, city")
+          .eq("id", partnerId)
+          .single()
+
+        if (profileError) {
+          console.error("[v0] Error fetching partner profile:", profileError)
+        }
+
+        console.log("[v0] Match found - multiple active entries:", partnerId)
+        return NextResponse.json({
+          status: "active",
+          partnerId,
+          partnerProfile: partnerProfile || null,
+        })
+      }
+    }
+
     // Still waiting
+    console.log("[v0] Still waiting in room:", roomId)
     return NextResponse.json({
       status: "waiting",
       partnerId: null,
