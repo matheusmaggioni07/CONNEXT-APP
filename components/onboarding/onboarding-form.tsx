@@ -39,7 +39,6 @@ export function OnboardingForm() {
     country: "Brasil",
     bio: "",
     photo_url: "",
-    // Keep old fields for backward compatibility
     company: "",
     position: "",
     objectives: [] as string[],
@@ -59,8 +58,6 @@ export function OnboardingForm() {
       setStep(step - 1)
     }
   }
-
-  console.log("[v0] OnboardingForm rendering - Step:", step, "Total Steps:", totalSteps)
 
   const handleSubmit = async () => {
     setIsLoading(true)

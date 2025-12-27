@@ -83,7 +83,7 @@ export function ProfileCard({ user, onLike, onSkip }: ProfileCardProps) {
             )}
             {user.business_area && (
               <div className="bg-secondary/50 rounded p-2 border border-border/50">
-                <p className="text-muted-foreground">Área de Negócios</p>
+                <p className="text-muted-foreground">Área de Negócio</p>
                 <p className="text-foreground font-medium truncate">{user.business_area}</p>
               </div>
             )}

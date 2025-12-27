@@ -9,11 +9,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { createClient } from "@/lib/supabase/client"
-import { Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react"
+import { Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff, Upload } from "lucide-react"
 
 const situationOptions = ["Estudante Universitário", "Fundador/Criador", "Estagiário", "Investidor Anjo"]
-
-const journeyStageOptions = []
+const journeyStageOptions = [
+  "Ainda estou buscando uma ideia ou propósito",
+  "Já tenho uma ideia, mas não sei como tirar do papel",
+  "Estou desenvolvendo um MVP ou projeto inicial",
+  "Já tenho um site ou startup em funcionamento",
+  "Já tenho uma empresa estruturada",
+  "Trabalho em uma empresa e quero criar algo novo",
+]
+const businessAreaOptions = ["Tech", "Saúde", "Educação", "FinTech", "E-commerce", "AgriTech", "Outro"]
 
 export function RegisterForm() {
   const [step, setStep] = useState(1)
@@ -22,36 +29,94 @@ export function RegisterForm() {
     password: "",
     confirmPassword: "",
     name: "",
+    phone: "",
+    situation: "",
+    journeyStage: "",
+    businessArea: "",
+    city: "",
+    country: "",
+    bio: "",
+    photoFile: null as File | null,
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const router = useRouter()
 
-  const totalSteps = 1
+  const totalSteps = 6
 
-  const updateField = (field: string, value: string) => {
+  const updateField = (field: string, value: string | File | null) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const nextStep = () => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      updateField("photoFile", file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const validateStep = (): boolean => {
+    setError("")
+
     if (step === 1) {
       if (!formData.email || !formData.password || !formData.confirmPassword || !formData.name) {
         setError("Por favor, preencha todos os campos")
-        return
+        return false
       }
       if (formData.password !== formData.confirmPassword) {
         setError("As senhas não correspondem")
-        return
+        return false
       }
       if (formData.password.length < 8) {
         setError("A senha deve ter no mínimo 8 caracteres")
-        return
+        return false
+      }
+      if (!formData.email.includes("@")) {
+        setError("Email inválido")
+        return false
+      }
+    } else if (step === 2) {
+      if (!formData.photoFile) {
+        setError("Foto de perfil é obrigatória")
+        return false
+      }
+    } else if (step === 3) {
+      if (!formData.phone) {
+        setError("WhatsApp é obrigatório")
+        return false
+      }
+    } else if (step === 4) {
+      if (!formData.situation) {
+        setError("Selecione sua situação profissional")
+        return false
+      }
+    } else if (step === 5) {
+      if (!formData.journeyStage) {
+        setError("Selecione seu estágio de startup")
+        return false
+      }
+    } else if (step === 6) {
+      if (!formData.businessArea || !formData.city || !formData.country) {
+        setError("Por favor, preencha todos os campos obrigatórios")
+        return false
       }
     }
-    setError("")
-    setStep((prev) => prev + 1)
+
+    return true
+  }
+
+  const nextStep = () => {
+    if (validateStep()) {
+      setStep((prev) => prev + 1)
+    }
   }
 
   const prevStep = () => {
@@ -62,39 +127,20 @@ export function RegisterForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    setError("")
 
-    if (step === 1) {
-      if (!formData.email || !formData.password || !formData.confirmPassword || !formData.name) {
-        setError("Por favor, preencha todos os campos")
-        setIsLoading(false)
-        return
-      }
-      if (formData.password !== formData.confirmPassword) {
-        setError("As senhas não correspondem")
-        setIsLoading(false)
-        return
-      }
-      if (formData.password.length < 8) {
-        setError("A senha deve ter no mínimo 8 caracteres")
-        setIsLoading(false)
-        return
-      }
-      setStep(2)
+    if (!validateStep()) {
       setIsLoading(false)
       return
     }
 
-    if (!formData.email.includes("@") || !formData.email.includes(".")) {
-      setError("Email inválido")
+    if (step < totalSteps) {
+      nextStep()
       setIsLoading(false)
       return
     }
 
     try {
       const supabase = createClient()
-
-      // This ensures email confirmation links work in production
       const redirectUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://www.connextapp.com.br"}/auth/callback`
 
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
@@ -124,10 +170,23 @@ export function RegisterForm() {
         return
       }
 
+      sessionStorage.setItem(
+        "pendingOnboarding",
+        JSON.stringify({
+          phone: formData.phone,
+          situation: formData.situation,
+          journeyStage: formData.journeyStage,
+          businessArea: formData.businessArea,
+          city: formData.city,
+          country: formData.country,
+          bio: formData.bio,
+        }),
+      )
+
       setIsLoading(false)
       router.push(`/auth/verify-email?email=${encodeURIComponent(formData.email)}`)
     } catch (error) {
-      console.error("[v0] Signup error:", error)
+      console.error("Signup error:", error)
       setError("Erro ao criar conta. Tente novamente.")
       setIsLoading(false)
     }
@@ -144,7 +203,7 @@ export function RegisterForm() {
         {Array.from({ length: totalSteps }).map((_, i) => (
           <div
             key={i}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? "gradient-bg" : "bg-secondary"}`}
+            className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? "bg-gradient-to-r from-pink-500 to-orange-500" : "bg-secondary"}`}
           />
         ))}
       </div>
@@ -291,19 +350,214 @@ export function RegisterForm() {
                 </Button>
               </div>
             </div>
-
-            <Button type="submit" disabled={isLoading} className="w-full gradient-bg">
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <>
-                  Próximo
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </>
-              )}
-            </Button>
           </>
         )}
+
+        {/* Step 2: Photo */}
+        {step === 2 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">Foto de Perfil</h1>
+              <p className="text-muted-foreground text-sm mt-1">Obrigatória</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                {photoPreview ? (
+                  <img
+                    src={photoPreview || "/placeholder.svg"}
+                    alt="Preview"
+                    className="w-32 h-32 rounded-full object-cover border-2 border-primary"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-full border-2 border-dashed border-border flex items-center justify-center bg-card/50">
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <input type="file" accept="image/*" onChange={handlePhotoChange} className="w-full" />
+            </div>
+          </>
+        )}
+
+        {/* Step 3: WhatsApp */}
+        {step === 3 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">WhatsApp</h1>
+              <p className="text-muted-foreground text-sm mt-1">Usado para conexões pós-match</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-foreground">
+                  Número do WhatsApp
+                </Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="(XX) XXXXX-XXXX"
+                  value={formData.phone}
+                  onChange={(e) => updateField("phone", e.target.value)}
+                  className="bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Step 4: Situation */}
+        {step === 4 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">Situação Profissional</h1>
+              <p className="text-muted-foreground text-sm mt-1">Selecione a sua</p>
+            </div>
+
+            <div className="space-y-4">
+              {situationOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => updateField("situation", option)}
+                  className={`w-full p-3 rounded-lg border transition-colors ${
+                    formData.situation === option
+                      ? "bg-primary/10 border-primary"
+                      : "bg-card/50 border-border/50 hover:border-border"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Step 5: Journey Stage */}
+        {step === 5 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">Em que momento você se encontra?</h1>
+              <p className="text-muted-foreground text-sm mt-1">Selecione seu estágio de startup</p>
+            </div>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {journeyStageOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => updateField("journeyStage", option)}
+                  className={`w-full p-3 rounded-lg border transition-colors text-left ${
+                    formData.journeyStage === option
+                      ? "bg-primary/10 border-primary"
+                      : "bg-card/50 border-border/50 hover:border-border"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Step 6: Business Area and Location */}
+        {step === 6 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-foreground">Finalize seu perfil</h1>
+              <p className="text-muted-foreground text-sm mt-1">Área de negócio, localização e bio</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="businessArea" className="text-foreground">
+                  Área de Negócio
+                </Label>
+                <select
+                  id="businessArea"
+                  value={formData.businessArea}
+                  onChange={(e) => updateField("businessArea", e.target.value)}
+                  className="w-full p-2 rounded-lg bg-card/50 border border-border/50 text-foreground focus:border-primary outline-none"
+                >
+                  <option value="">Selecione uma área</option>
+                  {businessAreaOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="city" className="text-foreground">
+                    Cidade
+                  </Label>
+                  <Input
+                    id="city"
+                    placeholder="São Paulo"
+                    value={formData.city}
+                    onChange={(e) => updateField("city", e.target.value)}
+                    className="bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="country" className="text-foreground">
+                    País
+                  </Label>
+                  <Input
+                    id="country"
+                    placeholder="Brasil"
+                    value={formData.country}
+                    onChange={(e) => updateField("country", e.target.value)}
+                    className="bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="bio" className="text-foreground">
+                  Bio (Opcional)
+                </Label>
+                <textarea
+                  id="bio"
+                  placeholder="Conte sobre sua ideia de negócio..."
+                  value={formData.bio}
+                  onChange={(e) => updateField("bio", e.target.value)}
+                  className="w-full p-2 rounded-lg bg-card/50 border border-border/50 text-foreground placeholder:text-muted-foreground focus:border-primary outline-none resize-none h-24"
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Error Message */}
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+
+        {/* Navigation Buttons */}
+        <div className="flex gap-3">
+          {step > 1 && (
+            <Button type="button" onClick={prevStep} variant="outline" className="flex-1 bg-transparent">
+              Voltar
+            </Button>
+          )}
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className={`flex-1 ${step === totalSteps ? "bg-gradient-to-r from-pink-500 to-orange-500" : "bg-gradient-to-r from-pink-500 to-orange-500"}`}
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : step === totalSteps ? (
+              "Finalizar"
+            ) : (
+              <>
+                Próximo
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </>
+            )}
+          </Button>
+        </div>
 
         <p className="text-center text-muted-foreground text-sm">
           Já tem uma conta?{" "}
