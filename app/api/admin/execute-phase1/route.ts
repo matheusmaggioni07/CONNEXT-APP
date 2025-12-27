@@ -1,8 +1,6 @@
 import { neon } from "@neondatabase/serverless"
 import { type NextRequest, NextResponse } from "next/server"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest) {
   try {
     // Validate admin token
@@ -10,6 +8,8 @@ export async function POST(request: NextRequest) {
     if (token !== process.env.ADMIN_SQL_TOKEN) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const sql = neon(process.env.DATABASE_URL!)
 
     console.log("[v0] Starting PHASE 1 SQL execution...")
 

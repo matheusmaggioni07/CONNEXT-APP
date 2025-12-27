@@ -1,8 +1,6 @@
 import { neon } from "@neondatabase/serverless"
 import { type NextRequest, NextResponse } from "next/server"
 
-const sql = neon(process.env.DATABASE_URL || "")
-
 // Etapas SQL em ordem segura - cada uma é testada independentemente
 const SQL_PHASES = {
   phase1_enable_rls: `
@@ -106,6 +104,8 @@ export async function POST(req: NextRequest) {
     if (!phase || !SQL_PHASES[phase as keyof typeof SQL_PHASES]) {
       return NextResponse.json({ error: "Invalid phase" }, { status: 400 })
     }
+
+    const sql = neon(process.env.DATABASE_URL || "")
 
     // Executar fase específica
     const sqlStatement = SQL_PHASES[phase as keyof typeof SQL_PHASES]
