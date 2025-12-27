@@ -310,7 +310,7 @@ export function DiscoverPage() {
                     onError={() => setImageError(true)}
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-500 to-rose-500 flex items-center justify-center">
+                  <div className="w-full h-full bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
                     <span className="text-6xl md:text-8xl font-bold text-white/90">
                       {getInitials(currentProfile.full_name)}
                     </span>
@@ -442,7 +442,7 @@ export function DiscoverPage() {
                     size="lg"
                     className={`w-14 h-14 md:w-16 md:h-16 rounded-full transition-all duration-200 ${
                       likeStatus.canLike && !isLiking
-                        ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:scale-110 active:scale-95 shadow-lg shadow-pink-500/30"
+                        ? "bg-gradient-to-r from-[#ec4899] to-[#ff6b35] text-white hover:scale-110 active:scale-95 shadow-lg shadow-[#ec4899]/30"
                         : "bg-gray-500 text-gray-300 cursor-not-allowed"
                     }`}
                     onClick={handleLike}
@@ -488,10 +488,10 @@ export function DiscoverPage() {
           <div className="bg-card rounded-2xl border border-border p-6 md:p-8 max-w-md w-full text-center animate-in zoom-in-95 duration-300">
             <div className="relative mb-6">
               <div className="flex justify-center -space-x-4">
-                <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden z-10 bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center">
+                <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden z-10 bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
                   <span className="text-2xl font-bold text-white">Você</span>
                 </div>
-                <div className="w-24 h-24 rounded-full border-4 border-pink-500 overflow-hidden bg-gradient-to-br from-purple-600 to-pink-500">
+                <div className="w-24 h-24 rounded-full border-4 border-[#ec4899] overflow-hidden bg-gradient-to-br from-[#ec4899] to-[#ff6b35]">
                   {getAvatarUrl(matchedProfile) ? (
                     <img
                       src={getAvatarUrl(matchedProfile) || ""}
@@ -512,15 +512,15 @@ export function DiscoverPage() {
               </div>
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 animate-bounce">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-pink-500/30 blur-xl rounded-full animate-pulse" />
-                  <div className="bg-gradient-to-r from-pink-500 to-rose-500 rounded-full p-3 shadow-2xl shadow-pink-500/50">
+                  <div className="absolute inset-0 bg-[#ec4899]/30 blur-xl rounded-full animate-pulse" />
+                  <div className="bg-gradient-to-r from-[#ec4899] to-[#ff6b35] rounded-full p-3 shadow-2xl shadow-[#ec4899]/50">
                     <Heart className="w-8 h-8 text-white fill-white animate-pulse" />
                   </div>
                 </div>
               </div>
             </div>
 
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-500 to-rose-500 bg-clip-text text-transparent mb-2 animate-in fade-in zoom-in duration-500">
+            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#ec4899] to-[#ff6b35] bg-clip-text text-transparent mb-2 animate-in fade-in zoom-in duration-500">
               É um Match!
             </h2>
             <p className="text-muted-foreground mb-6 animate-in fade-in slide-in-from-bottom-2 duration-700">

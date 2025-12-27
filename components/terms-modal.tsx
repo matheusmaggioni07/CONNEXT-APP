@@ -44,7 +44,7 @@ export function TermsModal({ userId, onAccept }: TermsModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-card border border-border rounded-2xl max-w-lg w-full p-6 shadow-2xl my-auto max-h-[90vh] overflow-y-auto flex flex-col">
         <div className="text-center mb-4">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 rounded-full bg-gradient-to-r from-primary to-pink-500 flex items-center justify-center">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 rounded-full bg-gradient-to-r from-primary to-[#ff6b35] flex items-center justify-center">
             <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-foreground">Bem-vindo ao Connext!</h2>
@@ -107,7 +107,7 @@ export function TermsModal({ userId, onAccept }: TermsModalProps) {
         <Button
           onClick={handleAccept}
           disabled={!accepted || loading}
-          className="w-full bg-gradient-to-r from-primary to-pink-500 hover:opacity-90 flex-shrink-0 py-3"
+          className="w-full bg-gradient-to-r from-primary to-[#ff6b35] hover:opacity-90 flex-shrink-0 py-3"
           size="lg"
         >
           {loading ? (

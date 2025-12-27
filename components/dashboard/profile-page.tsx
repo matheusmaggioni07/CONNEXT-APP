@@ -28,6 +28,9 @@ export function ProfilePage() {
     position: "",
     bio: "",
     city: "",
+    entrepreneur_type: "", // estudante, founder, estagiário, investor, mentor
+    startup_stage: "", // ideia, MVP, validação, crescimento
+    business_area: "", // tech, saúde, educação, etc
   })
 
   useEffect(() => {
@@ -43,6 +46,9 @@ export function ProfilePage() {
           position: profileData.position || "",
           bio: profileData.bio || "",
           city: profileData.city || "",
+          entrepreneur_type: profileData.entrepreneur_type || "",
+          startup_stage: profileData.startup_stage || "",
+          business_area: profileData.business_area || "",
         })
       }
       setIsLoading(false)
@@ -180,7 +186,7 @@ export function ProfilePage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-pink-500">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ec4899] to-[#ff6b35]">
                     <User className="w-16 h-16 text-white/50" />
                   </div>
                 )}
@@ -256,6 +262,103 @@ export function ProfilePage() {
             </div>
 
             <div>
+              <Label className="text-muted-foreground">Tipo de Empreendedor</Label>
+              {isEditing ? (
+                <select
+                  value={formData.entrepreneur_type}
+                  onChange={(e) => setFormData({ ...formData, entrepreneur_type: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 bg-input border border-border rounded-md text-foreground"
+                >
+                  <option value="">Selecione um tipo</option>
+                  <option value="estudante">Estudante Universitário</option>
+                  <option value="founder">Fundador/Criador de Startup</option>
+                  <option value="estagiario">Estagiário</option>
+                  <option value="investor">Investidor Anjo</option>
+                  <option value="mentor">Mentor</option>
+                </select>
+              ) : (
+                <p className="text-foreground mt-1">
+                  {formData.entrepreneur_type === "estudante"
+                    ? "Estudante Universitário"
+                    : formData.entrepreneur_type === "founder"
+                      ? "Fundador/Criador de Startup"
+                      : formData.entrepreneur_type === "estagiario"
+                        ? "Estagiário"
+                        : formData.entrepreneur_type === "investor"
+                          ? "Investidor Anjo"
+                          : formData.entrepreneur_type === "mentor"
+                            ? "Mentor"
+                            : "-"}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Estágio do Projeto/Startup</Label>
+              {isEditing ? (
+                <select
+                  value={formData.startup_stage}
+                  onChange={(e) => setFormData({ ...formData, startup_stage: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 bg-input border border-border rounded-md text-foreground"
+                >
+                  <option value="">Selecione um estágio</option>
+                  <option value="ideia">Apenas uma Ideia</option>
+                  <option value="mvp">MVP em Desenvolvimento</option>
+                  <option value="validacao">Validação</option>
+                  <option value="crescimento">Crescimento</option>
+                </select>
+              ) : (
+                <p className="text-foreground mt-1">
+                  {formData.startup_stage === "ideia"
+                    ? "Apenas uma Ideia"
+                    : formData.startup_stage === "mvp"
+                      ? "MVP em Desenvolvimento"
+                      : formData.startup_stage === "validacao"
+                        ? "Validação"
+                        : formData.startup_stage === "crescimento"
+                          ? "Crescimento"
+                          : "-"}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Área de Negócio</Label>
+              {isEditing ? (
+                <select
+                  value={formData.business_area}
+                  onChange={(e) => setFormData({ ...formData, business_area: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 bg-input border border-border rounded-md text-foreground"
+                >
+                  <option value="">Selecione uma área</option>
+                  <option value="tech">Tecnologia</option>
+                  <option value="saude">Saúde</option>
+                  <option value="educacao">Educação</option>
+                  <option value="fintech">FinTech</option>
+                  <option value="ecommerce">E-commerce</option>
+                  <option value="agritech">AgriTech</option>
+                  <option value="outra">Outra</option>
+                </select>
+              ) : (
+                <p className="text-foreground mt-1">
+                  {formData.business_area === "tech"
+                    ? "Tecnologia"
+                    : formData.business_area === "saude"
+                      ? "Saúde"
+                      : formData.business_area === "educacao"
+                        ? "Educação"
+                        : formData.business_area === "fintech"
+                          ? "FinTech"
+                          : formData.business_area === "ecommerce"
+                            ? "E-commerce"
+                            : formData.business_area === "agritech"
+                              ? "AgriTech"
+                              : "-"}
+                </p>
+              )}
+            </div>
+
+            <div>
               <Label className="text-muted-foreground">Telefone / WhatsApp</Label>
               {isEditing ? (
                 <Input
@@ -270,7 +373,7 @@ export function ProfilePage() {
             </div>
 
             <div>
-              <Label className="text-muted-foreground">Empresa</Label>
+              <Label className="text-muted-foreground">Empresa / Startup</Label>
               {isEditing ? (
                 <Input
                   value={formData.company}

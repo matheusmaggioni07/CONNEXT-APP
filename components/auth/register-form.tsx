@@ -7,40 +7,13 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { ConnextLogo } from "@/components/ui/connext-logo"
 import { createClient } from "@/lib/supabase/client"
-import {
-  Mail,
-  Lock,
-  User,
-  Building2,
-  Briefcase,
-  MapPin,
-  Phone,
-  ArrowRight,
-  ArrowLeft,
-  Loader2,
-  Eye,
-  EyeOff,
-} from "lucide-react"
+import { Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react"
 
-const situationOptions = [
-  "Trabalhando em empresa",
-  "Empreendedor(a)",
-  "Freelancer/Autônomo",
-  "Estudante",
-  "Investidor(a)",
-]
+const situationOptions = ["Estudante Universitário", "Fundador/Criador", "Estagiário", "Investidor Anjo"]
 
-const journeyStageOptions = [
-  "Validando minha ideia",
-  "Construindo meu MVP",
-  "Já tenho tração",
-  "Buscando investimento",
-  "Escalando meu negócio",
-  "Quero investir em negócios",
-]
+const journeyStageOptions = []
 
 export function RegisterForm() {
   const [step, setStep] = useState(1)
@@ -49,14 +22,6 @@ export function RegisterForm() {
     password: "",
     confirmPassword: "",
     name: "",
-    phone: "",
-    company: "",
-    position: "",
-    situation: "", // Nova situação profissional simplificada
-    journeyStage: "", // Novo campo de etapa da jornada
-    bio: "",
-    city: "",
-    country: "Brasil",
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -64,7 +29,7 @@ export function RegisterForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const router = useRouter()
 
-  const totalSteps = 4
+  const totalSteps = 1
 
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -82,28 +47,6 @@ export function RegisterForm() {
       }
       if (formData.password.length < 8) {
         setError("A senha deve ter no mínimo 8 caracteres")
-        return
-      }
-    }
-    if (step === 2) {
-      if (!formData.name || !formData.phone || !formData.situation) {
-        setError("Preencha os campos obrigatórios")
-        return
-      }
-      if (formData.situation === "Trabalhando em empresa" && (!formData.company || !formData.position)) {
-        setError("Para quem trabalha em empresa, informe o cargo e a empresa")
-        return
-      }
-    }
-    if (step === 3) {
-      if (!formData.journeyStage) {
-        setError("Selecione em que momento da sua jornada você está")
-        return
-      }
-    }
-    if (step === 4) {
-      if (!formData.city) {
-        setError("Informe sua cidade")
         return
       }
     }
@@ -179,27 +122,6 @@ export function RegisterForm() {
         setError("Erro ao criar conta. Tente novamente.")
         setIsLoading(false)
         return
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          phone: formData.phone,
-          company: formData.company || null,
-          position: formData.position || null,
-          situation: formData.situation,
-          journey_stage: formData.journeyStage,
-          city: formData.city,
-          country: formData.country,
-          bio: formData.bio || null,
-          onboarding_completed: true,
-        })
-        .eq("id", authData.user.id)
-
-      if (profileError) {
-        console.error("[v0] Profile update error:", profileError)
       }
 
       setIsLoading(false)
@@ -369,234 +291,21 @@ export function RegisterForm() {
                 </Button>
               </div>
             </div>
-          </>
-        )}
 
-        {/* Step 2: Situação Profissional e Contato */}
-        {step === 2 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Situação Profissional</h1>
-              <p className="text-muted-foreground text-sm mt-1">Selecione sua situação atual.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-foreground">
-                  WhatsApp *
-                </Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+55 11 99999-9999"
-                    value={formData.phone}
-                    onChange={(e) => updateField("phone", e.target.value)}
-                    className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                    required
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Usado para conexões após match</p>
-              </div>
-
-              <div className="space-y-3">
-                <Label className="text-foreground">Situação Profissional *</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  {situationOptions.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => updateField("situation", option)}
-                      className={`p-4 rounded-xl border-2 transition-all text-left ${
-                        formData.situation === option
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border/50 bg-card/30 text-muted-foreground hover:border-primary/50 hover:bg-card/50"
-                      }`}
-                    >
-                      <span className="font-medium text-sm">{option}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {formData.situation === "Trabalhando em empresa" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="position" className="text-foreground">
-                      Cargo *
-                    </Label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="position"
-                        placeholder="Ex: Desenvolvedor Full Stack"
-                        value={formData.position}
-                        onChange={(e) => updateField("position", e.target.value)}
-                        className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="company" className="text-foreground">
-                      Empresa *
-                    </Label>
-                    <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <Input
-                        id="company"
-                        placeholder="Nome da empresa"
-                        value={formData.company}
-                        onChange={(e) => updateField("company", e.target.value)}
-                        className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                        required
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {formData.situation === "Empreendedor(a)" && (
-                <div className="space-y-2">
-                  <Label htmlFor="company" className="text-foreground">
-                    Nome da Empresa (opcional)
-                  </Label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <Input
-                      id="company"
-                      placeholder="Nome da sua empresa"
-                      value={formData.company}
-                      onChange={(e) => updateField("company", e.target.value)}
-                      className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* Step 3: Etapa da Jornada */}
-        {step === 3 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">O que você está buscando?</h1>
-              <p className="text-muted-foreground text-sm mt-1">Selecione em que momento da sua jornada você está.</p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-3">
-                {journeyStageOptions.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => updateField("journeyStage", option)}
-                    className={`p-4 rounded-xl border-2 transition-all text-left ${
-                      formData.journeyStage === option
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border/50 bg-card/30 text-muted-foreground hover:border-primary/50 hover:bg-card/50"
-                    }`}
-                  >
-                    <span className="font-medium">{option}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Step 4: Localização e Bio */}
-        {step === 4 && (
-          <>
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-foreground">Finalize seu perfil</h1>
-              <p className="text-muted-foreground text-sm mt-1">Última etapa para começar a conectar.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="city" className="text-foreground">
-                  Cidade *
-                </Label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="city"
-                    placeholder="Sua cidade"
-                    value={formData.city}
-                    onChange={(e) => updateField("city", e.target.value)}
-                    className="pl-10 bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bio" className="text-foreground">
-                  Bio (opcional)
-                </Label>
-                <Textarea
-                  id="bio"
-                  placeholder="Conte um pouco sobre você e o que busca no Connext. Networking é sobre conexões genuínas - seja autêntico!"
-                  value={formData.bio}
-                  onChange={(e) => updateField("bio", e.target.value)}
-                  className="min-h-[120px] bg-card/50 border-border/50 text-foreground placeholder:text-muted-foreground backdrop-blur-sm focus:border-primary resize-none"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Dica: Conte sobre seus objetivos, projetos e o que te motiva!
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {error && (
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3">
-          {step > 1 && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={prevStep}
-              disabled={isLoading}
-              className="flex-1 bg-card/50 border-border/50 backdrop-blur-sm"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Voltar
-            </Button>
-          )}
-          {step < totalSteps ? (
-            <Button
-              type="button"
-              onClick={nextStep}
-              disabled={isLoading}
-              className="flex-1 gradient-bg text-white hover:opacity-90"
-            >
-              Próximo
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          ) : (
-            <Button type="submit" disabled={isLoading} className="flex-1 gradient-bg text-white hover:opacity-90">
+            <Button type="submit" disabled={isLoading} className="w-full gradient-bg">
               {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Criando conta...
-                </>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
-                "Criar conta"
+                <>
+                  Próximo
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </>
               )}
             </Button>
-          )}
-        </div>
+          </>
+        )}
 
-        <p className="text-center text-sm text-muted-foreground">
+        <p className="text-center text-muted-foreground text-sm">
           Já tem uma conta?{" "}
           <Link href="/login" className="text-primary hover:underline font-medium">
             Faça login

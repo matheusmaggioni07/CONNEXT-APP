@@ -21,3 +21,7 @@ export const audioConstraints: MediaTrackConstraints = {
   sampleRate: { ideal: 48000 },
   channelCount: { ideal: 1 },
 }
+
+export function generateCandidateHash(candidate: RTCIceCandidateInit): string {
+  return `${candidate.candidate}_${candidate.sdpMLineIndex}_${candidate.sdpMid}`
+}

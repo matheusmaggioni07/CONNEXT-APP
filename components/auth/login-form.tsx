@@ -155,7 +155,7 @@ export function LoginForm() {
 
             <Button
               type="submit"
-              className="w-full gradient-bg text-primary-foreground hover:opacity-90 glow-orange"
+              className="w-full bg-gradient-to-r from-[#ec4899] to-[#ff6b35] text-white hover:opacity-90 font-bold"
               disabled={isLoading}
             >
               {isLoading ? "Entrando..." : "Entrar"}
@@ -178,7 +178,7 @@ export function LoginForm() {
       {/* Right Side - Video Call Mockup */}
       <div className="hidden lg:flex flex-1 items-center justify-center p-8 relative">
         {/* Background glow */}
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 via-transparent to-purple-500/10" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#ff6b35]/10 via-transparent to-[#ec4899]/10" />
 
         <div className="relative w-full max-w-md">
           {/* Main Card - Video Call Interface */}
@@ -196,10 +196,10 @@ export function LoginForm() {
             <div className="bg-[#1a1a2e] px-4 py-3 flex items-center justify-between border-b border-white/5">
               <span className="text-gray-400 text-sm">Video Call</span>
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center text-white text-xs font-bold">
                   A
                 </div>
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] flex items-center justify-center text-white text-xs font-bold">
                   M
                 </div>
               </div>
@@ -211,10 +211,10 @@ export function LoginForm() {
                 {[...Array(9)].map((_, i) => (
                   <div
                     key={i}
-                    className={`aspect-square rounded-xl ${i === 4 ? "bg-gradient-to-br from-purple-500/30 to-pink-500/30 border-2 border-purple-500/50 flex items-center justify-center" : "bg-[#1a1a2e]/80"}`}
+                    className={`aspect-square rounded-xl ${i === 4 ? "bg-gradient-to-br from-[#ec4899]/30 to-[#ff6b35]/30 border-2 border-[#ec4899]/50 flex items-center justify-center" : "bg-[#1a1a2e]/80"}`}
                   >
                     {i === 4 && (
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
                         <Phone className="w-6 h-6 text-white" />
                       </div>
                     )}
@@ -227,7 +227,7 @@ export function LoginForm() {
             <div className="px-6 pb-6">
               <div className="flex items-center justify-between bg-[#1a1a2e]/50 rounded-2xl p-4 border border-white/5">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] p-0.5">
                     <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center text-white font-bold">
                       AR
                     </div>
@@ -237,7 +237,7 @@ export function LoginForm() {
                     <p className="text-gray-400 text-sm">CFO @ FinancePlus</p>
                   </div>
                 </div>
-                <button className="bg-gradient-to-r from-orange-500 to-pink-500 text-white px-5 py-2 rounded-full text-sm font-medium">
+                <button className="bg-gradient-to-r from-[#ff6b35] to-[#ec4899] text-white px-5 py-2 rounded-full text-sm font-medium">
                   Conectar
                 </button>
               </div>
@@ -248,14 +248,14 @@ export function LoginForm() {
           <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-64">
             <div className="relative bg-[#1a1a2e] rounded-2xl p-4 border border-purple-500/30 shadow-xl shadow-purple-500/10">
               {/* Gradient glow */}
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-sm -z-10" />
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-[#ec4899]/20 via-[#ff6b35]/20 to-[#ec4899]/20 rounded-2xl blur-sm -z-10" />
 
               <div className="flex items-center gap-3">
                 {/* Avatar with notification */}
                 <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ec4899] to-[#ff6b35] p-0.5">
                     <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center">
-                      <Zap className="w-5 h-5 text-orange-400" />
+                      <Zap className="w-5 h-5 text-[#ff6b35]" />
                     </div>
                   </div>
                   <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-[#1a1a2e]">

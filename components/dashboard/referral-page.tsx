@@ -78,7 +78,7 @@ export function ReferralPage() {
       <div className="max-w-3xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] flex items-center justify-center">
             <Gift className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl md:text-4xl font-bold mb-2">

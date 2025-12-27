@@ -61,6 +61,7 @@ export async function updateProfile(data: Partial<Profile>) {
   if (data.lookingFor !== undefined) dbData.looking_for = data.lookingFor
   if (data.avatarUrl !== undefined) dbData.avatar_url = data.avatarUrl
   if (data.objectives !== undefined) dbData.objectives = data.objectives // Added objectives field for new onboarding flow ETAPA 4
+  if (data.business_area !== undefined) dbData.business_area = data.business_area // Added business_area field
 
   const { error } = await supabase.from("profiles").update(dbData).eq("id", user.id)
 
@@ -78,11 +79,13 @@ export async function completeOnboarding(data: {
   situation: string
   company?: string
   position?: string
-  objectives?: string[] // Added objectives field for new onboarding flow ETAPA 4
+  objectives?: string[]
   journey_stage: string
   city: string
   country: string
   bio?: string
+  photo_url?: string
+  business_area?: string
 }) {
   const supabase = await createClient()
   const {
@@ -100,15 +103,16 @@ export async function completeOnboarding(data: {
       situation: data.situation,
       company: data.company || null,
       position: data.position || null,
-      objectives: data.objectives || [], // Persist objectives array
+      objectives: data.objectives || [],
       journey_stage: data.journey_stage,
+      industry: data.business_area || null,
       city: data.city,
       country: data.country,
       bio: data.bio || null,
-      interests: [], // Empty array - removed old interests
-      looking_for: [], // Empty array - removed old looking_for
-      industry: null, // Null - removed old industry
-      seniority: null, // Null - removed old seniority
+      avatar_url: data.photo_url || null,
+      interests: [],
+      looking_for: [],
+      seniority: null,
       onboarding_completed: true,
       updated_at: new Date().toISOString(),
     })

@@ -249,23 +249,24 @@ export function LandingPage() {
 
               <div className="inline-flex items-center gap-2 bg-primary/15 px-4 py-2 rounded-full mb-6 border border-primary/30">
                 <Zap className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium bg-gradient-to-r from-primary via-pink-400 to-orange-400 bg-clip-text text-transparent">
-                  Primeira plataforma de networking profissional via vídeo
+                <span className="text-sm font-medium bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                  Comunidade de jovens empreendedores em crescimento exponencial
                 </span>
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.1] mb-6 text-balance">
-                Networking profissional via <span className="gradient-text">vídeo em tempo real</span>
+                Conecte-se com <span className="gradient-text">jovens empreendedores</span> que pensam como você
               </h1>
 
               <p className="text-lg lg:text-xl text-muted-foreground mb-4 leading-relaxed max-w-xl">
-                Conecte-se instantaneamente com empreendedores da sua área. Match por interesses, filtros de
-                localização, videochamadas, integração com WhatsApp e criação de sites com IA.
+                Seja estudante universitário, criador de MVP, estagiário ou sonhador. Conecte instantaneamente com
+                empreendedores da sua mentalidade. Match por interesses, videochamadas em tempo real e crie sites para
+                suas ideias com IA.
               </p>
 
               <p className="text-base text-primary/80 mb-8 leading-relaxed max-w-xl flex items-center gap-2">
                 <Code2 className="w-5 h-5" />
-                <span>Novo: Crie sites profissionais com o Connext Builder</span>
+                <span>Novo: Crie landing pages para suas startups com Connext Builder</span>
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-10">
@@ -313,7 +314,7 @@ export function LandingPage() {
 
             {/* Right Column - Hero Visual */}
             <div className="relative lg:pl-8">
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 via-transparent to-purple-500/20 rounded-3xl blur-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#ff6b35]/20 via-transparent to-[#ec4899]/20 rounded-3xl blur-3xl" />
               <div className="relative">
                 {/* Main Card - Video Call Interface */}
                 <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#0d0d14]">
@@ -330,10 +331,10 @@ export function LandingPage() {
                   <div className="bg-[#1a1a2e] px-4 py-3 flex items-center justify-between border-b border-white/5">
                     <span className="text-gray-400 text-sm">Video Call</span>
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] flex items-center justify-center text-white text-xs font-bold">
                         A
                       </div>
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center text-white text-xs font-bold">
                         M
                       </div>
                     </div>
@@ -345,10 +346,10 @@ export function LandingPage() {
                       {[...Array(9)].map((_, i) => (
                         <div
                           key={i}
-                          className={`aspect-square rounded-xl ${i === 4 ? "bg-gradient-to-br from-purple-500/30 to-pink-500/30 border-2 border-purple-500/50 flex items-center justify-center" : "bg-[#1a1a2e]/80"}`}
+                          className={`aspect-square rounded-xl ${i === 4 ? "bg-gradient-to-br from-[#ec4899]/30 to-[#ff6b35]/30 border-2 border-[#ec4899]/50 flex items-center justify-center" : "bg-[#1a1a2e]/80"}`}
                         >
                           {i === 4 && (
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
                               <Phone className="w-6 h-6 text-white" />
                             </div>
                           )}
@@ -361,7 +362,7 @@ export function LandingPage() {
                   <div className="px-6 pb-6">
                     <div className="flex items-center justify-between bg-[#1a1a2e]/50 rounded-2xl p-4 border border-white/5">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] p-0.5">
                           <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center text-white font-bold">
                             AR
                           </div>
@@ -371,7 +372,7 @@ export function LandingPage() {
                           <p className="text-gray-400 text-sm">CFO @ FinancePlus</p>
                         </div>
                       </div>
-                      <button className="bg-gradient-to-r from-orange-500 to-pink-500 text-white px-5 py-2 rounded-full text-sm font-medium">
+                      <button className="bg-gradient-to-r from-[#ff6b35] to-[#ec4899] text-white px-5 py-2 rounded-full text-sm font-medium">
                         Conectar
                       </button>
                     </div>
@@ -380,13 +381,13 @@ export function LandingPage() {
 
                 {/* Floating Badge - Novo Match */}
                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-64">
-                  <div className="relative bg-[#1a1a2e] rounded-2xl p-4 border border-purple-500/30 shadow-xl shadow-purple-500/10">
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-sm -z-10" />
+                  <div className="relative bg-[#1a1a2e] rounded-2xl p-4 border border-[#ec4899]/30 shadow-xl shadow-[#ec4899]/10">
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-[#ff6b35]/20 via-[#ec4899]/20 to-[#ff6b35]/20 rounded-2xl blur-sm -z-10" />
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 p-0.5">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] p-0.5">
                           <div className="w-full h-full rounded-full bg-[#1a1a2e] flex items-center justify-center">
-                            <Zap className="w-5 h-5 text-orange-400" />
+                            <Zap className="w-5 h-5 text-[#ff6b35]" />
                           </div>
                         </div>
                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-[#1a1a2e]">
@@ -449,12 +450,12 @@ export function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Builder Demo Visual */}
             <div className="relative order-2 lg:order-1">
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 via-transparent to-pink-500/20 rounded-3xl blur-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#ec4899]/20 via-transparent to-[#ff6b35]/20 rounded-3xl blur-3xl" />
               <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#0d0d14]">
                 {/* Builder Header */}
                 <div className="bg-[#1a1a2e] px-4 py-3 flex items-center justify-between border-b border-white/5">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
                       <Sparkles className="w-4 h-4 text-white" />
                     </div>
                     <span className="text-white font-semibold">Connext Builder</span>
@@ -470,7 +471,7 @@ export function LandingPage() {
                 <div className="p-4 min-h-[200px] bg-[#0d0d14]">
                   {/* User Message */}
                   <div className="flex gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ff6b35] to-[#ec4899] flex items-center justify-center text-white text-xs font-bold shrink-0">
                       U
                     </div>
                     <div className="bg-[#1a1a2e] rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
@@ -484,7 +485,7 @@ export function LandingPage() {
                   {/* AI Response */}
                   {builderStep >= 1 && (
                     <div className="flex gap-3 justify-end mb-4">
-                      <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] border border-purple-500/30">
+                      <div className="bg-gradient-to-r from-[#ec4899]/20 to-[#ff6b35]/20 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] border border-[#ec4899]/30">
                         <div className="flex items-center gap-2 mb-2">
                           <Sparkles className="w-4 h-4 text-purple-400" />
                           <span className="text-purple-400 text-xs font-medium">Gerando código...</span>
@@ -508,7 +509,7 @@ export function LandingPage() {
                           </div>
                         )}
                       </div>
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center shrink-0">
                         <Sparkles className="w-4 h-4 text-white" />
                       </div>
                     </div>
@@ -529,10 +530,10 @@ export function LandingPage() {
                       </div>
                       <div className="bg-gradient-to-br from-[#030014] to-[#1a1a2e] rounded-lg p-4 min-h-[100px]">
                         <div className="text-center">
-                          <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500"></div>
-                          <div className="h-3 w-32 mx-auto bg-gradient-to-r from-purple-400 to-pink-400 rounded mb-2"></div>
+                          <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-gradient-to-br from-[#ec4899] to-[#ff6b35]"></div>
+                          <div className="h-3 w-32 mx-auto bg-gradient-to-r from-[#ec4899] to-[#ff6b35] rounded mb-2"></div>
                           <div className="h-2 w-48 mx-auto bg-gray-600 rounded mb-3"></div>
-                          <div className="h-6 w-24 mx-auto bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
+                          <div className="h-6 w-24 mx-auto bg-gradient-to-r from-[#ec4899] to-[#ff6b35] rounded-full"></div>
                         </div>
                       </div>
                     </div>
@@ -544,29 +545,31 @@ export function LandingPage() {
             {/* Builder Features */}
             <div className="order-1 lg:order-2">
               <h3 className="text-2xl font-bold mb-6">
-                Do prompt ao site publicado em <span className="gradient-text">30 segundos</span>
+                De uma ideia para <span className="gradient-text">landing page funcional</span> em 30 segundos
               </h3>
               <div className="space-y-4">
                 {[
                   {
                     icon: Wand2,
-                    title: "Descreva sua ideia",
-                    description: "Digite o que você quer criar e a IA faz o resto automaticamente.",
+                    title: "Descreva seu MVP",
+                    description:
+                      "Digite a ideia da sua startup e a IA cria uma landing page profissional automaticamente.",
                   },
                   {
                     icon: Eye,
                     title: "Preview ao vivo",
-                    description: "Veja seu site sendo criado em tempo real com visualização instantânea.",
+                    description: "Veja sua página sendo criada em tempo real. Personalize cores, conteúdo e layout.",
                   },
                   {
                     icon: Layers,
-                    title: "Sites profissionais",
-                    description: "Designs modernos com gradientes, animações e layouts responsivos.",
+                    title: "Websites de startup",
+                    description:
+                      "Designs modernos com gradientes, seções de CTA e layouts responsivos para capturar emails.",
                   },
                   {
                     icon: Rocket,
                     title: "Publique em 1 clique",
-                    description: "Exporte o código ou publique diretamente na web.",
+                    description: "Exporte o código ou publique diretamente. Pronto para mostrar aos investidores.",
                   },
                 ].map((feature, i) => (
                   <div
@@ -602,10 +605,11 @@ export function LandingPage() {
           <div className="text-center mb-16">
             <span className="text-sm font-medium text-primary mb-4 block">RECURSOS</span>
             <h2 className="text-3xl lg:text-5xl font-bold mb-4">
-              Tudo que você precisa para <span className="gradient-text">conectar e criar</span>
+              Tudo que você precisa para <span className="gradient-text">conectar, criar e crescer</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Encontre empreendedores compatíveis, faça videochamadas e crie sites profissionais com IA.
+              Encontre co-fundadores, mentores e investidores anjos. Faça videochamadas com mentalidade empreendedora e
+              crie sites para suas ideias.
             </p>
           </div>
 
@@ -614,34 +618,35 @@ export function LandingPage() {
               {
                 icon: Video,
                 title: "Videochamadas HD",
-                description: "Conexões em vídeo de alta qualidade com apenas um clique. Sem downloads necessários.",
+                description:
+                  "Connections ao vivo com jovens empreendedores. Sem downloads. Bate-papo direto sobre ideias.",
               },
               {
                 icon: Users,
-                title: "Match Inteligente",
+                title: "Match por Mentalidade",
                 description:
-                  "Algoritmo avançado que conecta você com empreendedores baseado em interesses e objetivos.",
+                  "Algoritmo que conecta você com empreendedores baseado em estágio da startup, área de negócio e objetivos.",
               },
               {
                 icon: MessageCircle,
                 title: "WhatsApp Integrado",
-                description: "Após o match, continue a conversa no WhatsApp para fechar negócios rapidamente.",
+                description: "Após o match, continue conversando no WhatsApp para fechar parcerias rapidamente.",
               },
               {
                 icon: Code2,
                 title: "Connext Builder",
                 description:
-                  "Crie sites profissionais do zero usando IA. Descreva sua ideia e tenha um site em segundos.",
+                  "Crie landing pages para suas startups usando IA. Mostre sua ideia aos co-fundadores e investidores.",
               },
               {
                 icon: Globe,
-                title: "Filtro Geográfico",
-                description: "Encontre empreendedores na sua cidade ou conecte-se globalmente.",
+                title: "Comunidade Global",
+                description: "Conecte-se com empreendedores da sua cidade ou da comunidade internacional.",
               },
               {
                 icon: Shield,
                 title: "Segurança Total",
-                description: "Criptografia de ponta a ponta em videochamadas e dados protegidos.",
+                description: "Criptografia ponta a ponta. Seus dados e ideias estão completamente protegidas.",
               },
             ].map((feature, index) => (
               <div
@@ -674,33 +679,32 @@ export function LandingPage() {
             {[
               {
                 step: "01",
-                title: "Crie seu perfil",
-                description: "Cadastre-se e configure seus interesses e objetivos profissionais.",
+                title: "Crie seu perfil empreendedor",
+                description:
+                  "Configure seus interesses, área de negócio, estágio da startup e mentalidade empreendedora.",
                 icon: Briefcase,
               },
               {
                 step: "02",
-                title: "Conecte-se",
-                description: "Encontre profissionais compatíveis e inicie videochamadas instantâneas.",
+                title: "Encontre seus parceiros",
+                description: "Match com co-fundadores, investidores anjos e mentores da comunidade.",
                 icon: Users,
               },
               {
                 step: "03",
-                title: "Crie suas ideias",
-                description: "Use o Connext Builder para transformar ideias em sites reais com IA.",
+                title: "Crie sua landing page",
+                description: "Use o Builder para transformar sua ideia em site funcional com IA.",
                 icon: Code2,
               },
               {
                 step: "04",
-                title: "Execute projetos",
-                description: "Transforme conexões em negócios e publique seus projetos.",
+                title: "Execute seu MVP",
+                description: "Transforme conexões em parcerias e publique seu projeto.",
                 icon: TrendingUp,
               },
             ].map((item, index) => (
               <div key={index} className="relative text-center">
-                {index < 3 && (
-                  <div className="hidden md:block absolute top-16 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-primary/50 to-secondary/50" />
-                )}
+                <div className="hidden md:block absolute top-16 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-primary via-accent to-primary" />
                 <div className="relative z-10 w-16 h-16 rounded-2xl gradient-bg mx-auto mb-6 flex items-center justify-center">
                   <item.icon className="w-7 h-7 text-white" />
                 </div>
@@ -721,10 +725,10 @@ export function LandingPage() {
           <div className="text-center mb-16">
             <span className="text-sm font-medium text-primary mb-4 block">PLANOS</span>
             <h2 className="text-3xl lg:text-5xl font-bold mb-4">
-              Escolha o plano <span className="gradient-text">ideal</span>
+              Planos para sua <span className="gradient-text">jornada empreendedora</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-              Comece gratuitamente e faça upgrade quando precisar de mais recursos.
+              Comece gratuitamente e escale seu negócio com planos premium.
             </p>
           </div>
 
@@ -745,10 +749,10 @@ export function LandingPage() {
                 {[
                   "5 videochamadas por dia",
                   "10 matches por dia",
-                  "Perfil básico",
+                  "Perfil empreendedor básico",
                   "20 créditos/mês no Builder",
                   "Integração WhatsApp",
-                  "Filtro por localização",
+                  "Filtro por localização e tipo de startup",
                 ].map((feature, i) => (
                   <li key={i} className="flex items-center gap-3">
                     <Check className="w-5 h-5 text-primary shrink-0" />
@@ -772,9 +776,7 @@ export function LandingPage() {
 
               <div className="mb-6">
                 <h3 className="text-xl font-semibold mb-2">Pro</h3>
-                <p className="text-muted-foreground text-sm">
-                  Para empreendedores que levam networking e criação a sério
-                </p>
+                <p className="text-muted-foreground text-sm">Para empreendedores que levam suas ideias a sério</p>
               </div>
 
               <div className="mb-6">
@@ -786,12 +788,12 @@ export function LandingPage() {
                 {[
                   "Videochamadas ilimitadas",
                   "Matches ilimitados",
-                  "Perfil verificado com selo",
-                  "Builder ilimitado",
-                  "Publicação de sites",
+                  "Perfil empreendedor verificado",
+                  "Builder ilimitado - sites para suas startups",
+                  "Publicação de landing pages",
                   "Prioridade na fila de matching",
-                  "Filtros avançados",
-                  "Suporte prioritário 24/7",
+                  "Filtros avançados (área, estágio, localização)",
+                  "Mentoria comunitária 24/7",
                   "Sem anúncios",
                 ].map((feature, i) => (
                   <li key={i} className="flex items-center gap-3">
@@ -890,7 +892,7 @@ export function LandingPage() {
               },
               {
                 q: "As videochamadas são seguras?",
-                a: "Absolutamente! Usamos criptografia de ponta a ponta em todas as videochamadas. Suas conversas são 100% privadas e seguras. A qualidade é HD e não precisa baixar nenhum aplicativo.",
+                a: "Absolutamente! Usamos criptografia de ponta a ponta em todas as videochamadas. Seus dados e ideias são completamente protegidas.",
               },
               {
                 q: "Como funciona a integração com WhatsApp?",

@@ -5,11 +5,11 @@ export interface Profile {
   phone: string | null
   company: string | null
   position: string | null
-  situation: string | null // Added situation field for professional status
+  situation: string | null
   seniority: string | null
   industry: string | null
   journey_stage?: string | null
-  objectives?: string[] // Added objectives field for new onboarding flow (ETAPA 4)
+  objectives?: string[]
   city: string | null
   country: string
   bio: string | null
@@ -60,7 +60,6 @@ export interface Subscription {
   updated_at: string
 }
 
-// Legacy User type for compatibility
 export interface User {
   id: string
   email: string
@@ -68,8 +67,10 @@ export interface User {
   phone: string
   company: string
   position: string
+  situation: string
   industry: string
   journey_stage?: string
+  objectives?: string[]
   interests: string[]
   bio: string
   avatar: string
@@ -84,7 +85,6 @@ export interface User {
   lastActive: Date
 }
 
-// Convert Profile to User format
 export function profileToUser(profile: Profile, isOnline = false): User {
   return {
     id: profile.id,
@@ -93,6 +93,7 @@ export function profileToUser(profile: Profile, isOnline = false): User {
     phone: profile.phone || "",
     company: profile.company || "",
     position: profile.position || "",
+    situation: profile.situation || "",
     industry: profile.industry || "",
     journey_stage: profile.journey_stage || "",
     objectives: profile.objectives || [],

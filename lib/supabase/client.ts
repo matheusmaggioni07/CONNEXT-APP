@@ -6,14 +6,12 @@ function saveSessionToCookies(session: { access_token: string; refresh_token: st
   if (typeof document === "undefined") return
 
   if (session) {
-    // Set cookies with appropriate settings
     const maxAge = 60 * 60 * 24 * 7 // 7 days
-    document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${maxAge}; SameSite=Lax`
-    document.cookie = `sb-refresh-token=${session.refresh_token}; path=/; max-age=${maxAge}; SameSite=Lax`
+    document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`
+    document.cookie = `sb-refresh-token=${session.refresh_token}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`
   } else {
-    // Clear cookies
-    document.cookie = "sb-access-token=; path=/; max-age=0"
-    document.cookie = "sb-refresh-token=; path=/; max-age=0"
+    document.cookie = "sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure"
+    document.cookie = "sb-refresh-token=; path=/; max-age=0; SameSite=Lax; Secure"
   }
 }
 
@@ -36,11 +34,10 @@ export function createClient() {
   )
 
   if (typeof window !== "undefined") {
-    supabaseClient.auth.onAuthStateChange((event, session) => {
-      console.log("[v0] Auth state changed:", event)
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      if (_event === "SIGNED_IN" || _event === "TOKEN_REFRESHED") {
         saveSessionToCookies(session)
-      } else if (event === "SIGNED_OUT") {
+      } else if (_event === "SIGNED_OUT") {
         saveSessionToCookies(null)
       }
     })

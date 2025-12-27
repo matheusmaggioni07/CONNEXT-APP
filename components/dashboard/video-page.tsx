@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient as createBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { VideoIcon, VideoOff, Mic, MicOff, PhoneOff, Heart, Loader2, SkipForward } from "lucide-react"
+import { VideoIcon, VideoOff, Mic, MicOff, PhoneOff, Heart, Loader2, SkipForward, RotateCcw } from "lucide-react"
 import { joinVideoQueue, leaveVideoRoom } from "@/app/actions/video"
 import { likeUser } from "@/app/actions/user"
 
@@ -28,6 +28,15 @@ const DEFAULT_ICE_SERVERS = [
   { urls: "stun:stun4.l.google.com:19302" },
 ]
 
+const REACTIONS = [
+  { emoji: "❤️", label: "Gostar" },
+  { emoji: "😂", label: "Rir" },
+  { emoji: "👍", label: "Legal" },
+  { emoji: "😊", label: "Smiley" },
+  { emoji: "👌", label: "Ok" },
+  { emoji: "😍", label: "Apaixonado" },
+]
+
 export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const supabase = createBrowserClient()
   const router = useRouter()
@@ -35,10 +44,14 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const [state, setState] = useState<"idle" | "searching" | "connected" | "error">("idle")
   const [partner, setPartner] = useState<PartnerProfile | null>(null)
   const [waitTime, setWaitTime] = useState(0)
+  const [callDuration, setCallDuration] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOff, setIsVideoOff] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [showMatch, setShowMatch] = useState(false)
+  const [showReaction, setShowReaction] = useState<string | null>(null)
+  const [reactionPosition, setReactionPosition] = useState({ x: 0, y: 0 })
+  const [connectionQuality, setConnectionQuality] = useState<"excellent" | "good" | "poor">("good")
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -52,6 +65,42 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   const processedSignalsRef = useRef<Set<string>>(new Set())
   const processedCandidatesRef = useRef<Set<string>>(new Set())
   const iceServersRef = useRef(DEFAULT_ICE_SERVERS)
+  const connectionStartTimeRef = useRef<number>(0)
+
+  const monitorConnectionQuality = useCallback(async () => {
+    if (!peerRef.current) return
+
+    try {
+      const stats = await peerRef.current.getStats()
+      let inboundRtpStats = null
+      let outboundRtpStats = null
+
+      stats.forEach((report) => {
+        if (report.type === "inbound-rtp" && report.kind === "video") {
+          inboundRtpStats = report
+        }
+        if (report.type === "outbound-rtp" && report.kind === "video") {
+          outboundRtpStats = report
+        }
+      })
+
+      if (inboundRtpStats && outboundRtpStats) {
+        const packetsLost = inboundRtpStats.packetsLost || 0
+        const packetsReceived = inboundRtpStats.packetsReceived || 1
+        const packetLossPercent = (packetsLost / (packetsLost + packetsReceived)) * 100
+
+        if (packetLossPercent < 2) {
+          setConnectionQuality("excellent")
+        } else if (packetLossPercent < 5) {
+          setConnectionQuality("good")
+        } else {
+          setConnectionQuality("poor")
+        }
+      }
+    } catch (err) {
+      console.error("[v0] Error monitoring connection:", err)
+    }
+  }, [])
 
   const cleanup = useCallback(() => {
     intervalsRef.current.forEach(clearInterval)
@@ -69,6 +118,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+
+    connectionStartTimeRef.current = 0
   }, [])
 
   const setupWebRTC = useCallback(
@@ -99,6 +150,7 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         roomIdRef.current = roomId
         partnerIdRef.current = partnerId
         isInitiatorRef.current = isInitiator
+        connectionStartTimeRef.current = Date.now()
 
         localStream.getTracks().forEach((track) => pc.addTrack(track, localStream))
 
@@ -221,13 +273,16 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
         }, 50)
 
         intervalsRef.current.push(signalingInterval)
+
+        const qualityInterval = setInterval(monitorConnectionQuality, 2000)
+        intervalsRef.current.push(qualityInterval)
       } catch (err) {
         console.error("[v0] WebRTC setup error:", err)
         setErrorMsg("Erro ao conectar câmera/microfone")
         setState("error")
       }
     },
-    [userId, supabase],
+    [userId, supabase, monitorConnectionQuality],
   )
 
   const toggleMute = useCallback(() => {
@@ -264,17 +319,26 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
     setState("idle")
   }, [cleanup])
 
+  const handleReaction = useCallback((emoji: string) => {
+    setShowReaction(emoji)
+    setReactionPosition({
+      x: Math.random() * 200 - 100,
+      y: Math.random() * 200 - 100,
+    })
+    setTimeout(() => setShowReaction(null), 1500)
+  }, [])
+
   const handleStartCall = useCallback(async () => {
     setState("searching")
     setWaitTime(0)
     setErrorMsg("")
     setPartner(null)
+    setCallDuration(0)
     processedSignalsRef.current.clear()
     processedCandidatesRef.current.clear()
 
     try {
-      console.log("[v0] Starting WebRTC setup for local camera")
-      await setupWebRTC("temp-room", false, "temp-partner")
+      console.log("[v0] Starting video call...")
 
       const result = await joinVideoQueue()
 
@@ -287,32 +351,6 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
       roomIdRef.current = result.roomId
 
-      if (peerRef.current) {
-        const iceCheckInterval = setInterval(async () => {
-          if (!peerRef.current || peerRef.current.connectionState === "closed") {
-            clearInterval(iceCheckInterval)
-            return
-          }
-
-          // Send ICE candidates to correct room
-          peerRef.current.onicecandidate = async (event) => {
-            if (event.candidate) {
-              try {
-                await supabase.from("ice_candidates").insert({
-                  room_id: result.roomId,
-                  from_user_id: userId,
-                  to_user_id: partnerIdRef.current,
-                  candidate: JSON.stringify(event.candidate.toJSON()),
-                })
-              } catch (err) {
-                console.error("[v0] ICE save error:", err)
-              }
-            }
-          }
-        }, 100)
-        intervalsRef.current.push(iceCheckInterval)
-      }
-
       if (result.matched && result.partnerId) {
         console.log("[v0] Immediately matched! Partner ID:", result.partnerId)
         setPartner({
@@ -322,62 +360,60 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           city: "",
         })
 
-        // Reinit WebRTC with correct room and partner
-        cleanup()
         await setupWebRTC(result.roomId, false, result.partnerId)
         return
       }
 
       console.log("[v0] Waiting for match in room:", result.roomId)
 
-      let pollCounter = 0
-      const pollInterval = setInterval(async () => {
-        pollCounter++
-        setWaitTime((pollCounter * 50) / 1000)
+      const matchSubscription = supabase
+        .channel(`video-match-${result.roomId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "video_rooms",
+            filter: `id=eq.${result.roomId}`,
+          },
+          async (payload: any) => {
+            const room = payload.new
+            if (room?.status === "active" && room?.user2_id && room?.user2_id !== userId) {
+              const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
+              matchSubscription.unsubscribe()
 
-        if (pollCounter > 2400) {
-          clearInterval(pollInterval)
-          setErrorMsg("Sem parceiros disponíveis")
-          setState("error")
-          await leaveVideoRoom(result.roomId)
-          cleanup()
-          return
-        }
+              console.log("[v0] Match found! Partner ID:", partnerId)
 
-        try {
-          const { data: room } = await supabase.from("video_rooms").select("*").eq("id", result.roomId).single()
+              const { data: partnerProfile } = await supabase
+                .from("profiles")
+                .select("id, full_name, avatar_url, city")
+                .eq("id", partnerId)
+                .single()
 
-          if (room && room.status === "active" && room.user2_id && room.user2_id !== userId) {
-            const partnerId = room.user1_id === userId ? room.user2_id : room.user1_id
-            clearInterval(pollInterval)
+              setPartner(
+                partnerProfile || {
+                  id: partnerId,
+                  full_name: "Conectando...",
+                  avatar_url: "",
+                  city: "",
+                },
+              )
 
-            console.log("[v0] Match found! Partner ID:", partnerId)
+              await setupWebRTC(result.roomId, true, partnerId)
+            }
+          },
+        )
+        .subscribe()
 
-            const { data: partnerProfile } = await supabase
-              .from("profiles")
-              .select("id, full_name, avatar_url, city")
-              .eq("id", partnerId)
-              .single()
+      const timeoutId = setTimeout(() => {
+        matchSubscription.unsubscribe()
+        setErrorMsg("Sem parceiros disponíveis. Tente novamente mais tarde.")
+        setState("error")
+        leaveVideoRoom(result.roomId)
+        cleanup()
+      }, 120000)
 
-            setPartner(
-              partnerProfile || {
-                id: partnerId,
-                full_name: "Conectando...",
-                avatar_url: "",
-                city: "",
-              },
-            )
-
-            // Reinit WebRTC with correct room and partner
-            cleanup()
-            await setupWebRTC(result.roomId, true, partnerId)
-          }
-        } catch (err) {
-          console.error("[v0] Polling error:", err)
-        }
-      }, 50)
-
-      intervalsRef.current.push(pollInterval)
+      intervalsRef.current.push(timeoutId as any)
     } catch (err) {
       console.error("[v0] Start call error:", err)
       setErrorMsg("Erro ao iniciar chamada")
@@ -386,25 +422,38 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }, [userId, setupWebRTC, supabase, cleanup])
 
   useEffect(() => {
+    if (state !== "connected") return
+
+    const durationInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - connectionStartTimeRef.current) / 1000)
+      const minutes = Math.floor(elapsed / 60)
+      const seconds = elapsed % 60
+      setCallDuration(minutes * 100 + seconds) // Format as MM:SS for display
+    }, 1000)
+
+    return () => clearInterval(durationInterval)
+  }, [state])
+
+  useEffect(() => {
     return () => cleanup()
   }, [cleanup])
 
   if (state === "idle") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent mb-4">
-              Conecte-se com empreendedores
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full text-center">
+          <div className="mb-12">
+            <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-[#ec4899] via-[#ff6b35] to-[#ec4899] bg-clip-text text-transparent mb-4">
+              Connext
             </h1>
-            <p className="text-purple-200 text-lg">Videochamadas profissionais instantâneas</p>
+            <p className="text-[#ec4899]/80 text-xl">Conecte-se com empreendedores via videochamada</p>
           </div>
           <Button
             onClick={handleStartCall}
             size="lg"
-            className="w-full bg-gradient-to-r from-purple-600 via-pink-500 to-blue-600 hover:from-purple-700 hover:via-pink-600 hover:to-blue-700 text-white font-bold text-xl py-8 rounded-2xl"
+            className="w-full bg-gradient-to-r from-[#ec4899] to-[#ff6b35] hover:from-[#d946a6] hover:to-[#e55a1f] text-white font-bold text-xl py-8 rounded-2xl"
           >
-            Começar Chamada
+            Começar Videochamada
           </Button>
         </div>
       </div>
@@ -413,12 +462,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   if (state === "error") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="text-center">
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 mb-6">
             <p className="text-red-400 text-lg mb-4">{errorMsg}</p>
           </div>
-          <Button onClick={() => setState("idle")} className="bg-gradient-to-r from-purple-600 to-pink-600">
+          <Button onClick={() => setState("idle")} className="bg-gradient-to-r from-[#ec4899] to-[#ff6b35]">
             Voltar
           </Button>
         </div>
@@ -428,11 +477,11 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
 
   if (state === "searching") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="text-center">
-          <Loader2 className="w-16 h-16 animate-spin text-purple-400 mx-auto mb-4" />
+          <Loader2 className="w-16 h-16 animate-spin text-[#ec4899] mx-auto mb-4" />
           <p className="text-white text-2xl mb-2">Conectando...</p>
-          <p className="text-purple-300 text-lg mb-8">{waitTime.toFixed(1)}s</p>
+          <p className="text-[#ec4899]/80 text-lg mb-8">{waitTime.toFixed(1)}s</p>
           <Button onClick={handleHangup} className="bg-red-600 hover:bg-red-700">
             Cancelar
           </Button>
@@ -442,49 +491,106 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 md:p-6">
+    <div className="min-h-screen bg-black flex flex-col">
       {showMatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="text-7xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent animate-bounce">
+          <div className="text-6xl font-bold bg-gradient-to-r from-[#ec4899] via-[#ff6b35] to-[#ec4899] bg-clip-text text-transparent animate-bounce">
             ✨ MATCH! ✨
           </div>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto h-screen flex flex-col">
-        <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-white">Videochamada</h1>
-          <p className="text-purple-300">Conecte-se com empreendedores</p>
+      {showReaction && (
+        <div
+          className="fixed z-40 text-6xl animate-bounce pointer-events-none"
+          style={{
+            top: "50%",
+            left: "50%",
+            transform: `translate(calc(-50% + ${reactionPosition.x}px), calc(-50% + ${reactionPosition.y}px))`,
+          }}
+        >
+          {showReaction}
+        </div>
+      )}
+
+      {/* Header - Status Bar */}
+      <div className="bg-black/80 border-b border-[#ec4899]/20 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              connectionQuality === "excellent"
+                ? "bg-green-500"
+                : connectionQuality === "good"
+                  ? "bg-yellow-500"
+                  : "bg-red-500"
+            }`}
+          />
+          <span className="text-white text-sm font-medium">
+            {String(Math.floor(callDuration / 100)).padStart(2, "0")}:{String(callDuration % 100).padStart(2, "0")}
+          </span>
         </div>
 
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 min-h-0">
-          <div className="relative bg-slate-950 rounded-2xl overflow-hidden border-2 border-purple-500/30 shadow-xl">
-            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-            <div className="absolute top-3 left-3 bg-slate-900/90 px-4 py-2 rounded-lg">
-              <p className="text-white text-sm font-semibold">Você</p>
+        <h1 className="text-white font-bold text-lg">Connext</h1>
+
+        <Button size="sm" variant="ghost" onClick={handleSkip} className="text-white hover:text-[#ec4899]">
+          <RotateCcw className="w-5 h-5" />
+        </Button>
+      </div>
+
+      {/* Main Video Area */}
+      <div className="flex-1 relative">
+        {/* Remote Video - Full screen */}
+        <div className="w-full h-full relative bg-black">
+          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+
+          {/* Partner Info - Top Left */}
+          {partner && (
+            <div className="absolute top-4 left-4 bg-black/70 backdrop-blur rounded-lg px-4 py-2">
+              <p className="text-white font-semibold text-sm">{partner.full_name}</p>
+              {partner.city && (
+                <p className="text-[#ec4899]/80 text-xs flex items-center gap-1">
+                  <span>🇧🇷</span>
+                  {partner.city}
+                </p>
+              )}
             </div>
-          </div>
+          )}
 
-          <div className="relative bg-slate-950 rounded-2xl overflow-hidden border-2 border-purple-500/30 shadow-xl flex items-center justify-center">
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            {state === "connected" && partner && (
-              <div className="absolute top-3 left-3 bg-slate-900/90 px-4 py-2 rounded-lg">
-                <p className="text-white text-sm font-semibold">{partner.full_name}</p>
-                {partner.city && <p className="text-purple-300 text-xs">{partner.city}</p>}
-              </div>
-            )}
+          {/* Local Video - Bottom Right (Picture in Picture) */}
+          <div className="absolute bottom-4 right-4 w-28 h-40 rounded-lg overflow-hidden border-2 border-[#ec4899]/50 shadow-lg">
+            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
           </div>
         </div>
+      </div>
 
-        <div className="flex justify-center gap-4 flex-wrap">
+      {/* Footer Controls */}
+      <div className="bg-black/90 border-t border-[#ec4899]/20 p-4">
+        {/* Reactions Row */}
+        <div className="flex justify-center gap-2 mb-4 overflow-x-auto pb-2">
+          {REACTIONS.map((r) => (
+            <Button
+              key={r.emoji}
+              onClick={() => handleReaction(r.emoji)}
+              size="sm"
+              className="bg-slate-800 hover:bg-[#ec4899]/30 text-lg px-3 py-1 rounded-lg whitespace-nowrap"
+              title={r.label}
+            >
+              {r.emoji}
+            </Button>
+          ))}
+        </div>
+
+        {/* Main Controls Row */}
+        <div className="flex justify-center gap-3 flex-wrap">
           <Button
             onClick={toggleMute}
             size="lg"
-            className={`rounded-full w-16 h-16 ${
+            className={`rounded-full w-16 h-16 flex items-center justify-center ${
               isMuted
-                ? "bg-red-600 hover:bg-red-700"
-                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                ? "bg-red-600/80 hover:bg-red-700"
+                : "bg-gradient-to-r from-[#ec4899] to-[#ff6b35] hover:from-[#d946a6] hover:to-[#e55a1f]"
             }`}
+            title={isMuted ? "Ativar microfone" : "Desativar microfone"}
           >
             {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
           </Button>
@@ -492,11 +598,12 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={toggleVideo}
             size="lg"
-            className={`rounded-full w-16 h-16 ${
+            className={`rounded-full w-16 h-16 flex items-center justify-center ${
               isVideoOff
-                ? "bg-red-600 hover:bg-red-700"
-                : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                ? "bg-red-600/80 hover:bg-red-700"
+                : "bg-gradient-to-r from-[#a855f7] to-[#a855f7] hover:from-[#9333ea] hover:to-[#9333ea]"
             }`}
+            title={isVideoOff ? "Ativar câmera" : "Desativar câmera"}
           >
             {isVideoOff ? <VideoOff className="w-6 h-6" /> : <VideoIcon className="w-6 h-6" />}
           </Button>
@@ -504,7 +611,8 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={handleSkip}
             size="lg"
-            className="rounded-full w-16 h-16 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700"
+            className="rounded-full w-16 h-16 flex items-center justify-center bg-yellow-600/80 hover:bg-yellow-700"
+            title="Próximo"
           >
             <SkipForward className="w-6 h-6" />
           </Button>
@@ -512,12 +620,18 @@ export function VideoPage({ userId, userProfile }: VideoPageProps) {
           <Button
             onClick={() => partner?.id && likeUser(partner.id)}
             size="lg"
-            className="rounded-full w-16 h-16 bg-gradient-to-r from-pink-600 to-red-600 hover:from-pink-700 hover:to-red-700"
+            className="rounded-full w-16 h-16 flex items-center justify-center bg-gradient-to-r from-[#ec4899] to-[#ff6b35] hover:from-[#d946a6] hover:to-[#e55a1f]"
+            title="Gostar"
           >
             <Heart className="w-6 h-6" />
           </Button>
 
-          <Button onClick={handleHangup} size="lg" className="rounded-full w-16 h-16 bg-red-600 hover:bg-red-700">
+          <Button
+            onClick={handleHangup}
+            size="lg"
+            className="rounded-full w-16 h-16 flex items-center justify-center bg-red-600 hover:bg-red-700"
+            title="Desligar"
+          >
             <PhoneOff className="w-6 h-6" />
           </Button>
         </div>

@@ -227,7 +227,7 @@ export function MatchesPage() {
                 >
                   <div className="flex gap-4">
                     <div className="relative flex-shrink-0">
-                      <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-purple-600 to-pink-500">
+                      <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-[#ec4899] to-[#ff6b35]">
                         {avatarUrl ? (
                           <img
                             src={avatarUrl || "/placeholder.svg"}
@@ -290,7 +290,7 @@ export function MatchesPage() {
                       {profile.bio && (
                         <div>
                           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                            <User className="w-3 h-3" />
+                            <User className="w-4 h-4 mr-2" />
                             Bio:
                           </p>
                           <p className="text-sm text-foreground">{profile.bio}</p>

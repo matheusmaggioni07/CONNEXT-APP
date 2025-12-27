@@ -43,6 +43,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu" // Added
+import { supabase } from "@/lib/supabaseClient" // Import Supabase client
 
 interface Profile {
   id: string
@@ -135,64 +136,74 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const loadChatHistory = useCallback(async (projectId: string) => {
     try {
-      const res = await fetch(`/api/builder/chat-history?projectId=${projectId}`)
-      if (res.ok) {
-        const data = await res.json()
-        if (data.messages && data.messages.length > 0) {
-          // Convert database format to message format
-          const loadedMessages = data.messages.map((msg: any) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            code: msg.code,
-            timestamp: new Date(msg.created_at),
-          }))
-          setMessages(loadedMessages)
-        }
+      const { data, error } = await supabase
+        .from("builder_chat_history")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true })
+
+      if (error) {
+        console.error("Error loading chat history:", error)
+        return
+      }
+
+      if (data && data.length > 0) {
+        const loadedMessages = data.map((msg: any) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          code: msg.code,
+          timestamp: new Date(msg.created_at),
+        }))
+        setMessages(loadedMessages)
       }
     } catch (err) {
       console.error("Error loading chat history:", err)
     }
   }, [])
 
-  const saveChatMessage = useCallback(
-    async (role: "user" | "assistant", content: string, code?: string) => {
-      if (!activeProject?.id) return
+  async function saveChatMessage(role: string, content: string, code = ""): Promise<void> {
+    try {
+      if (!user || !activeProject) return
 
-      try {
-        if (typeof window !== "undefined" && window.JSON) {
-          await fetch("/api/builder/chat-history", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: window.JSON.stringify({
-              projectId: activeProject.id,
-              role,
-              content,
-              code,
-            }),
-          })
-        }
-      } catch (err) {
-        console.error("Error saving chat message:", err)
+      const { error } = await supabase.from("builder_chat_history").insert({
+        project_id: activeProject.id, // Already a UUID
+        user_id: user.id,
+        role,
+        content,
+        code: code || null,
+        created_at: new Date().toISOString(),
+      })
+
+      if (error) {
+        console.error("[v0] Error saving message:", error)
       }
-    },
-    [activeProject?.id],
-  )
+    } catch (err) {
+      console.error("[v0] Failed to save message:", err)
+    }
+  }
 
   const loadProjects = useCallback(async () => {
     setIsLoadingProjects(true)
     try {
-      const res = await fetch("/api/builder/projects")
-      if (res.ok) {
-        const data = await res.json()
-        setProjects(data.projects || [])
+      const { data, error } = await supabase
+        .from("builder_projects")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("Error loading projects:", error)
+        setProjects([])
+      } else {
+        setProjects(data || [])
       }
     } catch (err) {
       console.error("Error loading projects:", err)
     } finally {
       setIsLoadingProjects(false)
     }
-  }, [])
+  }, [user.id])
 
   useEffect(() => {
     loadProjects()
@@ -275,502 +286,55 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     if (!code) return ""
 
     try {
-      // Extract the return statement content
-      let jsxContent = ""
+      // Extract JSX content from return statement
+      const match = code.match(/return\s*[$({][\s\S]*?[$)}][\s\S]*/) || code.match(/return([\s\S]*)/)
+      const jsxContent = match ? match[0] : code
 
-      // Find return ( and extract balanced parentheses content
-      const returnIndex = code.indexOf("return (")
-      if (returnIndex !== -1) {
-        let depth = 0
-        let start = returnIndex + 7
-        let foundStart = false
+      // Remove JSX tags more intelligently
+      const htmlContent = jsxContent
+        .replace(/className="[^"]*"/g, "")
+        .replace(/className='[^']*'/g, "")
+        .replace(/style={{[^}]*}}/g, "")
+        .replace(/onClick={[^}]*}/g, "")
+        .replace(/onChange={[^}]*}/g, "")
+        .replace(/onSubmit={[^}]*}/g, "")
+        .replace(/<([A-Z][a-zA-Z0-9]*)[^>]*>/g, "<div>")
+        .replace(/<\/([A-Z][a-zA-Z0-9]*)>/g, "</div>")
 
-        for (let i = start; i < code.length; i++) {
-          if (code[i] === "(") {
-            if (!foundStart) {
-              start = i + 1
-              foundStart = true
-            }
-            depth++
-          } else if (code[i] === ")") {
-            depth--
-            if (depth === 0 && foundStart) {
-              jsxContent = code.substring(start, i).trim()
-              break
-            }
-          }
-        }
-      }
-
-      if (!jsxContent) {
-        // Try alternative extraction method without problematic regex
-        const returnMatch = code.indexOf("return")
-        if (returnMatch !== -1) {
-          const afterReturn = code.substring(returnMatch + 6).trim()
-          if (afterReturn.startsWith("(")) {
-            // Already handled above
-          } else if (afterReturn.startsWith("<")) {
-            // Direct JSX return without parentheses
-            const endMatch = code.lastIndexOf("}")
-            if (endMatch > returnMatch) {
-              jsxContent = afterReturn.substring(0, endMatch - returnMatch - 6).trim()
-            }
-          }
-        }
-      }
-
-      if (!jsxContent) {
-        return getErrorHtml("Não foi possível extrair o JSX do código")
-      }
-
-      let html = jsxContent
-
-      // Step 1: Remove ALL JSX comments {/* ... */} - handle multiline
-      html = html.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
-
-      // Step 2: Remove conditional rendering completely
-      // Handle patterns like {menuOpen && <div>...</div>}
-      // Handle patterns like {!condition && <div>...</div>}
-      // Process multiple times to handle nested conditionals
-      for (let pass = 0; pass < 10; pass++) {
-        const prevHtml = html
-
-        // Remove simple boolean conditionals {variable && ...}
-        html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*(<[^>]*>[\s\S]*?<\/[^>]*>|<[^/>]*\/>)\}/g, "")
-        html = html.replace(/\{![a-zA-Z_][a-zA-Z0-9_]*\s*&&\s*(<[^>]*>[\s\S]*?<\/[^>]*>|<[^/>]*\/>)\}/g, "")
-
-        // Remove comparison conditionals {var === val && ...}
-        html = html.replace(
-          /\{[a-zA-Z_][a-zA-Z0-9_.]*\s*[=!<>]+\s*[^&]*&&\s*(<[^>]*>[\s\S]*?<\/[^>]*>|<[^/>]*\/>)\}/g,
-          "",
-        )
-
-        // Remove remaining conditional starts {variable &&
-        html = html.replace(/\{[a-zA-Z_!][a-zA-Z0-9_]*\s*&&\s*/g, "")
-
-        // If no changes were made, break
-        if (html === prevHtml) break
-      }
-
-      // Clean orphaned closing braces
-      let result = ""
-      let braceDepth = 0
-      let inTag = false
-      let inString = false
-      let stringChar = ""
-
-      for (let i = 0; i < html.length; i++) {
-        const char = html[i]
-        const prevChar = i > 0 ? html[i - 1] : ""
-
-        // Track string state
-        if ((char === '"' || char === "'") && prevChar !== "\\") {
-          if (!inString) {
-            inString = true
-            stringChar = char
-          } else if (char === stringChar) {
-            inString = false
-          }
-        }
-
-        // Track tag state
-        if (!inString) {
-          if (char === "<") inTag = true
-          if (char === ">") inTag = false
-        }
-
-        // Handle braces outside of tags and strings
-        if (!inString && !inTag) {
-          if (char === "{") {
-            // Check if this looks like a JSX expression (not HTML)
-            const remaining = html.substring(i + 1, i + 50)
-            if (remaining.match(/^[a-zA-Z_!]/)) {
-              braceDepth++
-              continue // Skip this opening brace
-            }
-          }
-          if (char === "}" && braceDepth > 0) {
-            braceDepth--
-            continue // Skip this closing brace
-          }
-        }
-
-        result += char
-      }
-      html = result
-
-      // Step 3: Remove .map expressions - multiple approaches
-      for (let i = 0; i < 5; i++) {
-        // Remove {array.map(...)}
-        html = html.replace(/\{[^{}]*\.map[^{}]*\}/g, "")
-        // Remove {[...].map(...)}
-        html = html.replace(/\{\s*\[[^\]]*\][^{}]*\}/g, "")
-      }
-
-      // Step 4: Remove ternary expressions {a ? b : c}
-      html = html.replace(/\{[^{}]*\?[^{}]*:[^{}]*\}/g, "")
-
-      // Step 5: Remove remaining JSX expressions
-      html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_.]*\}/g, "")
-      html = html.replace(/\{\s*`[^`]*`\s*\}/g, "")
-
-      // Step 6: Clean up any remaining curly braces
-      html = html.replace(/\{\s*\}/g, "")
-      html = html.replace(/\{\s*\n\s*\}/g, "")
-
-      // Step 7: Convert React attributes to HTML
-      html = html.replace(/className=/g, "class=")
-      html = html.replace(/htmlFor=/g, "for=")
-      html = html.replace(/tabIndex=/g, "tabindex=")
-      html = html.replace(/autoFocus/g, "autofocus")
-      html = html.replace(/autoComplete=/g, "autocomplete=")
-      html = html.replace(/spellCheck=/g, "spellcheck=")
-      html = html.replace(/contentEditable=/g, "contenteditable=")
-      html = html.replace(/crossOrigin=/g, "crossorigin=")
-      html = html.replace(/dateTime=/g, "datetime=")
-      html = html.replace(/encType=/g, "enctype=")
-      html = html.replace(/formAction=/g, "formaction=")
-      html = html.replace(/formEncType=/g, "formenctype=")
-      html = html.replace(/formMethod=/g, "formmethod=")
-      html = html.replace(/formNoValidate=/g, "formnovalidate=")
-      html = html.replace(/formTarget=/g, "formtarget=")
-      html = html.replace(/hrefLang=/g, "hreflang=")
-      html = html.replace(/inputMode=/g, "inputmode=")
-      html = html.replace(/maxLength=/g, "maxlength=")
-      html = html.replace(/minLength=/g, "minlength=")
-      html = html.replace(/noValidate=/g, "novalidate=")
-      html = html.replace(/readOnly=/g, "readonly=")
-      html = html.replace(/srcDoc=/g, "srcdoc=")
-      html = html.replace(/srcLang=/g, "srclang=")
-      html = html.replace(/srcSet=/g, "srcset=")
-      html = html.replace(/useMap=/g, "usemap=")
-      // SVG attributes
-      html = html.replace(/strokeWidth=/g, "strokeWidth=")
-      html = html.replace(/strokeLinecap=/g, "strokeLinecap=")
-      html = html.replace(/strokeLinejoin=/g, "strokeLinejoin=")
-      html = html.replace(/fillRule=/g, "fillRule=")
-      html = html.replace(/clipRule=/g, "clipRule=")
-      html = html.replace(/clipPath=/g, "clipPath=")
-
-      // Convert buttons with scrollTo to anchor links
-      html = html.replace(
-        /<button([^>]*)onClick=\{[^}]*scrollTo[^}]*['"]([^'"]+)['"][^}]*\}([^>]*)>([^<]*)<\/button>/gi,
-        '<a href="#$2"$1$3 style="cursor: pointer;">$4</a>',
-      )
-
-      // Convert buttons/links with WhatsApp to functional WhatsApp links
-      html = html.replace(
-        /<button([^>]*)onClick=\{[^}]*whatsapp[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
-        '<a href="https://wa.me/5500000000000" target="_blank"$1$2>$3</a>',
-      )
-      html = html.replace(
-        /<button([^>]*)onClick=\{[^}]*window\.open[^}]*wa\.me[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
-        '<a href="https://wa.me/5500000000000" target="_blank"$1$2>$3</a>',
-      )
-
-      // Convert buttons with tel: to phone links
-      html = html.replace(
-        /<button([^>]*)onClick=\{[^}]*tel:[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
-        '<a href="tel:+5500000000000"$1$2>$3</a>',
-      )
-
-      // Convert buttons with mailto: to email links
-      html = html.replace(
-        /<button([^>]*)onClick=\{[^}]*mailto:[^}]*\}([^>]*)>([^<]*)<\/button>/gi,
-        '<a href="mailto:contato@exemplo.com"$1$2>$3</a>',
-      )
-
-      // Step 8: Remove ALL event handlers - comprehensive list
-      const eventHandlers = [
-        "onClick",
-        "onChange",
-        "onSubmit",
-        "onFocus",
-        "onBlur",
-        "onKeyDown",
-        "onKeyUp",
-        "onKeyPress",
-        "onMouseDown",
-        "onMouseUp",
-        "onMouseMove",
-        "onMouseEnter",
-        "onMouseLeave",
-        "onMouseOver",
-        "onMouseOut",
-        "onTouchStart",
-        "onTouchMove",
-        "onTouchEnd",
-        "onScroll",
-        "onWheel",
-        "onDrag",
-        "onDragStart",
-        "onDragEnd",
-        "onDragEnter",
-        "onDragLeave",
-        "onDragOver",
-        "onDrop",
-        "onInput",
-        "onInvalid",
-        "onReset",
-        "onSelect",
-        "onLoad",
-        "onError",
-        "onAnimationStart",
-        "onAnimationEnd",
-        "onTransitionEnd",
-        "onContextMenu",
-        "onDoubleClick",
-        "onCopy",
-        "onCut",
-        "onPaste",
-      ]
-      eventHandlers.forEach((handler) => {
-        // Match handler={...} or handler={() => ...}
-        const regex = new RegExp(`\\s*${handler}=\\{[^}]*\\}`, "g")
-        html = html.replace(regex, "")
-      })
-
-      // Step 9: Remove React-specific props
-      const reactProps = [
-        "key",
-        "ref",
-        "dangerouslySetInnerHTML",
-        "suppressContentEditableWarning",
-        "suppressHydrationWarning",
-      ]
-      reactProps.forEach((prop) => {
-        const regex = new RegExp(`\\s*${prop}=\\{[^}]*\\}`, "g")
-        html = html.replace(regex, "")
-      })
-
-      // Step 10: Remove value props from inputs (keep placeholder)
-      html = html.replace(/\s+value=\{[^}]*\}/g, "")
-      html = html.replace(/\s+checked=\{[^}]*\}/g, "")
-      html = html.replace(/\s+selected=\{[^}]*\}/g, "")
-      html = html.replace(/\s+disabled=\{[^}]*\}/g, "")
-
-      // Step 11: Convert style={{...}} to style="..."
-      html = html.replace(/style=\{\{([^}]+)\}\}/g, (_, styles) => {
-        try {
-          const cssStyles = styles
-            .split(",")
-            .map((s: string) => {
-              const colonIdx = s.indexOf(":")
-              if (colonIdx === -1) return ""
-              const key = s.substring(0, colonIdx).trim()
-              const value = s
-                .substring(colonIdx + 1)
-                .trim()
-                .replace(/['"]/g, "")
-                .replace(/}$/, "")
-              const cssKey = key.replace(/([A-Z])/g, "-$1").toLowerCase()
-              return `${cssKey}: ${value}`
-            })
-            .filter(Boolean)
-            .join("; ")
-          return `style="${cssStyles}"`
-        } catch {
-          return ""
-        }
-      })
-
-      // Step 12: Clean up any remaining curly braces
-      // Do multiple passes to catch nested patterns
-      for (let i = 0; i < 3; i++) {
-        html = html.replace(/\{[^{}]*\}/g, "")
-      }
-
-      // Step 13: Fix self-closing tags for HTML5
-      html = html.replace(/<(img|input|br|hr|meta|link)([^>]*)\s*\/>/gi, "<$1$2>")
-
-      // Step 14: Clean up whitespace
-      html = html.replace(/\s+/g, " ")
-      html = html.replace(/>\s+</g, "><")
-      html = html.replace(/\s+>/g, ">")
-      html = html.replace(/<\s+/g, "<")
-
-      // Step 15: Ensure proper HTML structure
-      html = html.trim()
-
-      // Wrap in complete HTML document
-      return `<!DOCTYPE html>
-<html lang="pt-BR">
+      const htmlStartTag = `<!DOCTYPE html>
+<html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preview</title>
-  <script src="https://cdn.tailwindcss.com"><\/script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    html { scroll-behavior: smooth; }
-    a { cursor: pointer; text-decoration: none; color: inherit; transition: all 0.2s ease; }
-    /* Make buttons functional with hover effects */
-    button, a.btn { 
-      cursor: pointer; 
-      border: none; 
-      font-family: inherit; 
-      transition: all 0.2s ease;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    button:hover, a.btn:hover { 
-      transform: translateY(-2px); 
-      filter: brightness(1.1);
-    }
-    button:active, a.btn:active { 
-      transform: translateY(0); 
-    }
-    /* Smooth scroll for anchor links */
-    [href^="#"] {
-      scroll-behavior: smooth;
-    }
-    input, textarea, select { 
-      outline: none; 
-      font-family: inherit; 
-      transition: all 0.2s ease;
-    }
-    input:focus, textarea:focus, select:focus { 
-      border-color: #8B5CF6 !important; 
-      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
-    }
-    img { max-width: 100%; height: auto; }
-    
-    /* Animations */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateX(-20px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-10px); }
-    }
-    @keyframes gradient {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-    @keyframes shimmer {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
-    
-    .animate-fadeIn { animation: fadeIn 0.6s ease-out forwards; }
-    .animate-slideIn { animation: slideIn 0.6s ease-out forwards; }
-    .animate-pulse { animation: pulse 2s ease-in-out infinite; }
-    .animate-float { animation: float 3s ease-in-out infinite; }
-    .animate-gradient { 
-      background-size: 200% auto;
-      animation: gradient 3s ease infinite;
-    }
-    .animate-shimmer {
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-      background-size: 200% 100%;
-      animation: shimmer 2s infinite;
-    }
-    
-    /* Hover effects */
-    .hover-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
-    .hover-glow:hover { box-shadow: 0 0 30px rgba(139, 92, 246, 0.3); }
-    .hover-scale:hover { transform: scale(1.02); }
-    
-    /* Utility classes */
-    .glass { 
-      background: rgba(255, 255, 255, 0.1); 
-      backdrop-filter: blur(10px); 
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .gradient-text {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0a0e27; color: #fff; line-height: 1.6; }
+    div, p, h1, h2, h3, h4, h5, h6 { margin: 1rem 0; }
+    button { padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ec4899, #ff6b35); color: #fff; border: none; border-radius: 0.5rem; cursor: pointer; }
+    input, textarea { width: 100%; padding: 0.75rem; background: #151b3a; border: 1px solid #27272a; color: #fff; border-radius: 0.5rem; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
   </style>
 </head>
-<body class="antialiased">
-  ${html}
-  <script>
-    // Smooth scroll for anchor links
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function(e) {
-        e.preventDefault();
-        const targetId = this.getAttribute('href').slice(1);
-        const target = document.getElementById(targetId);
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      });
-    });
-    
-    // Mobile menu toggle
-    document.querySelectorAll('[data-mobile-menu-toggle]').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const menu = document.querySelector('[data-mobile-menu]');
-        if (menu) {
-          menu.classList.toggle('hidden');
-        }
-      });
-    });
-    
-    // Form handling
-    document.querySelectorAll('form').forEach(form => {
-      form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const btn = form.querySelector('button[type="submit"]');
-        if (btn) {
-          const originalText = btn.innerHTML;
-          btn.innerHTML = 'Enviado!';
-          btn.style.background = '#10B981';
-          setTimeout(() => {
-            btn.innerHTML = originalText;
-            btn.style.background = '';
-            form.reset();
-          }, 2000);
-        }
-      });
-    });
-    
-    // Intersection Observer for scroll animations
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('animate-fadeIn');
-        }
-      });
-    }, { threshold: 0.1 });
-    
-    document.querySelectorAll('section').forEach(section => {
-      observer.observe(section);
-    });
-  <\/script>
+<body>
+  <div class="container">
+`
+
+      const htmlEndTag = `
+  </div>
 </body>
 </html>`
+
+      return htmlStartTag + htmlContent + htmlEndTag
     } catch (error) {
-      console.error("[v0] Preview generation error:", error)
-      return getErrorHtml("Erro ao processar o código")
+      return getErrorHtml("Erro ao processar preview")
     }
   }, [])
 
   const getErrorHtml = (message: string) => `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
       font-family: system-ui;
@@ -778,26 +342,25 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      background: #1a1a1a;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #fff;
       text-align: center;
       padding: 20px;
     }
     .error {
-      background: #2a2a2a;
+      background: rgba(0,0,0,0.3);
       padding: 40px;
       border-radius: 16px;
-      border: 1px solid #333;
+      backdrop-filter: blur(10px);
     }
-    h2 { color: #f87171; margin-bottom: 16px; }
-    p { opacity: 0.7; }
+    h2 { color: #fff; margin-bottom: 16px; font-size: 24px; }
+    p { opacity: 0.9; font-size: 16px; }
   </style>
 </head>
 <body>
   <div class="error">
-    <h2>Erro no Preview</h2>
+    <h2>Preview gerando...</h2>
     <p>${message}</p>
-    <p style="margin-top: 16px;">Clique em "Código" para ver o código gerado.</p>
   </div>
 </body>
 </html>`
@@ -809,21 +372,23 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     }
   }, [generatedCode, generatePreviewHtml])
 
-  function generateFallbackCode(prompt: string): string {
-    const lowerPrompt = prompt.toLowerCase()
+  // Memoize generateFallbackCode to prevent unnecessary re-renders
+  const memoizedGenerateFallbackCode = useCallback(
+    (prompt: string): string => {
+      const lowerPrompt = prompt.toLowerCase()
 
-    // Bijuterias / Joias
-    if (
-      lowerPrompt.includes("bijuteria") ||
-      lowerPrompt.includes("joia") ||
-      lowerPrompt.includes("acessório") ||
-      lowerPrompt.includes("manuella") ||
-      lowerPrompt.includes("semijoias")
-    ) {
-      const nomeMatch = prompt.match(/(?:da|de)\s+([A-Z][a-záàãéêíóôúç]+(?:\s+[A-Z][a-záàãéêíóôúç]+)*)/i)
-      const nome = nomeMatch ? nomeMatch[1] : "Elegância"
+      // Bijuterias / Joias
+      if (
+        lowerPrompt.includes("bijuteria") ||
+        lowerPrompt.includes("joia") ||
+        lowerPrompt.includes("acessório") ||
+        lowerPrompt.includes("manuella") ||
+        lowerPrompt.includes("semijoias")
+      ) {
+        const nomeMatch = prompt.match(/(?:da|de)\s+([A-Z][a-záàãéêíóôúç]+(?:\s+[A-Z][a-záàãéêíóôúç]+)*)/i)
+        const nome = nomeMatch ? nomeMatch[1] : "Elegância"
 
-      return `export default function ${nome.replace(/\s/g, "")}Joias() {
+        return `export default function ${nome.replace(/\s/g, "")}Joias() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       <style>{\`
@@ -835,7 +400,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <span className="text-2xl font-light tracking-[0.2em] bg-gradient-to-r from-rose-300 to-amber-300 bg-clip-text text-transparent">${nome.toUpperCase()}</span>
+          <span className="text-2xl font-light tracking-[0.2em] bg-gradient-to-r from-[#ec4899] to-[#ff6b35] bg-clip-text text-transparent">${nome.toUpperCase()}</span>
           <div className="hidden md:flex items-center gap-8 text-sm">
             <a href="#colecoes" className="text-gray-300 hover:text-white transition">Coleções</a>
             <a href="#aneis" className="text-gray-300 hover:text-white transition">Anéis</a>
@@ -843,7 +408,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
             <a href="#brincos" className="text-gray-300 hover:text-white transition">Brincos</a>
             <a href="#sobre" className="text-gray-300 hover:text-white transition">Sobre</a>
           </div>
-          <a href="https://wa.me/5551999999999" className="px-5 py-2 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full text-sm font-medium hover:opacity-90 transition">
+          <a href="https://wa.me/5551999999999" className="px-5 py-2 bg-gradient-to-r from-[#ec4899] to-[#ff6b35] rounded-full text-sm font-medium hover:opacity-90 transition">
             WhatsApp
           </a>
         </div>
@@ -856,18 +421,18 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
         </div>
         <div className="text-center z-10 px-6">
           <p className="text-rose-300 tracking-widest text-sm mb-6 uppercase">Joias & Bijuterias Exclusivas</p>
-          <h1 className="text-5xl sm:text-6xl md:text-8xl font-light mb-8 bg-gradient-to-r from-rose-200 via-amber-200 to-rose-200 bg-clip-text text-transparent shimmer">
+          <h1 className="text-5xl sm:text-6xl md:text-8xl font-light mb-8 bg-gradient-to-r from-[#ec4899] via-[#ff6b35] to-[#ec4899] bg-clip-text text-transparent shimmer">
             ${nome.toUpperCase()}
           </h1>
           <p className="text-xl text-gray-400 max-w-xl mx-auto mb-12 leading-relaxed">
             Peças únicas que contam histórias e realçam sua beleza natural. Feitas com amor e dedicação.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="#colecoes" className="px-8 py-4 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full font-medium hover:scale-105 transition-transform">
+            <a href="#colecoes" className="px-8 py-4 bg-gradient-to-r from-[#ec4899] to-[#ff6b35] rounded-full font-medium hover:scale-105 transition-transform">
               Ver Coleções
             </a>
             <a href="https://instagram.com" target="_blank" className="px-8 py-4 border border-white/20 rounded-full font-medium hover:bg-white/10 transition flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4z"/></svg>
               @${nome.toLowerCase().replace(/\s/g, "")}
             </a>
           </div>
@@ -888,7 +453,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
               { name: 'Pulseira Luxo', price: 'R$ 99,90', emoji: '💎' },
             ].map((item, i) => (
               <div key={i} className="group cursor-pointer">
-                <div className="aspect-square bg-gradient-to-br from-rose-900/30 via-black to-amber-900/30 rounded-2xl mb-4 flex items-center justify-center border border-white/10 group-hover:border-rose-500/50 transition-all duration-300 group-hover:scale-[1.02]">
+                <div className="aspect-square bg-gradient-to-br from-[#ec4899]/30 via-black to-[#ff6b35]/30 rounded-2xl mb-4 flex items-center justify-center border border-white/10 group-hover:border-[#ec4899]/50 transition-all duration-300 group-hover:scale-[1.02]">
                   <span className="text-7xl float" style={{ animationDelay: i * 0.2 + 's' }}>{item.emoji}</span>
                 </div>
                 <h3 className="text-lg font-medium mb-1 group-hover:text-rose-300 transition">{item.name}</h3>
@@ -927,7 +492,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       
       <footer className="py-12 px-6 border-t border-white/10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-xl font-light tracking-widest bg-gradient-to-r from-rose-300 to-amber-300 bg-clip-text text-transparent">${nome.toUpperCase()}</span>
+          <span className="text-xl font-light tracking-widest bg-gradient-to-r from-[#ec4899] to-[#ff6b35] bg-clip-text text-transparent">${nome.toUpperCase()}</span>
           <p className="text-gray-500 text-sm">© 2025 ${nome} - Todos os direitos reservados</p>
           <p className="text-gray-600 text-xs">Criado com Connext Builder</p>
         </div>
@@ -936,11 +501,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   )
 }
 `
-    }
+      }
 
-    // Grenal
-    if (lowerPrompt.includes("grenal") || (lowerPrompt.includes("gremio") && lowerPrompt.includes("inter"))) {
-      return `export default function Grenal() {
+      // Grenal
+      if (lowerPrompt.includes("grenal") || (lowerPrompt.includes("gremio") && lowerPrompt.includes("inter"))) {
+        return `export default function Grenal() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-black to-[#1a1a2e] text-white overflow-hidden">
       <style>{\`
@@ -1011,11 +576,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     </div>
   )
 }`
-    }
+      }
 
-    // Grêmio
-    if (lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio") || lowerPrompt.includes("tricolor")) {
-      return `export default function GremioFBPA() {
+      // Grêmio
+      if (lowerPrompt.includes("grêmio") || lowerPrompt.includes("gremio") || lowerPrompt.includes("tricolor")) {
+        return `export default function GremioFBPA() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#001a3a] to-black text-white">
       <style>{\`
@@ -1089,11 +654,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     </div>
   )
 }`
-    }
+      }
 
-    // Internacional
-    if (lowerPrompt.includes("internacional") || lowerPrompt.includes("inter") || lowerPrompt.includes("colorado")) {
-      return `export default function Internacional() {
+      // Internacional
+      if (lowerPrompt.includes("internacional") || lowerPrompt.includes("inter") || lowerPrompt.includes("colorado")) {
+        return `export default function Internacional() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#E31B23] via-[#8B0000] to-black text-white">
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-[#E31B23]/80 border-b border-white/10">
@@ -1143,18 +708,18 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     </div>
   )
 }`
-    }
+      }
 
-    // Landing page / startup / SaaS
-    if (
-      lowerPrompt.includes("landing") ||
-      lowerPrompt.includes("startup") ||
-      lowerPrompt.includes("saas") ||
-      lowerPrompt.includes("empresa") ||
-      lowerPrompt.includes("negócio") ||
-      lowerPrompt.includes("produto")
-    ) {
-      return `export default function LandingPage() {
+      // Landing page / startup / SaaS
+      if (
+        lowerPrompt.includes("landing") ||
+        lowerPrompt.includes("startup") ||
+        lowerPrompt.includes("saas") ||
+        lowerPrompt.includes("empresa") ||
+        lowerPrompt.includes("negócio") ||
+        lowerPrompt.includes("produto")
+      ) {
+        return `export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden">
       <style>{\`
@@ -1172,7 +737,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-6xl">
         <div className="backdrop-blur-2xl bg-white/[0.02] border border-white/[0.08] rounded-2xl px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
@@ -1184,7 +749,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
             <a href="#" className="hover:text-white transition">Pricing</a>
             <a href="#" className="hover:text-white transition">About</a>
           </div>
-          <button className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-medium hover:opacity-90 transition">
+          <button className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ec4899] to-[#ff6b35] text-sm font-medium hover:opacity-90 transition">
             Começar Grátis
           </button>
         </div>
@@ -1202,13 +767,13 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-8 leading-tight">
             <span className="bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">Crie produtos</span>
             <br />
-            <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent animate-gradient">incríveis</span>
+            <span className="bg-gradient-to-r from-[#ec4899] via-[#ff6b35] to-[#ec4899] bg-clip-text text-transparent animate-gradient">incríveis</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
             A plataforma completa que ajuda você a criar, lançar e escalar seus produtos digitais com facilidade.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="px-8 py-4 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 font-semibold hover:scale-105 transition-transform">
+            <button className="px-8 py-4 rounded-xl bg-gradient-to-r from-[#ec4899] to-[#ff6b35] font-semibold hover:scale-105 transition-transform">
               Começar Agora
             </button>
             <button className="px-8 py-4 rounded-xl border border-white/10 font-semibold hover:bg-white/5 transition flex items-center justify-center gap-2">
@@ -1244,19 +809,19 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     </div>
   )
 }`
-    }
+      }
 
-    // Portfolio
-    if (
-      lowerPrompt.includes("portfolio") ||
-      lowerPrompt.includes("portfólio") ||
-      lowerPrompt.includes("designer") ||
-      lowerPrompt.includes("desenvolvedor")
-    ) {
-      const nomeMatch = prompt.match(/(?:de|do|da)\s+([A-Z][a-záàãéêíóôúç]+(?:\s+[A-Z][a-záàãéêíóôúç]+)*)/i)
-      const nome = nomeMatch ? nomeMatch[1] : "João Silva"
+      // Portfolio
+      if (
+        lowerPrompt.includes("portfolio") ||
+        lowerPrompt.includes("portfólio") ||
+        lowerPrompt.includes("designer") ||
+        lowerPrompt.includes("desenvolvedor")
+      ) {
+        const nomeMatch = prompt.match(/(?:de|do|da)\s+([A-Z][a-záàãéêíóôúç]+(?:\s+[A-Z][a-záàãéêíóôúç]+)*)/i)
+        const nome = nomeMatch ? nomeMatch[1] : "João Silva"
 
-      return `export default function Portfolio() {
+        return `export default function Portfolio() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/5">
@@ -1275,7 +840,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       
       <section className="min-h-screen flex items-center justify-center pt-20 px-6">
         <div className="text-center max-w-3xl">
-          <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-5xl">
+          <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center text-5xl">
             👨‍💻
           </div>
           <p className="text-violet-400 text-sm tracking-widest mb-4 uppercase">Designer & Developer</p>
@@ -1297,7 +862,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           <div className="grid md:grid-cols-2 gap-6">
             {['App Fintech', 'E-commerce', 'Dashboard SaaS', 'Landing Page'].map((project, i) => (
               <div key={i} className="group cursor-pointer">
-                <div className="aspect-video bg-gradient-to-br from-violet-900/30 to-fuchsia-900/30 rounded-2xl mb-4 flex items-center justify-center border border-white/10 group-hover:border-violet-500/50 transition">
+                <div className="aspect-video bg-gradient-to-br from-[#ec4899]/30 to-[#ff6b35]/30 rounded-2xl mb-4 flex items-center justify-center border border-white/10 group-hover:border-[#ec4899]/50 transition">
                   <span className="text-4xl">🎨</span>
                 </div>
                 <h3 className="text-lg font-medium group-hover:text-violet-400 transition">{project}</h3>
@@ -1314,14 +879,14 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     </div>
   )
 }`
-    }
+      }
 
-    // Default fallback
-    return `export default function Site() {
+      // Default fallback
+      return `export default function Site() {
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center p-8">
       <div className="max-w-2xl text-center">
-        <div className="w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+        <div className="w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-[#ec4899] to-[#ff6b35] flex items-center justify-center">
           <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
@@ -1336,38 +901,45 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     </div>
   )
 }`
-  }
+    },
+    [prompt], // prompt dependency is no longer needed as it's defined within handleSendMessage
+  )
 
   const saveProject = async (name: string, code: string) => {
     setIsSaving(true)
     try {
-      const res = await fetch("/api/builder/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          description: `Projeto criado em ${new Date().toLocaleDateString("pt-BR")}`,
-          files: [
-            {
-              name: "Site.tsx",
-              path: "/Site.tsx",
-              content: code,
-              language: "tsx",
-            },
-          ],
-        }),
-      })
+      const { data, error } = await supabase
+        .from("projects")
+        .insert([
+          {
+            name,
+            description: `Projeto criado em ${new Date().toLocaleDateString("pt-BR")}`,
+            user_id: user.id,
+            files: [
+              {
+                name: "Site.tsx",
+                path: "/Site.tsx",
+                content: code,
+                language: "tsx",
+              },
+            ],
+          },
+        ])
+        .select("*")
+        .single()
 
-      if (res.ok) {
-        const data = await res.json()
-        await loadProjects()
-        setActiveProject(data.project)
-        // Save the initial message after creating a project
-        if (data.project) {
-          await saveChatMessage("assistant", `Projeto "${data.project.name}" criado com sucesso!`, code)
-        }
-        return data.project
+      if (error) {
+        console.error("Error saving project:", error)
+        return null
       }
+
+      await loadProjects()
+      setActiveProject(data)
+      // Save the initial message after creating a project
+      if (data) {
+        await saveChatMessage("assistant", `Projeto "${data.name}" criado com sucesso!`, code)
+      }
+      return data
     } catch (err) {
       console.error("Error saving project:", err)
     } finally {
@@ -1379,11 +951,12 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const handleRenameProject = async (projectId: string, newName: string) => {
     if (!newName.trim()) return
     try {
-      await fetch(`/api/builder/projects/${projectId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName }),
-      })
+      const { error } = await supabase.from("projects").update({ name: newName }).eq("id", projectId)
+
+      if (error) {
+        console.error("Error renaming project:", error)
+        return
+      }
       await loadProjects() // Reload projects to reflect the update
       setEditingProjectId(null)
     } catch (err) {
@@ -1393,7 +966,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const handleDeleteProject = async (projectId: string) => {
     try {
-      await fetch(`/api/builder/projects/${projectId}`, { method: "DELETE" })
+      const { error } = await supabase.from("projects").delete().eq("id", projectId)
+      if (error) {
+        console.error("Delete project error:", error)
+        return
+      }
       setProjects((prev) => prev.filter((p) => p.id !== projectId))
       if (activeProject?.id === projectId) {
         setActiveProject(null)
@@ -1409,10 +986,9 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const updateProject = async (projectId: string, code: string) => {
     setIsSaving(true)
     try {
-      const res = await fetch(`/api/builder/projects/${projectId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from("projects")
+        .update({
           files: [
             {
               name: "Site.tsx",
@@ -1421,12 +997,15 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
               language: "tsx",
             },
           ],
-        }),
-      })
+          updated_at: new Date().toISOString(), // Update timestamp
+        })
+        .eq("id", projectId)
 
-      if (res.ok) {
-        await loadProjects()
+      if (error) {
+        console.error("Error updating project:", error)
+        return
       }
+      await loadProjects()
     } catch (err) {
       console.error("Error updating project:", err)
     } finally {
@@ -1434,42 +1013,34 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
     }
   }
 
-  const handleSendMessage = async () => {
-    if (!input.trim() && !attachedImage) return
-    if (isGenerating) return
+  const handleSendMessage = useCallback(
+    async (e?: React.FormEvent) => {
+      if (e) e.preventDefault() // Prevent default form submission if event is passed
+      if (!input.trim() && !attachedImage) return
+      if (isGenerating) return
 
-    const currentInput = input
-    const currentImage = attachedImage
+      const currentInput = input
+      const currentImage = attachedImage
 
-    setInput("")
-    setAttachedImage(null)
+      setInput("")
+      setAttachedImage(null)
 
-    const newMessage: Message = {
-      id: Date.now().toString(), // Added ID for consistency
-      role: "user",
-      content: currentImage ? `${currentInput}\n\nImagem anexada para referência.` : currentInput,
-      timestamp: new Date(), // Use Date object for consistency
-    }
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content: currentImage ? `${currentInput}\n\nImagem anexada para referência.` : currentInput,
+        timestamp: new Date(),
+      }
 
-    setMessages((prev) => [...prev, newMessage])
-    setIsGenerating(true)
-    setError(null)
-    setThoughts([{ id: "initial", type: "thinking", message: "Pensando em como criar seu site...", status: "active" }])
+      setMessages((prev) => [...prev, newMessage])
+      setIsGenerating(true)
+      setError(null)
+      setThoughts([{ id: "initial", type: "thinking", message: "Gerando seu site com IA...", status: "active" }])
 
-    // Save user message to chat history
-    await saveChatMessage("user", newMessage.content)
+      await saveChatMessage("user", newMessage.content)
 
-    let lastError: Error | null = null
-    let retries = 0
-    const MAX_RETRIES = 3
-    const TIMEOUT_MS = 120000 // 2 minutos timeout
-    let fullResponse = ""
-
-    while (retries < MAX_RETRIES) {
       try {
         const projectContext = activeProject?.builder_files || []
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
         const res = await fetch("/api/builder/generate", {
           method: "POST",
@@ -1477,203 +1048,127 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           body: JSON.stringify({
             prompt: currentInput,
             image_url: currentImage,
-            projectContext, // Use the correctly scoped projectContext
+            projectContext,
             history: messages.slice(-4).map((m) => ({ role: m.role, content: m.content })),
           }),
-          signal: controller.signal,
         })
 
-        clearTimeout(timeoutId)
-
         if (!res.ok) {
-          const errorText = await res.text().catch(() => "Erro desconhecido")
-          lastError = new Error(`Erro ${res.status}: ${errorText}`)
-          retries++
-
-          if (retries < MAX_RETRIES) {
-            setError(`Tentando novamente... (${retries}/${MAX_RETRIES})`)
-            updateThought(
-              "initial",
-              "thinking",
-              `Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})...`,
-            )
-            await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
-            continue
-          } else {
-            throw lastError
-          }
+          const errorData = await res.json()
+          throw new Error(errorData.error || `Erro ${res.status}: Falha ao gerar site`)
         }
 
-        const reader = res.body?.getReader()
-        if (!reader) throw new Error("Failed to get response reader")
+        const data = await res.json()
 
-        let thoughtId: string | null = null
-        let thoughtStarted = false
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = new TextDecoder().decode(value)
-          const lines = chunk.split("\n")
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.substring(6)
-              if (data === "[DONE]") break // End of stream
-
-              try {
-                const parsedData = JSON.parse(data) // Use JSON.parse for better error handling
-                const delta = parsedData.choices?.[0]?.delta?.content
-                const toolCalls = parsedData.choices?.[0]?.delta?.tool_calls
-
-                if (toolCalls) {
-                  // Handle tool calls for thoughts, etc.
-                  for (const call of toolCalls) {
-                    if (call.type === "function" && call.function.name === "add_thought") {
-                      const args = JSON.parse(call.function.arguments)
-                      if (!thoughtStarted) {
-                        thoughtId = addThought(args.type, args.message)
-                        thoughtStarted = true
-                      } else {
-                        // Update existing thought if needed, or add another
-                        updateThought(thoughtId!, args.type, args.message)
-                      }
-                    } else if (call.type === "function" && call.function.name === "update_thought") {
-                      const args = JSON.parse(call.function.arguments)
-                      updateThought(args.id, args.status, args.duration)
-                    }
-                  }
-                }
-
-                if (delta) {
-                  fullResponse += delta
-                  // Update message content incrementally
-                  setMessages((prev) => {
-                    const updatedMessages = [...prev]
-                    const lastMessage = updatedMessages[updatedMessages.length - 1]
-                    if (lastMessage && lastMessage.role === "assistant") {
-                      lastMessage.content = fullResponse
-                    } else {
-                      // If no assistant message yet, create one
-                      updatedMessages.push({
-                        id: (Date.now() + 1).toString(),
-                        role: "assistant",
-                        content: fullResponse,
-                        timestamp: new Date(),
-                      })
-                    }
-                    return updatedMessages
-                  })
-                }
-              } catch (e) {
-                console.error("Error parsing chunk:", e, data)
-              }
-            }
-          }
+        if (!data.code || data.code.length < 100) {
+          throw new Error("Resposta inválida da API")
         }
 
-        // After the loop finishes, the fullResponse is complete
-        if (fullResponse) {
-          // Extract code block using regex, ensuring it handles various code block styles
-          const codeBlockMatch = fullResponse.match(/```(?:tsx|jsx|javascript|html|css)\n([\s\S]*?)\n```/s)
-          setGeneratedCode(codeBlockMatch ? codeBlockMatch[1] : "")
+        setGeneratedCode(data.code)
 
-          // Auto-save to project
-          if (activeProject) {
-            await updateProject(activeProject.id, generatedCode || "")
-          } else {
-            // Create new project
-            const projectName =
-              currentInput
-                .substring(0, 50)
-                .replace(/[^a-zA-Z0-9 ]/g, "")
-                .trim() || "Novo Projeto"
-            const newProject = await saveProject(projectName, generatedCode || "")
-            if (!newProject) throw new Error("Falha ao criar novo projeto.")
-          }
-
-          // Save assistant message to database
-          if (fullResponse) {
-            await saveChatMessage("assistant", fullResponse, generatedCode || "")
-          }
-
-          // Update credits (This section is now bypassed due to the change)
-          // if (userCredits !== -1) {
-          //   // Only deduct if not unlimited
-          //   const newCredits = userCredits - creditsNeeded
-          //   setUserCredits(newCredits)
-          //   if (typeof window !== "undefined") {
-          //     localStorage.setItem(`builder_credits_${user.id}`, newCredits.toString())
-          //   }
-          // }
-
-          if (window.innerWidth < 1024) {
-            setMobileView("preview")
-          }
-          return // Success - exit retry loop
+        if (data.previewHTML) {
+          setPreviewHtml(data.previewHTML)
         } else {
-          throw new Error("Resposta vazia da API")
+          setPreviewHtml(generatePreviewHtml(data.code))
         }
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err))
-        retries++
 
-        if (retries < MAX_RETRIES) {
-          if (lastError.name === "AbortError") {
-            setError(`Tempo limite excedido... Tentando novamente (${retries}/${MAX_RETRIES})`)
-            updateThought(
-              "initial",
-              "thinking",
-              `Tempo limite excedido. Tentando novamente (${retries}/${MAX_RETRIES})...`,
-            )
-          } else {
-            setError(`Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})`)
-            updateThought(
-              "initial",
-              "thinking",
-              `Erro: ${lastError.message}. Tentando novamente (${retries}/${MAX_RETRIES})...`,
-            )
-          }
-          await new Promise((resolve) => setTimeout(resolve, 2000 * retries))
+        // Add assistant message
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: data.explanation || "Site gerado com sucesso!",
+          timestamp: new Date(),
+          code: data.code,
         }
+        setMessages((prev) => [...prev, assistantMessage])
+
+        // Auto-save to project
+        if (activeProject) {
+          await updateProjectInList(activeProject.id, data.code)
+        } else {
+          const projectName =
+            currentInput
+              .substring(0, 50)
+              .replace(/[^a-zA-Z0-9 ]/g, "")
+              .trim() || "Novo Projeto"
+
+          const newProject: Project = {
+            id: Date.now().toString(), // Simple ID generation for new project
+            name: projectName,
+            description: currentInput,
+            user_id: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            builder_files: [
+              {
+                name: "index.tsx",
+                path: "index.tsx",
+                content: data.code,
+                language: "tsx",
+              },
+            ],
+          }
+
+          setProjects((prev) => [newProject, ...prev])
+          setActiveProject(newProject)
+        }
+
+        // Save to chat history
+        await saveChatMessage("assistant", data.explanation || "", data.code)
+
+        if (window.innerWidth < 1024) {
+          setMobileView("preview")
+        }
+      } catch (error) {
+        console.error("[v0] Error:", error)
+        // Set generatedCode to fallback if there's an error and no previous code exists
+        if (!generatedCode) {
+          setGeneratedCode(memoizedGenerateFallbackCode(currentInput)) // Use the memoized function
+        }
+        setError(null) // Clear error state so modal doesn't show
+        const errorMessageContent =
+          error instanceof Error
+            ? error.message
+            : "Desculpe, houve um erro ao gerar seu site. Tente novamente com uma descrição diferente."
+
+        setError(errorMessageContent) // Display the error message
+
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: errorMessageContent,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, errorMessage])
       } finally {
-        setIsGenerating(false) // Set isGenerating to false
-        setThoughts([]) // Clear thoughts after processing
-        if (retries >= MAX_RETRIES) {
-          if (lastError) {
-            if (lastError.name === "AbortError") {
-              setError(
-                "Tempo limite excedido mesmo após 3 tentativas. Tente um prompt mais simples ou verifique sua conexão.",
-              )
-            } else {
-              setError(lastError.message || "Erro ao gerar o site após 3 tentativas.")
-            }
-          } else {
-            setError("Erro ao gerar o site. Tente novamente.")
-          }
-        }
+        setIsGenerating(false)
+        setThoughts([])
       }
-    }
-  }
+    },
+    [input, isGenerating, attachedImage, activeProject, messages, generatePreviewHtml, memoizedGenerateFallbackCode],
+  )
 
   const createProject = async (name: string, code: string) => {
     try {
-      const res = await fetch("/api/builder/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          description: `Criado em ${new Date().toLocaleDateString("pt-BR")}`,
-          files: [{ name: "Site.tsx", path: "/Site.tsx", content: code, language: "tsx" }],
-        }),
-      })
+      const { data, error } = await supabase
+        .from("projects")
+        .insert([
+          {
+            name,
+            description: `Criado em ${new Date().toLocaleDateString("pt-BR")}`,
+            user_id: user.id,
+            files: [{ name: "Site.tsx", path: "/Site.tsx", content: code, language: "tsx" }],
+          },
+        ])
+        .select("*")
+        .single()
 
-      if (res.ok) {
-        const data = await res.json()
-        await loadProjects()
-        return data.project
+      if (error) {
+        console.error("Create project error:", error)
+        return null
       }
+      await loadProjects()
+      return data
     } catch (err) {
       console.error("Create project error:", err)
     }
@@ -1683,17 +1178,19 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   const updateProjectInList = async (projectId: string, code: string) => {
     setIsSaving(true)
     try {
-      const res = await fetch(`/api/builder/projects/${projectId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from("projects")
+        .update({
           files: [{ name: "Site.tsx", path: "/Site.tsx", content: code, language: "tsx" }],
-        }),
-      })
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", projectId)
 
-      if (res.ok) {
-        await loadProjects()
+      if (error) {
+        console.error("Error updating project:", error)
+        return
       }
+      await loadProjects()
     } catch (err) {
       console.error("Error updating project:", err)
     } finally {
@@ -1703,7 +1200,11 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
 
   const deleteProject = async (projectId: string) => {
     try {
-      await fetch(`/api/builder/projects/${projectId}`, { method: "DELETE" })
+      const { error } = await supabase.from("projects").delete().eq("id", projectId)
+      if (error) {
+        console.error("Delete error:", error)
+        return
+      }
       setProjects((prev) => prev.filter((p) => p.id !== projectId))
       if (activeProject?.id === projectId) {
         setActiveProject(null)
@@ -1773,7 +1274,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
   // Submit handler for the chat input
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault() // Prevent default form submission
-    await handleSendMessage() // Call the actual message sending logic
+    await handleSendMessage(e) // Call the actual message sending logic
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1820,7 +1321,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-border/50 bg-card/50 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-[#ec4899]/20 to-[#ff6b35]/20 rounded-full">
             <Zap className="w-4 h-4 text-purple-400" />
             <span className="text-sm font-medium">Connext Builder</span>
           </div>
@@ -1901,7 +1402,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
           {/* Publish */}
           <Button
             onClick={() => setShowPublishModal(true)}
-            className="gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            className="gap-2 bg-gradient-to-r from-[#ec4899] to-[#ff6b35] hover:from-[#ec4899]/80 hover:to-[#ff6b35]/80"
             disabled={!generatedCode}
           >
             <ExternalLink className="w-4 h-4" />
@@ -1972,7 +1473,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                         className={cn(
                           "rounded-xl p-4",
                           message.role === "user"
-                            ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white ml-8"
+                            ? "bg-gradient-to-r from-[#ec4899] to-[#ff6b35] text-white ml-8"
                             : "bg-muted/50 mr-8",
                         )}
                       >
@@ -2024,7 +1525,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                     <Button
                       type="submit" // Ensure it's a submit button
                       disabled={isGenerating || (!input.trim() && !attachedImage)} // Use isGenerating here
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                      className="bg-gradient-to-r from-[#ec4899] to-[#ff6b35] hover:from-[#ec4899]/80 hover:to-[#ff6b35]/80"
                     >
                       {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </Button>
@@ -2205,7 +1706,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
                 ) : (
                   <div className="flex items-center justify-center h-full bg-gradient-to-b from-neutral-50 to-neutral-100">
                     <div className="text-center max-w-md px-8">
-                      <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                      <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#ec4899]/20 to-[#ff6b35]/20 flex items-center justify-center">
                         <Sparkles className="w-12 h-12 text-purple-500" />
                       </div>
                       <h3 className="text-2xl font-bold text-neutral-800 mb-3">Crie seu site com IA</h3>
@@ -2355,7 +1856,7 @@ export default function BuilderPage({ user, profile }: BuilderPageProps) {
               </div>
               <Button
                 onClick={handleCopyCode}
-                className="w-full gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                className="w-full gap-2 bg-gradient-to-r from-[#ec4899] to-[#ff6b35] hover:from-[#ec4899]/80 hover:to-[#ff6b35]/80"
               >
                 {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 {copiedCode ? "Código Copiado!" : "Copiar Código HTML"}

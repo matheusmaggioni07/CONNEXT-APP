@@ -2,7 +2,7 @@ export default function PrivacidadePage() {
   return (
     <div className="min-h-screen bg-background py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-primary to-pink-500 bg-clip-text text-transparent">
+        <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-primary to-[#ff6b35] bg-clip-text text-transparent">
           Política de Privacidade
         </h1>
         <p className="text-muted-foreground mb-6">Última atualização: 30 de novembro de 2025</p>

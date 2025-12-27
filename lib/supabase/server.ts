@@ -8,8 +8,6 @@ export async function createClient() {
   const accessToken = cookieStore.get("sb-access-token")?.value
   const refreshToken = cookieStore.get("sb-refresh-token")?.value
 
-  console.log("[v0] Server createClient - has access token:", !!accessToken)
-
   const supabase = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -36,10 +34,11 @@ export async function createClient() {
         refresh_token: refreshToken,
       })
       if (error) {
-        console.log("[v0] Server setSession error:", error.message)
+        throw error
       }
     } catch (e) {
-      console.log("[v0] Server setSession exception:", e)
+      // Session error - continue without session
+      return supabase
     }
   }
 

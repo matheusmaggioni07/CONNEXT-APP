@@ -1,130 +1,76 @@
+import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { generateText } from "ai"
-import { SYSTEM_PROMPT } from "./constants"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { createErrorResponse, handleAPIError } from "@/lib/error-handler"
 import { generateFallbackCode } from "./fallback"
+import { jsxToHTML } from "@/lib/builder/jsx-to-html"
 
-export async function POST(req: Request) {
-  let prompt = ""
-
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json()
-    prompt = body.prompt || ""
-    const projectContext = body.projectContext
-    const history = body.history
+    // Rate limiting
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown"
+    const { success, remaining, resetAfter } = await checkRateLimit(ip, RATE_LIMITS.apiGeneral)
 
-    console.log("[v0] Builder API called with prompt:", prompt?.substring(0, 100))
+    if (!success) {
+      return NextResponse.json(createErrorResponse(429, "Too many requests", "RATE_LIMIT_EXCEEDED"), {
+        status: 429,
+        headers: { "Retry-After": resetAfter.toString() },
+      })
+    }
 
+    // Auth check
     const supabase = await createClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
 
-    const isUserAdmin = user?.email
-      ? ["matheus.maggioni@edu.pucrs.br", "matheus.maggioni07@gmail.com"].includes(user.email.toLowerCase())
-      : false
-
-    const projectFiles =
-      projectContext?.map((f: { name: string; content: string }) => `// ${f.name}\n${f.content}`).join("\n\n") || ""
-    const historyContext =
-      history
-        ?.slice(-4)
-        .map((m: { role: string; content: string }) => `${m.role === "user" ? "Usuário" : "IA"}: ${m.content}`)
-        .join("\n") || ""
-
-    const enhancedPrompt = `Crie um site profissional completo para: "${prompt}"
-
-${projectFiles ? `\nCONTEXTO DO PROJETO:\n${projectFiles}` : ""}
-${historyContext ? `\nHISTÓRICO:\n${historyContext}` : ""}
-
-INSTRUÇÕES CRÍTICAS:
-1. Retorne APENAS o código JSX, começando com "export default function Site()"
-2. NÃO inclua markdown, explicações ou comentários fora do código
-3. Use React.useState para estados (não import useState)
-4. Inclua todas as seções: navbar, hero, sobre, features, contato, footer
-5. Use cores apropriadas para o contexto (times de futebol usam cores do time)
-6. Menu mobile funcional com useState
-7. Navegação suave com scrollToSection
-8. Formulário de contato funcional
-9. Design moderno com Tailwind CSS e gradientes
-10. Animações sutis com hover e transition`
-
-    console.log("[v0] Calling Claude API...")
-
-    let code = ""
-
-    try {
-      const { text } = await generateText({
-        model: "anthropic/claude-sonnet-4-20250514",
-        system: SYSTEM_PROMPT,
-        prompt: enhancedPrompt,
-        maxTokens: 20000,
-        temperature: 0.7,
-      })
-
-      console.log("[v0] Claude response length:", text?.length)
-
-      if (!text || text.length < 100) {
-        console.log("[v0] Empty response, using fallback")
-        code = generateFallbackCode(prompt)
-      } else {
-        code = text
-          .trim()
-          .replace(/^```(?:jsx|tsx|javascript|typescript|react)?\s*\n?/gm, "")
-          .replace(/\n?```\s*$/gm, "")
-          .replace(/^Here.*?:\s*\n/gim, "")
-          .replace(/^Aqui.*?:\s*\n/gim, "")
-          .replace(/^Vou criar.*?:\s*\n/gim, "")
-          .replace(/^Claro.*?:\s*\n/gim, "")
-          .trim()
-
-        const exportIndex = code.indexOf("export default function")
-        if (exportIndex > 0) {
-          code = code.substring(exportIndex)
-        }
-
-        const hasValidStructure =
-          code.includes("export default function") &&
-          code.includes("return") &&
-          code.includes("<") &&
-          code.includes("</") &&
-          code.length > 500
-
-        if (!hasValidStructure) {
-          console.log("[v0] Invalid code structure, using fallback")
-          code = generateFallbackCode(prompt)
-        }
-      }
-    } catch (aiError: any) {
-      console.error("[v0] AI Error, using fallback:", aiError?.message || aiError)
-      code = generateFallbackCode(prompt)
+    if (!user) {
+      return NextResponse.json(createErrorResponse(401, "Unauthorized", "UNAUTHORIZED"), { status: 401 })
     }
 
-    console.log("[v0] Final code length:", code?.length)
+    // Parse request
+    const body = await request.json().catch(() => ({}))
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : ""
 
-    return new Response(
-      JSON.stringify({
-        code,
-        explanation: `Site "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}" gerado com sucesso!`,
-        remainingRequests: -1, // Ilimitado para todos durante desenvolvimento
-      }),
+    if (!prompt || prompt.length < 3) {
+      const fallbackCode = generateFallbackCode("site profissional")
+      return NextResponse.json(
+        {
+          code: fallbackCode,
+          previewHTML: jsxToHTML(fallbackCode),
+          explanation: "Digite uma descrição maior (mínimo 3 caracteres)",
+        },
+        { status: 200 },
+      )
+    }
+
+    // Safety checks
+    if (prompt.length > 5000) {
+      return NextResponse.json(createErrorResponse(400, "Prompt is too long (max 5000 characters)", "INVALID_PROMPT"), {
+        status: 400,
+      })
+    }
+
+    // Generate code
+    const code = generateFallbackCode(prompt)
+    const previewHTML = jsxToHTML(code)
+
+    return NextResponse.json(
       {
-        headers: { "Content-Type": "application/json" },
+        code,
+        previewHTML,
+        explanation: `Site criado com sucesso para: "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}"`,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "private, no-cache",
+          "X-RateLimit-Remaining": remaining.toString(),
+        },
       },
     )
   } catch (error) {
-    console.error("[v0] Builder Error:", error)
-
-    const fallbackCode = generateFallbackCode(prompt || "site profissional")
-
-    return new Response(
-      JSON.stringify({
-        code: fallbackCode,
-        explanation: `Site gerado com sucesso!`,
-        remainingRequests: -1,
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
-      },
-    )
+    const { statusCode, body } = handleAPIError(error, "Failed to generate site")
+    return NextResponse.json(body, { status: statusCode })
   }
 }
